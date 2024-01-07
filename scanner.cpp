@@ -8,27 +8,19 @@ fun bool IsWhiteSpace(char ch) {
 }
 
 fun bool IsDigit(char ch) {
-    let char zero = '\x30';
-    let char nine = '\x39';
-    return zero <= ch && ch <= nine;
+    return '0' <= ch && ch <= '9';
 }
 
 fun char ToLower(char ch) {
-    let char lowercaseA = '\x61';
-    let char uppercaseA = '\x41';
-    let char uppercaseZ = '\x5A';
-    if (uppercaseA <= ch && ch <= uppercaseZ)
-        return ch + (lowercaseA - uppercaseA);
+    if ('A' <= ch && ch <= 'Z')
+        return ch + ('a' - 'A');
     else
         return ch;
 }
 
 fun char ToUpper(char ch) {
-    let char lowercaseA = '\x61';
-    let char lowercaseZ = '\x7A';
-    let char uppercaseA = '\x41';
-    if (lowercaseA <= ch && ch <= lowercaseZ)
-        return ch - (lowercaseA - uppercaseA);
+    if ('a' <= ch && ch <= 'z')
+        return ch - ('a' - 'A');
     else
         return ch;
 }

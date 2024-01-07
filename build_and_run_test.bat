@@ -153,7 +153,7 @@ if %errorlevel% neq 0 (
 REM It seems everything went okay. We can now use the output as our new bootstrap compiler
 copy bin\piggi3.c piggi.c
 
-echo PHASE 3 - SUCCESS - New bootsrap piggi.c generated
+echo PHASE 3 - SUCCESS - New bootstrap piggi.c generated
 echo:
 
 REM ================================================================================================

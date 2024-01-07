@@ -1382,28 +1382,20 @@ static bool IsWhiteSpace(char ch) {
 }
 
 static bool IsDigit(char ch) {
-    char zero = '\x30';
-    char nine = '\x39';
-    return zero <= ch && ch <= nine;
+    return '0' <= ch && ch <= '9';
 }
 
 static char ToLower(char ch) {
-    char lowercaseA = '\x61';
-    char uppercaseA = '\x41';
-    char uppercaseZ = '\x5A';
-    if (uppercaseA <= ch && ch <= uppercaseZ) {
-        return ch + (lowercaseA - uppercaseA);
+    if ('A' <= ch && ch <= 'Z') {
+        return ch + ('a' - 'A');
     } else {
         return ch;
     }
 }
 
 static char ToUpper(char ch) {
-    char lowercaseA = '\x61';
-    char lowercaseZ = '\x7A';
-    char uppercaseA = '\x41';
-    if (lowercaseA <= ch && ch <= lowercaseZ) {
-        return ch - (lowercaseA - uppercaseA);
+    if ('a' <= ch && ch <= 'z') {
+        return ch - ('a' - 'A');
     } else {
         return ch;
     }
