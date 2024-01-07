@@ -1377,6 +1377,277 @@ static Symbol* AddSymbol(SymbolTable* table, String name, SymbolKind kind, Symbo
     return newSymbol;
 }
 
+enum SyntaxKind; typedef enum SyntaxKind SyntaxKind; enum SyntaxKind {
+    SyntaxKind_BadToken = 0,
+    SyntaxKind_SkippedTextTrivia = 1,
+    SyntaxKind_LineBreakTrivia = 2,
+    SyntaxKind_WhitespaceTrivia = 3,
+    SyntaxKind_SingleLineCommentTrivia = 4,
+    SyntaxKind_MultiLineCommentTrivia = 5,
+    SyntaxKind_EndOfFileToken = 6,
+    SyntaxKind_BangToken = 7,
+    SyntaxKind_TildeToken = 8,
+    SyntaxKind_PlusToken = 9,
+    SyntaxKind_MinusToken = 10,
+    SyntaxKind_StarToken = 11,
+    SyntaxKind_SlashToken = 12,
+    SyntaxKind_PercentToken = 13,
+    SyntaxKind_EqualsToken = 14,
+    SyntaxKind_PlusEqualsToken = 15,
+    SyntaxKind_MinusEqualsToken = 16,
+    SyntaxKind_StarEqualsToken = 17,
+    SyntaxKind_SlashEqualsToken = 18,
+    SyntaxKind_PercentEqualsToken = 19,
+    SyntaxKind_LessLessEqualsToken = 20,
+    SyntaxKind_GreaterGreaterEqualsToken = 21,
+    SyntaxKind_HatEqualsToken = 22,
+    SyntaxKind_PipeEqualsToken = 23,
+    SyntaxKind_AmpersandEqualsToken = 24,
+    SyntaxKind_PipePipeToken = 25,
+    SyntaxKind_AmpersandAmpersandToken = 26,
+    SyntaxKind_EqualsEqualsToken = 27,
+    SyntaxKind_BangEqualsToken = 28,
+    SyntaxKind_LessToken = 29,
+    SyntaxKind_LessEqualsToken = 30,
+    SyntaxKind_GreaterToken = 31,
+    SyntaxKind_GreaterEqualsToken = 32,
+    SyntaxKind_LessLessToken = 33,
+    SyntaxKind_GreaterGreaterToken = 34,
+    SyntaxKind_HatToken = 35,
+    SyntaxKind_PipeToken = 36,
+    SyntaxKind_AmpersandToken = 37,
+    SyntaxKind_QuestionmarkToken = 38,
+    SyntaxKind_ColonToken = 39,
+    SyntaxKind_ColonColonToken = 40,
+    SyntaxKind_ArrowToken = 41,
+    SyntaxKind_DotToken = 42,
+    SyntaxKind_DotDotDotToken = 43,
+    SyntaxKind_CommaToken = 44,
+    SyntaxKind_SemicolonToken = 45,
+    SyntaxKind_LeftBraceToken = 46,
+    SyntaxKind_RightBraceToken = 47,
+    SyntaxKind_LeftParenToken = 48,
+    SyntaxKind_RightParenToken = 49,
+    SyntaxKind_LeftBracketToken = 50,
+    SyntaxKind_RightBracketToken = 51,
+    SyntaxKind_IntegerLiteralToken = 52,
+    SyntaxKind_CharacterLiteralToken = 53,
+    SyntaxKind_StringLiteralToken = 54,
+    SyntaxKind_IdentifierToken = 55,
+    SyntaxKind_VoidKeyword = 56,
+    SyntaxKind_CharKeyword = 57,
+    SyntaxKind_ByteKeyword = 58,
+    SyntaxKind_ShortKeyword = 59,
+    SyntaxKind_IntKeyword = 60,
+    SyntaxKind_LongKeyword = 61,
+    SyntaxKind_NullKeyword = 62,
+    SyntaxKind_CStringKeyword = 63,
+    SyntaxKind_BoolKeyword = 64,
+    SyntaxKind_TrueKeyword = 65,
+    SyntaxKind_FalseKeyword = 66,
+    SyntaxKind_FunKeyword = 67,
+    SyntaxKind_LetKeyword = 68,
+    SyntaxKind_StructKeyword = 69,
+    SyntaxKind_UnionKeyword = 70,
+    SyntaxKind_EnumKeyword = 71,
+    SyntaxKind_ClassKeyword = 72,
+    SyntaxKind_IfKeyword = 73,
+    SyntaxKind_ElseKeyword = 74,
+    SyntaxKind_DoKeyword = 75,
+    SyntaxKind_WhileKeyword = 76,
+    SyntaxKind_ForKeyword = 77,
+    SyntaxKind_ReturnKeyword = 78,
+    SyntaxKind_BreakKeyword = 79,
+    SyntaxKind_ContinueKeyword = 80,
+    SyntaxKind_SwitchKeyword = 81,
+    SyntaxKind_CaseKeyword = 82,
+    SyntaxKind_DefaultKeyword = 83,
+    SyntaxKind_AsKeyword = 84,
+    SyntaxKind_SizeOfKeyword = 85,
+    SyntaxKind_LocalPersistKeyword = 86,
+    SyntaxKind_ExternKeyword = 87,
+    SyntaxKind_IncludeDirectiveKeyword = 88,
+    SyntaxKind_DefineDirectiveKeyword = 89,
+    SyntaxKind_IfDirectiveKeyword = 90,
+    SyntaxKind_EndIfDefinedDirectiveKeyword = 91,
+    SyntaxKind_PragmaDirectiveKeyword = 92,
+    SyntaxKind_TypedefKeyword = 93,
+    SyntaxKind_FunccallExpression = 94,
+    SyntaxKind_ArrayIndexExpression = 95,
+    SyntaxKind_MemberAccessExpression = 96,
+    SyntaxKind_TypeCastExpression = 97,
+    SyntaxKind_ParenthesizedExpression = 98,
+    SyntaxKind_TernaryConditionalExpression = 99,
+    SyntaxKind_AssignmentExpression = 100,
+    SyntaxKind_SizeOfExpression = 101,
+    SyntaxKind_TypeExpression = 102,
+    SyntaxKind_NullLiteralExpression = 103,
+    SyntaxKind_IntegerLiteralExpression = 104,
+    SyntaxKind_CharacterLiteralExpression = 105,
+    SyntaxKind_BoolLiteralExpression = 106,
+    SyntaxKind_StringLiteralExpression = 107,
+    SyntaxKind_EnumValueLiteralExpression = 108,
+    SyntaxKind_ArrayLiteralExpression = 109,
+    SyntaxKind_NameExpression = 110,
+    SyntaxKind_BlockStatement = 111,
+    SyntaxKind_ExpressionStatement = 112,
+    SyntaxKind_IfStatement = 113,
+    SyntaxKind_DoWhileStatement = 114,
+    SyntaxKind_WhileStatement = 115,
+    SyntaxKind_ForStatement = 116,
+    SyntaxKind_ReturnStatement = 117,
+    SyntaxKind_BreakStatement = 118,
+    SyntaxKind_ContinueStatement = 119,
+    SyntaxKind_SwitchStatement = 120,
+    SyntaxKind_CaseStatement = 121,
+    SyntaxKind_DefaultStatement = 122,
+    SyntaxKind_VariableDeclarationStatement = 123,
+    SyntaxKind_ArrayDeclarationStatement = 124,
+    SyntaxKind_Module = 125,
+    SyntaxKind_ImportDeclaration = 126,
+    SyntaxKind_GlobalVariableDeclaration = 127,
+    SyntaxKind_EnumDeclarationStatement = 128,
+    SyntaxKind_EnumDefinitionStatement = 129,
+    SyntaxKind_StructDeclarationStatement = 130,
+    SyntaxKind_StructDefinitionStatement = 131,
+    SyntaxKind_UnionDeclarationStatement = 132,
+    SyntaxKind_UnionDefinitionStatement = 133,
+    SyntaxKind_FunctionDeclarationStatement = 134,
+    SyntaxKind_FunctionDefinitionStatement = 135,
+};
+
+union SyntaxNode; typedef union SyntaxNode SyntaxNode;
+
+struct SyntaxInfo; typedef struct SyntaxInfo SyntaxInfo; struct SyntaxInfo {
+    SyntaxKind kind;
+    SyntaxNode* parent;
+};
+
+struct SyntaxNodeArray; typedef struct SyntaxNodeArray SyntaxNodeArray; struct SyntaxNodeArray {
+    SyntaxNode** nodes;
+    int32 count;
+    int32 capacity;
+};
+
+static SyntaxNodeArray SyntaxNodeArrayCreate() {
+    SyntaxNodeArray result;
+    result.nodes = NULL;
+    result.count = 0;
+    result.capacity = 0;
+    return result;
+}
+
+static int32 SyntaxNodeArrayPush(SyntaxNodeArray* array, SyntaxNode* node) {
+    if (array->count == array->capacity) {
+        int32 newCapacity = 2 * array->capacity;
+        if (newCapacity == 0) {
+            newCapacity = 64;
+        }
+        array->capacity = newCapacity;
+        array->nodes = (SyntaxNode**)realloc(array->nodes, newCapacity * sizeof(SyntaxNode*));
+        assert(array->nodes != NULL);
+    }
+    int32 insertionIndex = array->count;
+    array->nodes[insertionIndex] = node;
+    array->count += 1;
+    return insertionIndex;
+}
+
+struct SyntaxTrivia; typedef struct SyntaxTrivia SyntaxTrivia; struct SyntaxTrivia {
+    SyntaxKind kind;
+    SourceLocation location;
+};
+
+struct SyntaxTriviaArray; typedef struct SyntaxTriviaArray SyntaxTriviaArray; struct SyntaxTriviaArray {
+    SyntaxTrivia* nodes;
+    int32 count;
+    int32 capacity;
+};
+
+static SyntaxTriviaArray SyntaxTriviaArrayCreate() {
+    SyntaxTriviaArray result;
+    result.nodes = NULL;
+    result.count = 0;
+    result.capacity = 0;
+    return result;
+}
+
+static int32 SyntaxTriviaArrayPush(SyntaxTriviaArray* array, SyntaxTrivia node) {
+    if (array->count == array->capacity) {
+        int32 newCapacity = 2 * array->capacity;
+        if (newCapacity == 0) {
+            newCapacity = 64;
+        }
+        array->capacity = newCapacity;
+        array->nodes = (SyntaxTrivia*)realloc(array->nodes, newCapacity * sizeof(SyntaxTrivia));
+        assert(array->nodes != NULL);
+    }
+    int32 insertionIndex = array->count;
+    array->nodes[insertionIndex] = node;
+    array->count += 1;
+    return insertionIndex;
+}
+
+struct SyntaxToken; typedef struct SyntaxToken SyntaxToken; struct SyntaxToken {
+    SyntaxInfo info;
+    SourceLocation location;
+    SyntaxTriviaArray leadingTrivia;
+    SyntaxTriviaArray trailingTrivia;
+    int64 intvalue;
+    bool intvalueIsHex;
+    String stringValue;
+    String debugString;
+};
+
+struct UnaryExpressionSyntax; typedef struct UnaryExpressionSyntax UnaryExpressionSyntax; struct UnaryExpressionSyntax {
+    SyntaxInfo info;
+    SyntaxToken operatorToken;
+    SyntaxNode* operand;
+};
+
+struct BinaryExpressionSyntax; typedef struct BinaryExpressionSyntax BinaryExpressionSyntax; struct BinaryExpressionSyntax {
+    SyntaxInfo info;
+    SyntaxNode* left;
+    SyntaxToken operatorToken;
+    SyntaxNode* right;
+};
+
+struct ParenthesizedExpressionSyntax; typedef struct ParenthesizedExpressionSyntax ParenthesizedExpressionSyntax; struct ParenthesizedExpressionSyntax {
+    SyntaxInfo info;
+    SyntaxToken leftParen;
+    SyntaxNode* expression;
+    SyntaxToken rightParen;
+};
+
+struct PrimitiveLiteralExpressionSyntax; typedef struct PrimitiveLiteralExpressionSyntax PrimitiveLiteralExpressionSyntax; struct PrimitiveLiteralExpressionSyntax {
+    SyntaxInfo info;
+    SyntaxToken literalToken;
+};
+
+struct ArrayLiteralExpressionSyntax; typedef struct ArrayLiteralExpressionSyntax ArrayLiteralExpressionSyntax; struct ArrayLiteralExpressionSyntax {
+    SyntaxInfo info;
+    SyntaxToken leftBrace;
+    SyntaxToken rightBrace;
+};
+
+union SyntaxNode; typedef union SyntaxNode SyntaxNode; union SyntaxNode{
+    SyntaxInfo info;
+    SyntaxToken token;
+    UnaryExpressionSyntax unaryExpression;
+    BinaryExpressionSyntax binaryExpression;
+    ParenthesizedExpressionSyntax parenthesizedExpression;
+    PrimitiveLiteralExpressionSyntax primitiveLiteralExpression;
+    ArrayLiteralExpressionSyntax arrayLiteralExpression;
+};
+
+static SyntaxNode* SyntaxNodeCreate(SyntaxKind kind, SyntaxNode* parent) {
+    SyntaxNode* node = (SyntaxNode*)malloc(sizeof(SyntaxNode));
+    assert(node != NULL);
+    node->info.kind = kind;
+    node->info.parent = parent;
+    return node;
+}
+
 static bool IsWhiteSpace(char ch) {
     return (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' || ch == '\f');
 }
@@ -4436,16 +4707,34 @@ static Source PreprocessFile(String filepath) {
     return preprocessor.source;
 }
 
+struct Binder; typedef struct Binder Binder; struct Binder {
+    Source source;
+    ASTNode* syntaxTree;
+};
+
+static Binder BinderCreate(Source source, ASTNode* syntaxTree) {
+    Binder result;
+    result.source = source;
+    result.syntaxTree = syntaxTree;
+    return result;
+}
+
+static ASTNode* BinderBindTree(Binder* binder) {
+    return binder->syntaxTree;
+}
+
 static void Compile(String inputFilepath, String outputFilepath) {
     Source source = PreprocessFile(inputFilepath);
     SymbolTable* symbolTable = SymbolTableCreate(NULL);
     Parser parser = ParserCreate(source, symbolTable);
-    ASTNode* statement = ParseGlobalStatements(&parser);
+    ASTNode* syntaxTree = ParseGlobalStatements(&parser);
     if (parser.tokenCur.kind != TokenKind_EndOfFile) {
         ReportError(TokenGetLocation(parser.tokenCur), "Expected EOF token after parsing file, instead got '%s'", TokenKindToString(parser.tokenCur.kind).cstr);
     }
+    Binder binder = BinderCreate(source, syntaxTree);
+    ASTNode* boundTree = BinderBindTree(&binder);
     Emitter emitter = EmitterCreate(outputFilepath);
-    EmitRoot(&emitter, statement);
+    EmitRoot(&emitter, boundTree);
 }
 
 static void main(int32 argc, char** argv) {

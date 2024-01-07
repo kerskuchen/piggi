@@ -1,6 +1,7 @@
 #include "parser.cpp"
 #include "emitter.cpp"
 #include "preprocessor.cpp"
+#include "binder.cpp"
 
 /*
 TODO:
@@ -56,7 +57,7 @@ fun void Compile(String inputFilepath, String outputFilepath) {
     //       we just could declare stuff in a header now that we can parse those
 
     let Parser parser = ParserCreate(source, symbolTable);
-    let ASTNode* statement = ParseGlobalStatements(&parser);
+    let ASTNode* syntaxTree = ParseGlobalStatements(&parser);
     if (parser.tokenCur.kind != TokenKind::EndOfFile)
     {
         ReportError(
@@ -66,8 +67,11 @@ fun void Compile(String inputFilepath, String outputFilepath) {
         );
     }
 
+    let Binder binder = BinderCreate(source, syntaxTree);
+    let ASTNode* boundTree = BinderBindTree(&binder);
+
     let Emitter emitter = EmitterCreate(outputFilepath);
-    EmitRoot(&emitter, statement);
+    EmitRoot(&emitter, boundTree);
 }
 
 fun void main(int argc, char** argv)
