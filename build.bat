@@ -6,7 +6,7 @@ if not defined DevEnvDir (
 
 if not exist bin mkdir bin
 pushd bin
-cl.exe /W2 /WX /Zi /EHsc /nologo ../piggi.cpp
+cl.exe /W2 /WX /Zi /EHsc /nologo ../piggi.c
 if %errorlevel% neq 0 (
     popd
     goto :error

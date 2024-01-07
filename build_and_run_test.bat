@@ -150,7 +150,10 @@ if %errorlevel% neq 0 (
     goto :error
 )
 
-echo PHASE 3 - SUCCESS
+REM It seems everything went okay. We can now use the output as our new bootstrap compiler
+copy bin\piggi3.c piggi.c
+
+echo PHASE 3 - SUCCESS - New bootsrap piggi.c generated
 echo:
 
 REM ================================================================================================
