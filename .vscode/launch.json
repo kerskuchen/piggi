@@ -1,0 +1,17 @@
+{
+    "configurations": [
+        {
+            "name": "build and debug",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}\\bin\\piggi.exe",
+            "args": ["test.cpp", "bin\\test.c"],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "console": "integratedTerminal",
+            "preLaunchTask": "build"
+        }
+    ],
+    "version": "2.0.0"
+}
