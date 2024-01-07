@@ -5,7 +5,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}\\bin\\piggi.exe",
-            "args": ["test.cpp", "bin\\test.c"],
+            "args": ["test.cpp", "bin\\test.c", "piggi.cpp", "bin\\piggi.c"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],

@@ -279,20 +279,6 @@ static SourceLocation SourceGetLocationForCharPos(Source source, int32 charPos) 
     return result;
 }
 
-struct SourceLocation2; typedef struct SourceLocation2 SourceLocation2; struct SourceLocation2 {
-    Source source;
-    int32 start;
-    int32 end;
-};
-
-static SourceLocation2 SourceLocation2Create(Source source, int32 start, int32 end) {
-    SourceLocation2 result;
-    result.source = source;
-    result.start = start;
-    result.end = end;
-    return result;
-}
-
 static void ReportLocation(SourceLocation location) {
     fprintf(stderr, "%s(%d)", location.filepath.cstr, location.fileLineColumn.lineNumber);
 }
@@ -308,516 +294,361 @@ static void ReportError(SourceLocation location, char* format, ...) {
     exit(1);
 }
 
-enum SyntaxKind; typedef enum SyntaxKind SyntaxKind; enum SyntaxKind {
-    SyntaxKind_BadToken = 0,
-    SyntaxKind_SkippedTextTrivia = 1,
-    SyntaxKind_LineBreakTrivia = 2,
-    SyntaxKind_WhitespaceTrivia = 3,
-    SyntaxKind_SingleLineCommentTrivia = 4,
-    SyntaxKind_MultiLineCommentTrivia = 5,
-    SyntaxKind_EndOfFileToken = 6,
-    SyntaxKind_BangToken = 7,
-    SyntaxKind_TildeToken = 8,
-    SyntaxKind_PlusToken = 9,
-    SyntaxKind_MinusToken = 10,
-    SyntaxKind_StarToken = 11,
-    SyntaxKind_SlashToken = 12,
-    SyntaxKind_PercentToken = 13,
-    SyntaxKind_EqualsToken = 14,
-    SyntaxKind_PlusEqualsToken = 15,
-    SyntaxKind_MinusEqualsToken = 16,
-    SyntaxKind_StarEqualsToken = 17,
-    SyntaxKind_SlashEqualsToken = 18,
-    SyntaxKind_PercentEqualsToken = 19,
-    SyntaxKind_LessLessEqualsToken = 20,
-    SyntaxKind_GreaterGreaterEqualsToken = 21,
-    SyntaxKind_HatEqualsToken = 22,
-    SyntaxKind_PipeEqualsToken = 23,
-    SyntaxKind_AmpersandEqualsToken = 24,
-    SyntaxKind_PipePipeToken = 25,
-    SyntaxKind_AmpersandAmpersandToken = 26,
-    SyntaxKind_EqualsEqualsToken = 27,
-    SyntaxKind_BangEqualsToken = 28,
-    SyntaxKind_LessToken = 29,
-    SyntaxKind_LessEqualsToken = 30,
-    SyntaxKind_GreaterToken = 31,
-    SyntaxKind_GreaterEqualsToken = 32,
-    SyntaxKind_LessLessToken = 33,
-    SyntaxKind_GreaterGreaterToken = 34,
-    SyntaxKind_HatToken = 35,
-    SyntaxKind_PipeToken = 36,
-    SyntaxKind_AmpersandToken = 37,
-    SyntaxKind_QuestionmarkToken = 38,
-    SyntaxKind_ColonToken = 39,
-    SyntaxKind_ColonColonToken = 40,
-    SyntaxKind_ArrowToken = 41,
-    SyntaxKind_DotToken = 42,
-    SyntaxKind_DotDotDotToken = 43,
-    SyntaxKind_CommaToken = 44,
-    SyntaxKind_SemicolonToken = 45,
-    SyntaxKind_LeftBraceToken = 46,
-    SyntaxKind_RightBraceToken = 47,
-    SyntaxKind_LeftParenToken = 48,
-    SyntaxKind_RightParenToken = 49,
-    SyntaxKind_LeftBracketToken = 50,
-    SyntaxKind_RightBracketToken = 51,
-    SyntaxKind_IntegerLiteralToken = 52,
-    SyntaxKind_CharacterLiteralToken = 53,
-    SyntaxKind_StringLiteralToken = 54,
-    SyntaxKind_IdentifierToken = 55,
-    SyntaxKind_VoidKeyword = 56,
-    SyntaxKind_CharKeyword = 57,
-    SyntaxKind_ByteKeyword = 58,
-    SyntaxKind_ShortKeyword = 59,
-    SyntaxKind_IntKeyword = 60,
-    SyntaxKind_LongKeyword = 61,
-    SyntaxKind_NullKeyword = 62,
-    SyntaxKind_CStringKeyword = 63,
-    SyntaxKind_BoolKeyword = 64,
-    SyntaxKind_TrueKeyword = 65,
-    SyntaxKind_FalseKeyword = 66,
-    SyntaxKind_FunKeyword = 67,
-    SyntaxKind_LetKeyword = 68,
-    SyntaxKind_StructKeyword = 69,
-    SyntaxKind_UnionKeyword = 70,
-    SyntaxKind_EnumKeyword = 71,
-    SyntaxKind_ClassKeyword = 72,
-    SyntaxKind_IfKeyword = 73,
-    SyntaxKind_ElseKeyword = 74,
-    SyntaxKind_DoKeyword = 75,
-    SyntaxKind_WhileKeyword = 76,
-    SyntaxKind_ForKeyword = 77,
-    SyntaxKind_ReturnKeyword = 78,
-    SyntaxKind_BreakKeyword = 79,
-    SyntaxKind_ContinueKeyword = 80,
-    SyntaxKind_SwitchKeyword = 81,
-    SyntaxKind_CaseKeyword = 82,
-    SyntaxKind_DefaultKeyword = 83,
-    SyntaxKind_AsKeyword = 84,
-    SyntaxKind_SizeOfKeyword = 85,
-    SyntaxKind_LocalPersistKeyword = 86,
-    SyntaxKind_ExternKeyword = 87,
-    SyntaxKind_IncludeDirectiveKeyword = 88,
-    SyntaxKind_DefineDirectiveKeyword = 89,
-    SyntaxKind_IfDirectiveKeyword = 90,
-    SyntaxKind_EndIfDefinedDirectiveKeyword = 91,
-    SyntaxKind_PragmaDirectiveKeyword = 92,
-    SyntaxKind_TypedefKeyword = 93,
-    SyntaxKind_FunccallExpression = 94,
-    SyntaxKind_ArrayIndexExpression = 95,
-    SyntaxKind_MemberAccessExpression = 96,
-    SyntaxKind_TypeCastExpression = 97,
-    SyntaxKind_ParenthesizedExpression = 98,
-    SyntaxKind_TernaryConditionalExpression = 99,
-    SyntaxKind_AssignmentExpression = 100,
-    SyntaxKind_SizeOfExpression = 101,
-    SyntaxKind_TypeExpression = 102,
-    SyntaxKind_NullLiteralExpression = 103,
-    SyntaxKind_IntegerLiteralExpression = 104,
-    SyntaxKind_CharacterLiteralExpression = 105,
-    SyntaxKind_BoolLiteralExpression = 106,
-    SyntaxKind_StringLiteralExpression = 107,
-    SyntaxKind_EnumValueLiteralExpression = 108,
-    SyntaxKind_ArrayLiteralExpression = 109,
-    SyntaxKind_NameExpression = 110,
-    SyntaxKind_BlockStatement = 111,
-    SyntaxKind_ExpressionStatement = 112,
-    SyntaxKind_IfStatement = 113,
-    SyntaxKind_DoWhileStatement = 114,
-    SyntaxKind_WhileStatement = 115,
-    SyntaxKind_ForStatement = 116,
-    SyntaxKind_ReturnStatement = 117,
-    SyntaxKind_BreakStatement = 118,
-    SyntaxKind_ContinueStatement = 119,
-    SyntaxKind_SwitchStatement = 120,
-    SyntaxKind_CaseStatement = 121,
-    SyntaxKind_DefaultStatement = 122,
-    SyntaxKind_VariableDeclarationStatement = 123,
-    SyntaxKind_ArrayDeclarationStatement = 124,
-    SyntaxKind_Module = 125,
-    SyntaxKind_ImportDeclaration = 126,
-    SyntaxKind_GlobalVariableDeclaration = 127,
-    SyntaxKind_EnumDeclarationStatement = 128,
-    SyntaxKind_EnumDefinitionStatement = 129,
-    SyntaxKind_StructDeclarationStatement = 130,
-    SyntaxKind_StructDefinitionStatement = 131,
-    SyntaxKind_UnionDeclarationStatement = 132,
-    SyntaxKind_UnionDefinitionStatement = 133,
-    SyntaxKind_FunctionDeclarationStatement = 134,
-    SyntaxKind_FunctionDefinitionStatement = 135,
+enum TokenKind; typedef enum TokenKind TokenKind; enum TokenKind {
+    TokenKind_EndOfFile = 0,
+    TokenKind_Plus = 1,
+    TokenKind_PlusEquals = 2,
+    TokenKind_Minus = 3,
+    TokenKind_MinusEquals = 4,
+    TokenKind_Star = 5,
+    TokenKind_StarEquals = 6,
+    TokenKind_Slash = 7,
+    TokenKind_SlashEquals = 8,
+    TokenKind_Percent = 9,
+    TokenKind_PercentEquals = 10,
+    TokenKind_Equals = 11,
+    TokenKind_EqualsEquals = 12,
+    TokenKind_Bang = 13,
+    TokenKind_BangEquals = 14,
+    TokenKind_Less = 15,
+    TokenKind_LessEquals = 16,
+    TokenKind_Greater = 17,
+    TokenKind_GreaterEquals = 18,
+    TokenKind_LessLess = 19,
+    TokenKind_LessLessEquals = 20,
+    TokenKind_GreaterGreater = 21,
+    TokenKind_GreaterGreaterEquals = 22,
+    TokenKind_Tilde = 23,
+    TokenKind_Hat = 24,
+    TokenKind_HatEquals = 25,
+    TokenKind_Pipe = 26,
+    TokenKind_PipeEquals = 27,
+    TokenKind_PipePipe = 28,
+    TokenKind_Ampersand = 29,
+    TokenKind_AmpersandEquals = 30,
+    TokenKind_AmpersandAmpersand = 31,
+    TokenKind_Questionmark = 32,
+    TokenKind_Colon = 33,
+    TokenKind_ColonColon = 34,
+    TokenKind_Arrow = 35,
+    TokenKind_Dot = 36,
+    TokenKind_DotDotDot = 37,
+    TokenKind_Comma = 38,
+    TokenKind_Semicolon = 39,
+    TokenKind_LeftBrace = 40,
+    TokenKind_RightBrace = 41,
+    TokenKind_LeftParen = 42,
+    TokenKind_RightParen = 43,
+    TokenKind_LeftBracket = 44,
+    TokenKind_RightBracket = 45,
+    TokenKind_IntegerLiteral = 46,
+    TokenKind_CharacterLiteral = 47,
+    TokenKind_StringLiteral = 48,
+    TokenKind_Void = 49,
+    TokenKind_Char = 50,
+    TokenKind_Byte = 51,
+    TokenKind_Short = 52,
+    TokenKind_Int = 53,
+    TokenKind_Long = 54,
+    TokenKind_Null = 55,
+    TokenKind_CString = 56,
+    TokenKind_Bool = 57,
+    TokenKind_True = 58,
+    TokenKind_False = 59,
+    TokenKind_If = 60,
+    TokenKind_Else = 61,
+    TokenKind_Do = 62,
+    TokenKind_While = 63,
+    TokenKind_For = 64,
+    TokenKind_Return = 65,
+    TokenKind_Break = 66,
+    TokenKind_Continue = 67,
+    TokenKind_Switch = 68,
+    TokenKind_Case = 69,
+    TokenKind_Default = 70,
+    TokenKind_As = 71,
+    TokenKind_SizeOf = 72,
+    TokenKind_Fun = 73,
+    TokenKind_Let = 74,
+    TokenKind_Struct = 75,
+    TokenKind_Union = 76,
+    TokenKind_Enum = 77,
+    TokenKind_Class = 78,
+    TokenKind_LocalPersist = 79,
+    TokenKind_Extern = 80,
+    TokenKind_IncludeDirective = 81,
+    TokenKind_DefineDirective = 82,
+    TokenKind_IfDirective = 83,
+    TokenKind_EndIfDefinedDirective = 84,
+    TokenKind_PragmaDirective = 85,
+    TokenKind_Typedef = 86,
+    TokenKind_Identifier = 87,
 };
 
-union SyntaxNode; typedef union SyntaxNode SyntaxNode;
-
-struct SyntaxInfo; typedef struct SyntaxInfo SyntaxInfo; struct SyntaxInfo {
-    SyntaxKind kind;
-    SyntaxNode* parent;
-};
-
-struct SyntaxNodeArray; typedef struct SyntaxNodeArray SyntaxNodeArray; struct SyntaxNodeArray {
-    SyntaxNode** nodes;
-    int32 count;
-    int32 capacity;
-};
-
-static SyntaxNodeArray SyntaxNodeArrayCreate() {
-    SyntaxNodeArray result;
-    result.nodes = NULL;
-    result.count = 0;
-    result.capacity = 0;
-    return result;
-}
-
-static int32 SyntaxNodeArrayPush(SyntaxNodeArray* array, SyntaxNode* node) {
-    if (array->count == array->capacity) {
-        int32 newCapacity = 2 * array->capacity;
-        if (newCapacity == 0) {
-            newCapacity = 64;
-        }
-        array->capacity = newCapacity;
-        array->nodes = (SyntaxNode**)realloc(array->nodes, newCapacity * sizeof(SyntaxNode*));
-        assert(array->nodes != NULL);
-    }
-    int32 insertionIndex = array->count;
-    array->nodes[insertionIndex] = node;
-    array->count += 1;
-    return insertionIndex;
-}
-
-struct SyntaxTrivia; typedef struct SyntaxTrivia SyntaxTrivia; struct SyntaxTrivia {
-    SyntaxKind kind;
-    SourceLocation2 location;
-};
-
-static SyntaxTrivia SyntaxTriviaCreate(SyntaxKind kind, SourceLocation2 location) {
-    SyntaxTrivia result;
-    result.kind = kind;
-    result.location = location;
-    return result;
-}
-
-struct SyntaxTriviaArray; typedef struct SyntaxTriviaArray SyntaxTriviaArray; struct SyntaxTriviaArray {
-    SyntaxTrivia* nodes;
-    int32 count;
-    int32 capacity;
-};
-
-static SyntaxTriviaArray SyntaxTriviaArrayCreate() {
-    SyntaxTriviaArray result;
-    result.nodes = NULL;
-    result.count = 0;
-    result.capacity = 0;
-    return result;
-}
-
-static int32 SyntaxTriviaArrayPush(SyntaxTriviaArray* array, SyntaxTrivia node) {
-    if (array->count == array->capacity) {
-        int32 newCapacity = 2 * array->capacity;
-        if (newCapacity == 0) {
-            newCapacity = 64;
-        }
-        array->capacity = newCapacity;
-        array->nodes = (SyntaxTrivia*)realloc(array->nodes, newCapacity * sizeof(SyntaxTrivia));
-        assert(array->nodes != NULL);
-    }
-    int32 insertionIndex = array->count;
-    array->nodes[insertionIndex] = node;
-    array->count += 1;
-    return insertionIndex;
-}
-
-struct SyntaxToken; typedef struct SyntaxToken SyntaxToken; struct SyntaxToken {
-    SyntaxKind kind;
-    SyntaxNode* parent;
-    SourceLocation2 location;
-    SyntaxTriviaArray leadingTrivia;
-    SyntaxTriviaArray trailingTrivia;
-    int64 intvalue;
-    bool intvalueIsHex;
-    String stringValueWithoutQuotes;
-    String debugString;
-};
-
-static SyntaxToken SyntaxTokenCreateEmpty(Source source) {
-    SyntaxToken result;
-    result.kind = SyntaxKind_BadToken;
-    result.parent = NULL;
-    result.location.source = source;
-    result.location.start = 0;
-    result.location.end = 0;
-    result.leadingTrivia = SyntaxTriviaArrayCreate();
-    result.trailingTrivia = SyntaxTriviaArrayCreate();
-    result.intvalue = 0;
-    result.intvalueIsHex = false;
-    result.stringValueWithoutQuotes = StringCreateEmpty();
-    result.debugString = StringCreateEmpty();
-    return result;
-}
-
-static String TokenKindToString(SyntaxKind kind) {
+static String TokenKindToString(TokenKind kind) {
     switch (kind) {
-        case SyntaxKind_EndOfFileToken: {
+        case TokenKind_EndOfFile: {
             return StringCreateFromCStr("eof");
         }
-        case SyntaxKind_PlusToken: {
+        case TokenKind_Plus: {
             return StringCreateFromCStr("+");
         }
-        case SyntaxKind_PlusEqualsToken: {
+        case TokenKind_PlusEquals: {
             return StringCreateFromCStr("+=");
         }
-        case SyntaxKind_MinusToken: {
+        case TokenKind_Minus: {
             return StringCreateFromCStr("-");
         }
-        case SyntaxKind_MinusEqualsToken: {
+        case TokenKind_MinusEquals: {
             return StringCreateFromCStr("-=");
         }
-        case SyntaxKind_StarToken: {
+        case TokenKind_Star: {
             return StringCreateFromCStr("*");
         }
-        case SyntaxKind_StarEqualsToken: {
+        case TokenKind_StarEquals: {
             return StringCreateFromCStr("*=");
         }
-        case SyntaxKind_SlashToken: {
+        case TokenKind_Slash: {
             return StringCreateFromCStr("/");
         }
-        case SyntaxKind_SlashEqualsToken: {
+        case TokenKind_SlashEquals: {
             return StringCreateFromCStr("/=");
         }
-        case SyntaxKind_PercentToken: {
+        case TokenKind_Percent: {
             return StringCreateFromCStr("%");
         }
-        case SyntaxKind_PercentEqualsToken: {
+        case TokenKind_PercentEquals: {
             return StringCreateFromCStr("%=");
         }
-        case SyntaxKind_EqualsToken: {
+        case TokenKind_Equals: {
             return StringCreateFromCStr("=");
         }
-        case SyntaxKind_EqualsEqualsToken: {
+        case TokenKind_EqualsEquals: {
             return StringCreateFromCStr("==");
         }
-        case SyntaxKind_BangToken: {
+        case TokenKind_Bang: {
             return StringCreateFromCStr("!");
         }
-        case SyntaxKind_BangEqualsToken: {
+        case TokenKind_BangEquals: {
             return StringCreateFromCStr("!=");
         }
-        case SyntaxKind_LessToken: {
+        case TokenKind_Less: {
             return StringCreateFromCStr("<");
         }
-        case SyntaxKind_LessEqualsToken: {
+        case TokenKind_LessEquals: {
             return StringCreateFromCStr("<=");
         }
-        case SyntaxKind_GreaterToken: {
+        case TokenKind_Greater: {
             return StringCreateFromCStr(">");
         }
-        case SyntaxKind_GreaterEqualsToken: {
+        case TokenKind_GreaterEquals: {
             return StringCreateFromCStr(">=");
         }
-        case SyntaxKind_LessLessToken: {
+        case TokenKind_LessLess: {
             return StringCreateFromCStr("<<");
         }
-        case SyntaxKind_LessLessEqualsToken: {
+        case TokenKind_LessLessEquals: {
             return StringCreateFromCStr("<<=");
         }
-        case SyntaxKind_GreaterGreaterToken: {
+        case TokenKind_GreaterGreater: {
             return StringCreateFromCStr(">>");
         }
-        case SyntaxKind_GreaterGreaterEqualsToken: {
+        case TokenKind_GreaterGreaterEquals: {
             return StringCreateFromCStr(">>=");
         }
-        case SyntaxKind_TildeToken: {
+        case TokenKind_Tilde: {
             return StringCreateFromCStr("~");
         }
-        case SyntaxKind_HatToken: {
+        case TokenKind_Hat: {
             return StringCreateFromCStr("^");
         }
-        case SyntaxKind_HatEqualsToken: {
+        case TokenKind_HatEquals: {
             return StringCreateFromCStr("^=");
         }
-        case SyntaxKind_PipeToken: {
+        case TokenKind_Pipe: {
             return StringCreateFromCStr("|");
         }
-        case SyntaxKind_PipeEqualsToken: {
+        case TokenKind_PipeEquals: {
             return StringCreateFromCStr("|=");
         }
-        case SyntaxKind_PipePipeToken: {
+        case TokenKind_PipePipe: {
             return StringCreateFromCStr("||");
         }
-        case SyntaxKind_AmpersandToken: {
+        case TokenKind_Ampersand: {
             return StringCreateFromCStr("&");
         }
-        case SyntaxKind_AmpersandEqualsToken: {
+        case TokenKind_AmpersandEquals: {
             return StringCreateFromCStr("&=");
         }
-        case SyntaxKind_AmpersandAmpersandToken: {
+        case TokenKind_AmpersandAmpersand: {
             return StringCreateFromCStr("&&");
         }
-        case SyntaxKind_QuestionmarkToken: {
+        case TokenKind_Questionmark: {
             return StringCreateFromCStr("?");
         }
-        case SyntaxKind_ColonToken: {
+        case TokenKind_Colon: {
             return StringCreateFromCStr(":");
         }
-        case SyntaxKind_ColonColonToken: {
+        case TokenKind_ColonColon: {
             return StringCreateFromCStr("::");
         }
-        case SyntaxKind_ArrowToken: {
+        case TokenKind_Arrow: {
             return StringCreateFromCStr("->");
         }
-        case SyntaxKind_DotToken: {
+        case TokenKind_Dot: {
             return StringCreateFromCStr(".");
         }
-        case SyntaxKind_DotDotDotToken: {
+        case TokenKind_DotDotDot: {
             return StringCreateFromCStr("...");
         }
-        case SyntaxKind_CommaToken: {
+        case TokenKind_Comma: {
             return StringCreateFromCStr(",");
         }
-        case SyntaxKind_SemicolonToken: {
+        case TokenKind_Semicolon: {
             return StringCreateFromCStr(";");
         }
-        case SyntaxKind_LeftBraceToken: {
+        case TokenKind_LeftBrace: {
             return StringCreateFromCStr("{");
         }
-        case SyntaxKind_RightBraceToken: {
+        case TokenKind_RightBrace: {
             return StringCreateFromCStr("}");
         }
-        case SyntaxKind_LeftParenToken: {
+        case TokenKind_LeftParen: {
             return StringCreateFromCStr("(");
         }
-        case SyntaxKind_RightParenToken: {
+        case TokenKind_RightParen: {
             return StringCreateFromCStr(")");
         }
-        case SyntaxKind_LeftBracketToken: {
+        case TokenKind_LeftBracket: {
             return StringCreateFromCStr("[");
         }
-        case SyntaxKind_RightBracketToken: {
+        case TokenKind_RightBracket: {
             return StringCreateFromCStr("]");
         }
-        case SyntaxKind_IntegerLiteralToken: {
+        case TokenKind_IntegerLiteral: {
             return StringCreateFromCStr("int-lit");
         }
-        case SyntaxKind_CharacterLiteralToken: {
+        case TokenKind_CharacterLiteral: {
             return StringCreateFromCStr("chr-lit");
         }
-        case SyntaxKind_StringLiteralToken: {
+        case TokenKind_StringLiteral: {
             return StringCreateFromCStr("str-lit");
         }
-        case SyntaxKind_CharKeyword: {
+        case TokenKind_Char: {
             return StringCreateFromCStr("char");
         }
-        case SyntaxKind_ByteKeyword: {
+        case TokenKind_Byte: {
             return StringCreateFromCStr("byte");
         }
-        case SyntaxKind_ShortKeyword: {
+        case TokenKind_Short: {
             return StringCreateFromCStr("short");
         }
-        case SyntaxKind_IntKeyword: {
+        case TokenKind_Int: {
             return StringCreateFromCStr("int");
         }
-        case SyntaxKind_LongKeyword: {
+        case TokenKind_Long: {
             return StringCreateFromCStr("longint");
         }
-        case SyntaxKind_VoidKeyword: {
+        case TokenKind_Void: {
             return StringCreateFromCStr("void");
         }
-        case SyntaxKind_NullKeyword: {
+        case TokenKind_Null: {
             return StringCreateFromCStr("nullptr");
         }
-        case SyntaxKind_CStringKeyword: {
+        case TokenKind_CString: {
             return StringCreateFromCStr("cstring");
         }
-        case SyntaxKind_BoolKeyword: {
+        case TokenKind_Bool: {
             return StringCreateFromCStr("bool");
         }
-        case SyntaxKind_TrueKeyword: {
+        case TokenKind_True: {
             return StringCreateFromCStr("true");
         }
-        case SyntaxKind_FalseKeyword: {
+        case TokenKind_False: {
             return StringCreateFromCStr("false");
         }
-        case SyntaxKind_IfKeyword: {
+        case TokenKind_If: {
             return StringCreateFromCStr("if");
         }
-        case SyntaxKind_ElseKeyword: {
+        case TokenKind_Else: {
             return StringCreateFromCStr("else");
         }
-        case SyntaxKind_DoKeyword: {
+        case TokenKind_Do: {
             return StringCreateFromCStr("do");
         }
-        case SyntaxKind_WhileKeyword: {
+        case TokenKind_While: {
             return StringCreateFromCStr("while");
         }
-        case SyntaxKind_ForKeyword: {
+        case TokenKind_For: {
             return StringCreateFromCStr("for");
         }
-        case SyntaxKind_ReturnKeyword: {
+        case TokenKind_Return: {
             return StringCreateFromCStr("return");
         }
-        case SyntaxKind_BreakKeyword: {
+        case TokenKind_Break: {
             return StringCreateFromCStr("break");
         }
-        case SyntaxKind_ContinueKeyword: {
+        case TokenKind_Continue: {
             return StringCreateFromCStr("continue");
         }
-        case SyntaxKind_SwitchKeyword: {
+        case TokenKind_Switch: {
             return StringCreateFromCStr("switch");
         }
-        case SyntaxKind_CaseKeyword: {
+        case TokenKind_Case: {
             return StringCreateFromCStr("case");
         }
-        case SyntaxKind_DefaultKeyword: {
+        case TokenKind_Default: {
             return StringCreateFromCStr("default");
         }
-        case SyntaxKind_AsKeyword: {
+        case TokenKind_As: {
             return StringCreateFromCStr("as");
         }
-        case SyntaxKind_SizeOfKeyword: {
+        case TokenKind_SizeOf: {
             return StringCreateFromCStr("sizeof");
         }
-        case SyntaxKind_LetKeyword: {
+        case TokenKind_Let: {
             return StringCreateFromCStr("let");
         }
-        case SyntaxKind_FunKeyword: {
+        case TokenKind_Fun: {
             return StringCreateFromCStr("fun");
         }
-        case SyntaxKind_StructKeyword: {
+        case TokenKind_Struct: {
             return StringCreateFromCStr("struct");
         }
-        case SyntaxKind_UnionKeyword: {
+        case TokenKind_Union: {
             return StringCreateFromCStr("union");
         }
-        case SyntaxKind_EnumKeyword: {
+        case TokenKind_Enum: {
             return StringCreateFromCStr("enum");
         }
-        case SyntaxKind_ClassKeyword: {
+        case TokenKind_Class: {
             return StringCreateFromCStr("class");
         }
-        case SyntaxKind_LocalPersistKeyword: {
+        case TokenKind_LocalPersist: {
             return StringCreateFromCStr("localpersist");
         }
-        case SyntaxKind_ExternKeyword: {
+        case TokenKind_Extern: {
             return StringCreateFromCStr("extern");
         }
-        case SyntaxKind_IncludeDirectiveKeyword: {
+        case TokenKind_IncludeDirective: {
             return StringCreateFromCStr("#include");
         }
-        case SyntaxKind_DefineDirectiveKeyword: {
+        case TokenKind_DefineDirective: {
             return StringCreateFromCStr("#define");
         }
-        case SyntaxKind_IfDirectiveKeyword: {
+        case TokenKind_IfDirective: {
             return StringCreateFromCStr("#if");
         }
-        case SyntaxKind_EndIfDefinedDirectiveKeyword: {
+        case TokenKind_EndIfDefinedDirective: {
             return StringCreateFromCStr("#endif");
         }
-        case SyntaxKind_PragmaDirectiveKeyword: {
+        case TokenKind_PragmaDirective: {
             return StringCreateFromCStr("#pragma");
         }
-        case SyntaxKind_TypedefKeyword: {
+        case TokenKind_Typedef: {
             return StringCreateFromCStr("typedef");
         }
-        case SyntaxKind_IdentifierToken: {
+        case TokenKind_Identifier: {
             return StringCreateFromCStr("identifier");
         }
         default: {
@@ -827,180 +658,154 @@ static String TokenKindToString(SyntaxKind kind) {
     }
 }
 
-static SyntaxKind GetKeywordForIdentifier(String identifier) {
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_CharKeyword))) {
-        return SyntaxKind_CharKeyword;
+static TokenKind GetKeywordForIdentifier(String identifier) {
+    if (StringEquals(identifier, TokenKindToString(TokenKind_Char))) {
+        return TokenKind_Char;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_ByteKeyword))) {
-        return SyntaxKind_ByteKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_Byte))) {
+        return TokenKind_Byte;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_ShortKeyword))) {
-        return SyntaxKind_ShortKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_Short))) {
+        return TokenKind_Short;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_IntKeyword))) {
-        return SyntaxKind_IntKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_Int))) {
+        return TokenKind_Int;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_LongKeyword))) {
-        return SyntaxKind_LongKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_Long))) {
+        return TokenKind_Long;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_VoidKeyword))) {
-        return SyntaxKind_VoidKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_Void))) {
+        return TokenKind_Void;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_NullKeyword))) {
-        return SyntaxKind_NullKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_Null))) {
+        return TokenKind_Null;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_CStringKeyword))) {
-        return SyntaxKind_CStringKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_CString))) {
+        return TokenKind_CString;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_BoolKeyword))) {
-        return SyntaxKind_BoolKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_Bool))) {
+        return TokenKind_Bool;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_TrueKeyword))) {
-        return SyntaxKind_TrueKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_True))) {
+        return TokenKind_True;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_FalseKeyword))) {
-        return SyntaxKind_FalseKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_False))) {
+        return TokenKind_False;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_IfKeyword))) {
-        return SyntaxKind_IfKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_If))) {
+        return TokenKind_If;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_ElseKeyword))) {
-        return SyntaxKind_ElseKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_Else))) {
+        return TokenKind_Else;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_DoKeyword))) {
-        return SyntaxKind_DoKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_Do))) {
+        return TokenKind_Do;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_WhileKeyword))) {
-        return SyntaxKind_WhileKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_While))) {
+        return TokenKind_While;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_ForKeyword))) {
-        return SyntaxKind_ForKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_For))) {
+        return TokenKind_For;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_ReturnKeyword))) {
-        return SyntaxKind_ReturnKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_Return))) {
+        return TokenKind_Return;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_BreakKeyword))) {
-        return SyntaxKind_BreakKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_Break))) {
+        return TokenKind_Break;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_ContinueKeyword))) {
-        return SyntaxKind_ContinueKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_Continue))) {
+        return TokenKind_Continue;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_SwitchKeyword))) {
-        return SyntaxKind_SwitchKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_Switch))) {
+        return TokenKind_Switch;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_CaseKeyword))) {
-        return SyntaxKind_CaseKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_Case))) {
+        return TokenKind_Case;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_DefaultKeyword))) {
-        return SyntaxKind_DefaultKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_Default))) {
+        return TokenKind_Default;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_FunKeyword))) {
-        return SyntaxKind_FunKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_Fun))) {
+        return TokenKind_Fun;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_LetKeyword))) {
-        return SyntaxKind_LetKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_Let))) {
+        return TokenKind_Let;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_StructKeyword))) {
-        return SyntaxKind_StructKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_Struct))) {
+        return TokenKind_Struct;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_UnionKeyword))) {
-        return SyntaxKind_UnionKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_Union))) {
+        return TokenKind_Union;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_EnumKeyword))) {
-        return SyntaxKind_EnumKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_Enum))) {
+        return TokenKind_Enum;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_ClassKeyword))) {
-        return SyntaxKind_ClassKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_Class))) {
+        return TokenKind_Class;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_AsKeyword))) {
-        return SyntaxKind_AsKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_As))) {
+        return TokenKind_As;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_SizeOfKeyword))) {
-        return SyntaxKind_SizeOfKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_SizeOf))) {
+        return TokenKind_SizeOf;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_LocalPersistKeyword))) {
-        return SyntaxKind_LocalPersistKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_LocalPersist))) {
+        return TokenKind_LocalPersist;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_ExternKeyword))) {
-        return SyntaxKind_ExternKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_Extern))) {
+        return TokenKind_Extern;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_IncludeDirectiveKeyword))) {
-        return SyntaxKind_IncludeDirectiveKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_IncludeDirective))) {
+        return TokenKind_IncludeDirective;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_DefineDirectiveKeyword))) {
-        return SyntaxKind_DefineDirectiveKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_DefineDirective))) {
+        return TokenKind_DefineDirective;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_IfDirectiveKeyword))) {
-        return SyntaxKind_IfDirectiveKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_IfDirective))) {
+        return TokenKind_IfDirective;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_EndIfDefinedDirectiveKeyword))) {
-        return SyntaxKind_EndIfDefinedDirectiveKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_EndIfDefinedDirective))) {
+        return TokenKind_EndIfDefinedDirective;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_PragmaDirectiveKeyword))) {
-        return SyntaxKind_PragmaDirectiveKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_PragmaDirective))) {
+        return TokenKind_PragmaDirective;
     }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_TypedefKeyword))) {
-        return SyntaxKind_TypedefKeyword;
+    if (StringEquals(identifier, TokenKindToString(TokenKind_Typedef))) {
+        return TokenKind_Typedef;
     }
-    return SyntaxKind_EndOfFileToken;
+    return TokenKind_EndOfFile;
 }
 
-static String TokenGetText(SyntaxToken token) {
-    return SourceGetSubstring(token.location.source, token.location.start, token.location.end);
+struct Token; typedef struct Token Token; struct Token {
+    TokenKind kind;
+    int64 intvalue;
+    bool intvalueIsHex;
+    String stringValue;
+    Source source;
+    int32 sourceStart;
+    int32 sourceEnd;
+    String sourceString;
+};
+
+static Token TokenCreateEmpty(Source source) {
+    Token result;
+    result.kind = TokenKind_EndOfFile;
+    result.intvalue = 0;
+    result.intvalueIsHex = false;
+    result.stringValue = StringCreateEmpty();
+    result.source = source;
+    result.sourceStart = 0;
+    result.sourceEnd = 0;
+    result.sourceString = StringCreateEmpty();
+    return result;
 }
 
-static SourceLocation TokenGetLocation(SyntaxToken token) {
-    return SourceGetLocationForCharPos(token.location.source, token.location.start);
+static String TokenGetText(Token token) {
+    return SourceGetSubstring(token.source, token.sourceStart, token.sourceEnd);
 }
 
-struct UnaryExpressionSyntax; typedef struct UnaryExpressionSyntax UnaryExpressionSyntax; struct UnaryExpressionSyntax {
-    SyntaxInfo info;
-    SyntaxToken operatorToken;
-    SyntaxNode* operand;
-};
-
-struct BinaryExpressionSyntax; typedef struct BinaryExpressionSyntax BinaryExpressionSyntax; struct BinaryExpressionSyntax {
-    SyntaxInfo info;
-    SyntaxNode* left;
-    SyntaxToken operatorToken;
-    SyntaxNode* right;
-};
-
-struct ParenthesizedExpressionSyntax; typedef struct ParenthesizedExpressionSyntax ParenthesizedExpressionSyntax; struct ParenthesizedExpressionSyntax {
-    SyntaxInfo info;
-    SyntaxToken leftParen;
-    SyntaxNode* expression;
-    SyntaxToken rightParen;
-};
-
-struct PrimitiveLiteralExpressionSyntax; typedef struct PrimitiveLiteralExpressionSyntax PrimitiveLiteralExpressionSyntax; struct PrimitiveLiteralExpressionSyntax {
-    SyntaxInfo info;
-    SyntaxToken literalToken;
-};
-
-struct ArrayLiteralExpressionSyntax; typedef struct ArrayLiteralExpressionSyntax ArrayLiteralExpressionSyntax; struct ArrayLiteralExpressionSyntax {
-    SyntaxInfo info;
-    SyntaxToken leftBrace;
-    SyntaxToken rightBrace;
-};
-
-union SyntaxNode; typedef union SyntaxNode SyntaxNode; union SyntaxNode{
-    SyntaxKind kind;
-    SyntaxInfo info;
-    SyntaxToken token;
-    UnaryExpressionSyntax unaryExpression;
-    BinaryExpressionSyntax binaryExpression;
-    ParenthesizedExpressionSyntax parenthesizedExpression;
-    PrimitiveLiteralExpressionSyntax primitiveLiteralExpression;
-    ArrayLiteralExpressionSyntax arrayLiteralExpression;
-};
-
-static SyntaxNode* SyntaxNodeCreate(SyntaxKind kind, SyntaxNode* parent) {
-    SyntaxNode* node = (SyntaxNode*)malloc(sizeof(SyntaxNode));
-    assert(node != NULL);
-    node->info.kind = kind;
-    node->info.parent = parent;
-    return node;
+static SourceLocation TokenGetLocation(Token token) {
+    return SourceGetLocationForCharPos(token.source, token.sourceStart);
 }
 
 enum TypeKind; typedef enum TypeKind TypeKind; enum TypeKind {
@@ -1420,7 +1225,7 @@ struct ASTNode; typedef struct ASTNode ASTNode; struct ASTNode {
     ASTNodeKind kind;
     Type type;
     SymbolTable* symbolTable;
-    SyntaxToken token;
+    Token token;
     ASTNode* left;
     ASTNode* right;
     ASTNode* extra1;
@@ -1432,7 +1237,7 @@ struct ASTNode; typedef struct ASTNode ASTNode; struct ASTNode {
     ASTNodeArray children;
 };
 
-static ASTNode* ASTNodeCreate(ASTNodeKind kind, SymbolTable* symbolTable, SyntaxToken token) {
+static ASTNode* ASTNodeCreate(ASTNodeKind kind, SymbolTable* symbolTable, Token token) {
     ASTNode* node = (ASTNode*)malloc(sizeof(ASTNode));
     if (node == NULL) {
         fprintf(stderr, "Unable to malloc new AST Node");
@@ -1572,6 +1377,277 @@ static Symbol* AddSymbol(SymbolTable* table, String name, SymbolKind kind, Symbo
     return newSymbol;
 }
 
+enum SyntaxKind; typedef enum SyntaxKind SyntaxKind; enum SyntaxKind {
+    SyntaxKind_BadToken = 0,
+    SyntaxKind_SkippedTextTrivia = 1,
+    SyntaxKind_LineBreakTrivia = 2,
+    SyntaxKind_WhitespaceTrivia = 3,
+    SyntaxKind_SingleLineCommentTrivia = 4,
+    SyntaxKind_MultiLineCommentTrivia = 5,
+    SyntaxKind_EndOfFileToken = 6,
+    SyntaxKind_BangToken = 7,
+    SyntaxKind_TildeToken = 8,
+    SyntaxKind_PlusToken = 9,
+    SyntaxKind_MinusToken = 10,
+    SyntaxKind_StarToken = 11,
+    SyntaxKind_SlashToken = 12,
+    SyntaxKind_PercentToken = 13,
+    SyntaxKind_EqualsToken = 14,
+    SyntaxKind_PlusEqualsToken = 15,
+    SyntaxKind_MinusEqualsToken = 16,
+    SyntaxKind_StarEqualsToken = 17,
+    SyntaxKind_SlashEqualsToken = 18,
+    SyntaxKind_PercentEqualsToken = 19,
+    SyntaxKind_LessLessEqualsToken = 20,
+    SyntaxKind_GreaterGreaterEqualsToken = 21,
+    SyntaxKind_HatEqualsToken = 22,
+    SyntaxKind_PipeEqualsToken = 23,
+    SyntaxKind_AmpersandEqualsToken = 24,
+    SyntaxKind_PipePipeToken = 25,
+    SyntaxKind_AmpersandAmpersandToken = 26,
+    SyntaxKind_EqualsEqualsToken = 27,
+    SyntaxKind_BangEqualsToken = 28,
+    SyntaxKind_LessToken = 29,
+    SyntaxKind_LessEqualsToken = 30,
+    SyntaxKind_GreaterToken = 31,
+    SyntaxKind_GreaterEqualsToken = 32,
+    SyntaxKind_LessLessToken = 33,
+    SyntaxKind_GreaterGreaterToken = 34,
+    SyntaxKind_HatToken = 35,
+    SyntaxKind_PipeToken = 36,
+    SyntaxKind_AmpersandToken = 37,
+    SyntaxKind_QuestionmarkToken = 38,
+    SyntaxKind_ColonToken = 39,
+    SyntaxKind_ColonColonToken = 40,
+    SyntaxKind_ArrowToken = 41,
+    SyntaxKind_DotToken = 42,
+    SyntaxKind_DotDotDotToken = 43,
+    SyntaxKind_CommaToken = 44,
+    SyntaxKind_SemicolonToken = 45,
+    SyntaxKind_LeftBraceToken = 46,
+    SyntaxKind_RightBraceToken = 47,
+    SyntaxKind_LeftParenToken = 48,
+    SyntaxKind_RightParenToken = 49,
+    SyntaxKind_LeftBracketToken = 50,
+    SyntaxKind_RightBracketToken = 51,
+    SyntaxKind_IntegerLiteralToken = 52,
+    SyntaxKind_CharacterLiteralToken = 53,
+    SyntaxKind_StringLiteralToken = 54,
+    SyntaxKind_IdentifierToken = 55,
+    SyntaxKind_VoidKeyword = 56,
+    SyntaxKind_CharKeyword = 57,
+    SyntaxKind_ByteKeyword = 58,
+    SyntaxKind_ShortKeyword = 59,
+    SyntaxKind_IntKeyword = 60,
+    SyntaxKind_LongKeyword = 61,
+    SyntaxKind_NullKeyword = 62,
+    SyntaxKind_CStringKeyword = 63,
+    SyntaxKind_BoolKeyword = 64,
+    SyntaxKind_TrueKeyword = 65,
+    SyntaxKind_FalseKeyword = 66,
+    SyntaxKind_FunKeyword = 67,
+    SyntaxKind_LetKeyword = 68,
+    SyntaxKind_StructKeyword = 69,
+    SyntaxKind_UnionKeyword = 70,
+    SyntaxKind_EnumKeyword = 71,
+    SyntaxKind_ClassKeyword = 72,
+    SyntaxKind_IfKeyword = 73,
+    SyntaxKind_ElseKeyword = 74,
+    SyntaxKind_DoKeyword = 75,
+    SyntaxKind_WhileKeyword = 76,
+    SyntaxKind_ForKeyword = 77,
+    SyntaxKind_ReturnKeyword = 78,
+    SyntaxKind_BreakKeyword = 79,
+    SyntaxKind_ContinueKeyword = 80,
+    SyntaxKind_SwitchKeyword = 81,
+    SyntaxKind_CaseKeyword = 82,
+    SyntaxKind_DefaultKeyword = 83,
+    SyntaxKind_AsKeyword = 84,
+    SyntaxKind_SizeOfKeyword = 85,
+    SyntaxKind_LocalPersistKeyword = 86,
+    SyntaxKind_ExternKeyword = 87,
+    SyntaxKind_IncludeDirectiveKeyword = 88,
+    SyntaxKind_DefineDirectiveKeyword = 89,
+    SyntaxKind_IfDirectiveKeyword = 90,
+    SyntaxKind_EndIfDefinedDirectiveKeyword = 91,
+    SyntaxKind_PragmaDirectiveKeyword = 92,
+    SyntaxKind_TypedefKeyword = 93,
+    SyntaxKind_FunccallExpression = 94,
+    SyntaxKind_ArrayIndexExpression = 95,
+    SyntaxKind_MemberAccessExpression = 96,
+    SyntaxKind_TypeCastExpression = 97,
+    SyntaxKind_ParenthesizedExpression = 98,
+    SyntaxKind_TernaryConditionalExpression = 99,
+    SyntaxKind_AssignmentExpression = 100,
+    SyntaxKind_SizeOfExpression = 101,
+    SyntaxKind_TypeExpression = 102,
+    SyntaxKind_NullLiteralExpression = 103,
+    SyntaxKind_IntegerLiteralExpression = 104,
+    SyntaxKind_CharacterLiteralExpression = 105,
+    SyntaxKind_BoolLiteralExpression = 106,
+    SyntaxKind_StringLiteralExpression = 107,
+    SyntaxKind_EnumValueLiteralExpression = 108,
+    SyntaxKind_ArrayLiteralExpression = 109,
+    SyntaxKind_NameExpression = 110,
+    SyntaxKind_BlockStatement = 111,
+    SyntaxKind_ExpressionStatement = 112,
+    SyntaxKind_IfStatement = 113,
+    SyntaxKind_DoWhileStatement = 114,
+    SyntaxKind_WhileStatement = 115,
+    SyntaxKind_ForStatement = 116,
+    SyntaxKind_ReturnStatement = 117,
+    SyntaxKind_BreakStatement = 118,
+    SyntaxKind_ContinueStatement = 119,
+    SyntaxKind_SwitchStatement = 120,
+    SyntaxKind_CaseStatement = 121,
+    SyntaxKind_DefaultStatement = 122,
+    SyntaxKind_VariableDeclarationStatement = 123,
+    SyntaxKind_ArrayDeclarationStatement = 124,
+    SyntaxKind_Module = 125,
+    SyntaxKind_ImportDeclaration = 126,
+    SyntaxKind_GlobalVariableDeclaration = 127,
+    SyntaxKind_EnumDeclarationStatement = 128,
+    SyntaxKind_EnumDefinitionStatement = 129,
+    SyntaxKind_StructDeclarationStatement = 130,
+    SyntaxKind_StructDefinitionStatement = 131,
+    SyntaxKind_UnionDeclarationStatement = 132,
+    SyntaxKind_UnionDefinitionStatement = 133,
+    SyntaxKind_FunctionDeclarationStatement = 134,
+    SyntaxKind_FunctionDefinitionStatement = 135,
+};
+
+union SyntaxNode; typedef union SyntaxNode SyntaxNode;
+
+struct SyntaxInfo; typedef struct SyntaxInfo SyntaxInfo; struct SyntaxInfo {
+    SyntaxKind kind;
+    SyntaxNode* parent;
+};
+
+struct SyntaxNodeArray; typedef struct SyntaxNodeArray SyntaxNodeArray; struct SyntaxNodeArray {
+    SyntaxNode** nodes;
+    int32 count;
+    int32 capacity;
+};
+
+static SyntaxNodeArray SyntaxNodeArrayCreate() {
+    SyntaxNodeArray result;
+    result.nodes = NULL;
+    result.count = 0;
+    result.capacity = 0;
+    return result;
+}
+
+static int32 SyntaxNodeArrayPush(SyntaxNodeArray* array, SyntaxNode* node) {
+    if (array->count == array->capacity) {
+        int32 newCapacity = 2 * array->capacity;
+        if (newCapacity == 0) {
+            newCapacity = 64;
+        }
+        array->capacity = newCapacity;
+        array->nodes = (SyntaxNode**)realloc(array->nodes, newCapacity * sizeof(SyntaxNode*));
+        assert(array->nodes != NULL);
+    }
+    int32 insertionIndex = array->count;
+    array->nodes[insertionIndex] = node;
+    array->count += 1;
+    return insertionIndex;
+}
+
+struct SyntaxTrivia; typedef struct SyntaxTrivia SyntaxTrivia; struct SyntaxTrivia {
+    SyntaxKind kind;
+    SourceLocation location;
+};
+
+struct SyntaxTriviaArray; typedef struct SyntaxTriviaArray SyntaxTriviaArray; struct SyntaxTriviaArray {
+    SyntaxTrivia* nodes;
+    int32 count;
+    int32 capacity;
+};
+
+static SyntaxTriviaArray SyntaxTriviaArrayCreate() {
+    SyntaxTriviaArray result;
+    result.nodes = NULL;
+    result.count = 0;
+    result.capacity = 0;
+    return result;
+}
+
+static int32 SyntaxTriviaArrayPush(SyntaxTriviaArray* array, SyntaxTrivia node) {
+    if (array->count == array->capacity) {
+        int32 newCapacity = 2 * array->capacity;
+        if (newCapacity == 0) {
+            newCapacity = 64;
+        }
+        array->capacity = newCapacity;
+        array->nodes = (SyntaxTrivia*)realloc(array->nodes, newCapacity * sizeof(SyntaxTrivia));
+        assert(array->nodes != NULL);
+    }
+    int32 insertionIndex = array->count;
+    array->nodes[insertionIndex] = node;
+    array->count += 1;
+    return insertionIndex;
+}
+
+struct SyntaxToken; typedef struct SyntaxToken SyntaxToken; struct SyntaxToken {
+    SyntaxInfo info;
+    SourceLocation location;
+    SyntaxTriviaArray leadingTrivia;
+    SyntaxTriviaArray trailingTrivia;
+    int64 intvalue;
+    bool intvalueIsHex;
+    String stringValue;
+    String debugString;
+};
+
+struct UnaryExpressionSyntax; typedef struct UnaryExpressionSyntax UnaryExpressionSyntax; struct UnaryExpressionSyntax {
+    SyntaxInfo info;
+    SyntaxToken operatorToken;
+    SyntaxNode* operand;
+};
+
+struct BinaryExpressionSyntax; typedef struct BinaryExpressionSyntax BinaryExpressionSyntax; struct BinaryExpressionSyntax {
+    SyntaxInfo info;
+    SyntaxNode* left;
+    SyntaxToken operatorToken;
+    SyntaxNode* right;
+};
+
+struct ParenthesizedExpressionSyntax; typedef struct ParenthesizedExpressionSyntax ParenthesizedExpressionSyntax; struct ParenthesizedExpressionSyntax {
+    SyntaxInfo info;
+    SyntaxToken leftParen;
+    SyntaxNode* expression;
+    SyntaxToken rightParen;
+};
+
+struct PrimitiveLiteralExpressionSyntax; typedef struct PrimitiveLiteralExpressionSyntax PrimitiveLiteralExpressionSyntax; struct PrimitiveLiteralExpressionSyntax {
+    SyntaxInfo info;
+    SyntaxToken literalToken;
+};
+
+struct ArrayLiteralExpressionSyntax; typedef struct ArrayLiteralExpressionSyntax ArrayLiteralExpressionSyntax; struct ArrayLiteralExpressionSyntax {
+    SyntaxInfo info;
+    SyntaxToken leftBrace;
+    SyntaxToken rightBrace;
+};
+
+union SyntaxNode; typedef union SyntaxNode SyntaxNode; union SyntaxNode{
+    SyntaxInfo info;
+    SyntaxToken token;
+    UnaryExpressionSyntax unaryExpression;
+    BinaryExpressionSyntax binaryExpression;
+    ParenthesizedExpressionSyntax parenthesizedExpression;
+    PrimitiveLiteralExpressionSyntax primitiveLiteralExpression;
+    ArrayLiteralExpressionSyntax arrayLiteralExpression;
+};
+
+static SyntaxNode* SyntaxNodeCreate(SyntaxKind kind, SyntaxNode* parent) {
+    SyntaxNode* node = (SyntaxNode*)malloc(sizeof(SyntaxNode));
+    assert(node != NULL);
+    node->info.kind = kind;
+    node->info.parent = parent;
+    return node;
+}
+
 static bool IsWhiteSpace(char ch) {
     return (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' || ch == '\f');
 }
@@ -1604,11 +1680,9 @@ struct Scanner; typedef struct Scanner Scanner; struct Scanner {
     Source source;
     int32 start;
     int32 pos;
-    SyntaxToken token;
-    char debugCharPrev;
-    char debugCharCur;
-    char debugCharNext;
-    char debugCharNextNext;
+    Token token;
+    char debugCurChar;
+    char debugNextChar;
 };
 
 static Scanner ScannerCreate(Source source) {
@@ -1616,11 +1690,9 @@ static Scanner ScannerCreate(Source source) {
     result.source = source;
     result.start = 0;
     result.pos = 0;
-    result.token = SyntaxTokenCreateEmpty(source);
-    result.debugCharPrev = '\0';
-    result.debugCharCur = '\0';
-    result.debugCharNext = '\0';
-    result.debugCharNextNext = '\0';
+    result.token = TokenCreateEmpty(source);
+    result.debugCurChar = '\0';
+    result.debugNextChar = '\0';
     return result;
 }
 
@@ -1640,140 +1712,57 @@ static char Lookahead(Scanner* scanner) {
 static char AdvanceChar(Scanner* scanner) {
     char result = CurrentChar(scanner);
     scanner->pos += 1;
-    scanner->debugCharPrev = scanner->debugCharCur;
-    scanner->debugCharCur = result;
-    scanner->debugCharNext = PeekChar(scanner, 1);
-    scanner->debugCharNextNext = PeekChar(scanner, 2);
+    scanner->debugCurChar = CurrentChar(scanner);
+    scanner->debugNextChar = Lookahead(scanner);
     return result;
 }
 
-static void ReadLineBreak(Scanner* scanner) {
-    scanner->token.kind = SyntaxKind_LineBreakTrivia;
-    if (CurrentChar(scanner) == '\r' && Lookahead(scanner) == '\n') {
-        AdvanceChar(scanner);
-        AdvanceChar(scanner);
-    } else {
+static void SkipWhitespaceTrivia(Scanner* scanner) {
+    while (IsWhiteSpace(CurrentChar(scanner))) {
         AdvanceChar(scanner);
     }
 }
 
-static void ReadWhiteSpace(Scanner* scanner) {
-    scanner->token.kind = SyntaxKind_WhitespaceTrivia;
-    while (true) {
-        switch (CurrentChar(scanner)) {
-            case '\0': // Fallthrough
-            case '\r': // Fallthrough
-            case '\n': {
-                return;
-            }
-            default: {
-                if (!IsWhiteSpace(CurrentChar(scanner))) {
-                    return;
-                } else {
-                    AdvanceChar(scanner);
-                }
-            }
+static void SkipSingleLineComment(Scanner* scanner) {
+    while (CurrentChar(scanner) != '\0') {
+        char ch = AdvanceChar(scanner);
+        if (ch == '\n') {
+            break;
         }
     }
 }
 
-static void ReadSingleLineComment(Scanner* scanner) {
-    scanner->token.kind = SyntaxKind_SingleLineCommentTrivia;
-    AdvanceChar(scanner);
-    AdvanceChar(scanner);
+static void SkipMultiLineComment(Scanner* scanner) {
+    SourceLocation location = SourceGetLocationForCharPos(scanner->source, scanner->pos);
     while (true) {
-        switch (CurrentChar(scanner)) {
-            case '\0': // Fallthrough
-            case '\r': // Fallthrough
-            case '\n': {
-                return;
-            }
-            default: {
-                AdvanceChar(scanner);
-            }
+        if (CurrentChar(scanner) == '\0') {
+            ReportError(location, "Unterminated multiline comment");
         }
+        if ((CurrentChar(scanner) == '*') && (Lookahead(scanner) == '/')) {
+            AdvanceChar(scanner);
+            AdvanceChar(scanner);
+            return;
+        }
+        AdvanceChar(scanner);
     }
 }
 
-static void ReadMultiLineComment(Scanner* scanner) {
-    scanner->token.kind = SyntaxKind_MultiLineCommentTrivia;
-    AdvanceChar(scanner);
-    AdvanceChar(scanner);
+static void SkipTrivia(Scanner* scanner) {
     while (true) {
-        switch (CurrentChar(scanner)) {
-            case '\0': {
-                SourceLocation location = SourceGetLocationForCharPos(scanner->source, scanner->pos);
-                ReportError(location, "Unterminated multiline comment");
-                return;
-            }
-            case '*': {
-                AdvanceChar(scanner);
-                if (CurrentChar(scanner) == '/') {
-                    AdvanceChar(scanner);
-                    return;
+        if (IsWhiteSpace(CurrentChar(scanner))) {
+            SkipWhitespaceTrivia(scanner);
+        } else {
+            if ((CurrentChar(scanner) == '/') && (Lookahead(scanner) == '/')) {
+                SkipSingleLineComment(scanner);
+            } else {
+                if ((CurrentChar(scanner) == '/') && (Lookahead(scanner) == '*')) {
+                    SkipMultiLineComment(scanner);
+                } else {
+                    break;
                 }
-                break;
-            }
-            default: {
-                AdvanceChar(scanner);
-                break;
             }
         }
     }
-}
-
-static SyntaxTriviaArray ReadTrivia(Scanner* scanner, bool isLeading) {
-    SyntaxTriviaArray result = SyntaxTriviaArrayCreate();
-    bool done = false;
-    while (!done) {
-        scanner->start = scanner->pos;
-        scanner->token = SyntaxTokenCreateEmpty(scanner->source);
-        switch (CurrentChar(scanner)) {
-            case '\0': {
-                done = true;
-                break;
-            }
-            case '/': {
-                if (Lookahead(scanner) == '/') {
-                    ReadSingleLineComment(scanner);
-                } else {
-                    if (Lookahead(scanner) == '*') {
-                        ReadMultiLineComment(scanner);
-                    } else {
-                        done = true;
-                    }
-                }
-                break;
-            }
-            case '\n': // Fallthrough
-            case '\r': {
-                if (!isLeading) {
-                    done = true;
-                }
-                ReadLineBreak(scanner);
-                break;
-            }
-            case ' ': // Fallthrough
-            case '\t': {
-                ReadWhiteSpace(scanner);
-                break;
-            }
-            default: {
-                if (IsWhiteSpace(CurrentChar(scanner))) {
-                    ReadWhiteSpace(scanner);
-                } else {
-                    done = true;
-                }
-                break;
-            }
-        }
-        if (scanner->pos > scanner->start) {
-            SourceLocation2 location = SourceLocation2Create(scanner->source, scanner->start, scanner->pos);
-            SyntaxTrivia trivia = SyntaxTriviaCreate(scanner->token.kind, location);
-            SyntaxTriviaArrayPush(&result, trivia);
-        }
-    }
-    return result;
 }
 
 static int64 ReadPositiveIntegerLiteralWithRadix(Scanner* scanner, int32 radix) {
@@ -1798,7 +1787,7 @@ static int64 ReadPositiveIntegerLiteralWithRadix(Scanner* scanner, int32 radix) 
     return result;
 }
 
-static void ReadIntegerLiteral(Scanner* scanner) {
+static Token ReadIntegerLiteral(Scanner* scanner) {
     bool isNegative = false;
     if (CurrentChar(scanner) == '-') {
         isNegative = true;
@@ -1811,9 +1800,11 @@ static void ReadIntegerLiteral(Scanner* scanner) {
         AdvanceChar(scanner);
     }
     int64 intvalue = ReadPositiveIntegerLiteralWithRadix(scanner, radix);
-    scanner->token.kind = SyntaxKind_IntegerLiteralToken;
-    scanner->token.intvalueIsHex = radix == 16;
-    scanner->token.intvalue = isNegative ? -intvalue : intvalue;
+    Token result = TokenCreateEmpty(scanner->source);
+    result.kind = TokenKind_IntegerLiteral;
+    result.intvalueIsHex = radix == 16;
+    result.intvalue = isNegative ? -intvalue : intvalue;
+    return result;
 }
 
 static char ReadCharWithEscapeSequence(Scanner* scanner) {
@@ -1871,7 +1862,7 @@ static char ReadCharWithEscapeSequence(Scanner* scanner) {
     return ch;
 }
 
-static void ReadCharacterLiteral(Scanner* scanner) {
+static Token ReadCharacterLiteral(Scanner* scanner) {
     char openingQuote = AdvanceChar(scanner);
     int32 start = scanner->pos;
     char ch = ReadCharWithEscapeSequence(scanner);
@@ -1881,12 +1872,14 @@ static void ReadCharacterLiteral(Scanner* scanner) {
         SourceLocation location = SourceGetLocationForCharPos(scanner->source, scanner->start);
         ReportError(location, "Expected closing quote \"'\" character after character literal but got '%c'", closingQuote);
     }
-    scanner->token.kind = SyntaxKind_CharacterLiteralToken;
-    scanner->token.stringValueWithoutQuotes = SourceGetSubstring(scanner->source, start, end);
-    scanner->token.intvalue = (int64)ch;
+    Token result = TokenCreateEmpty(scanner->source);
+    result.kind = TokenKind_CharacterLiteral;
+    result.stringValue = SourceGetSubstring(scanner->source, start, end);
+    result.intvalue = (int64)ch;
+    return result;
 }
 
-static void ReadStringLiteral(Scanner* scanner) {
+static Token ReadStringLiteral(Scanner* scanner) {
     char openingQuote = AdvanceChar(scanner);
     int32 start = scanner->pos;
     while (CurrentChar(scanner) != '\0' && CurrentChar(scanner) != '\n') {
@@ -1907,8 +1900,10 @@ static void ReadStringLiteral(Scanner* scanner) {
         SourceLocation location = SourceGetLocationForCharPos(scanner->source, scanner->start);
         ReportError(location, "Unterminated string literal");
     }
-    scanner->token.kind = SyntaxKind_StringLiteralToken;
-    scanner->token.stringValueWithoutQuotes = SourceGetSubstring(scanner->source, start, end);
+    Token result = TokenCreateEmpty(scanner->source);
+    result.kind = TokenKind_StringLiteral;
+    result.stringValue = SourceGetSubstring(scanner->source, start, end);
+    return result;
 }
 
 static void ReadPreprocessorDirective(Scanner* scanner) {
@@ -1917,64 +1912,49 @@ static void ReadPreprocessorDirective(Scanner* scanner) {
     while (IsAlpha(CurrentChar(scanner)) || (CurrentChar(scanner) == '_')) {
         AdvanceChar(scanner);
     }
-    String identifier = SourceGetSubstring(scanner->source, scanner->start, scanner->pos);
-    SyntaxKind keywordKind = GetKeywordForIdentifier(identifier);
-    if (keywordKind != SyntaxKind_EndOfFileToken) {
-        scanner->token.kind = keywordKind;
-    } else {
-        SourceLocation location = SourceGetLocationForCharPos(scanner->source, scanner->start);
-        ReportError(location, "Unknown preprocesser directive '%s'", identifier.cstr);
-    }
 }
 
-static void ReadIdentifierOrKeyword(Scanner* scanner) {
+static void ReadIdentifier(Scanner* scanner) {
     while (IsAlpha(CurrentChar(scanner)) || IsDigit(CurrentChar(scanner)) || (CurrentChar(scanner) == '_')) {
         AdvanceChar(scanner);
     }
-    String identifier = SourceGetSubstring(scanner->source, scanner->start, scanner->pos);
-    SyntaxKind keywordKind = GetKeywordForIdentifier(identifier);
-    if (keywordKind != SyntaxKind_EndOfFileToken) {
-        scanner->token.kind = keywordKind;
-    } else {
-        scanner->token.kind = SyntaxKind_IdentifierToken;
-    }
 }
 
-static SyntaxToken ReadToken(Scanner* scanner) {
+static void ReadToken(Scanner* scanner) {
     scanner->start = scanner->pos;
-    scanner->token = SyntaxTokenCreateEmpty(scanner->source);
+    scanner->token = TokenCreateEmpty(scanner->source);
     char ch = CurrentChar(scanner);
     switch (ch) {
         case '\0': {
-            scanner->token.kind = SyntaxKind_EndOfFileToken;
+            scanner->token.kind = TokenKind_EndOfFile;
             break;
         }
         case '+': {
             if (Lookahead(scanner) == '=') {
-                scanner->token.kind = SyntaxKind_PlusEqualsToken;
+                scanner->token.kind = TokenKind_PlusEquals;
                 AdvanceChar(scanner);
                 AdvanceChar(scanner);
             } else {
-                scanner->token.kind = SyntaxKind_PlusToken;
+                scanner->token.kind = TokenKind_Plus;
                 AdvanceChar(scanner);
             }
             break;
         }
         case '-': {
             if (Lookahead(scanner) == '=') {
-                scanner->token.kind = SyntaxKind_MinusEqualsToken;
+                scanner->token.kind = TokenKind_MinusEquals;
                 AdvanceChar(scanner);
                 AdvanceChar(scanner);
             } else {
                 if (Lookahead(scanner) == '>') {
-                    scanner->token.kind = SyntaxKind_ArrowToken;
+                    scanner->token.kind = TokenKind_Arrow;
                     AdvanceChar(scanner);
                     AdvanceChar(scanner);
                 } else {
                     if (IsDigit(Lookahead(scanner))) {
-                        ReadIntegerLiteral(scanner);
+                        scanner->token = ReadIntegerLiteral(scanner);
                     } else {
-                        scanner->token.kind = SyntaxKind_MinusToken;
+                        scanner->token.kind = TokenKind_Minus;
                         AdvanceChar(scanner);
                     }
                 }
@@ -1983,103 +1963,103 @@ static SyntaxToken ReadToken(Scanner* scanner) {
         }
         case '*': {
             if (Lookahead(scanner) == '=') {
-                scanner->token.kind = SyntaxKind_StarEqualsToken;
+                scanner->token.kind = TokenKind_StarEquals;
                 AdvanceChar(scanner);
                 AdvanceChar(scanner);
             } else {
-                scanner->token.kind = SyntaxKind_StarToken;
+                scanner->token.kind = TokenKind_Star;
                 AdvanceChar(scanner);
             }
             break;
         }
         case '/': {
             if (Lookahead(scanner) == '=') {
-                scanner->token.kind = SyntaxKind_SlashEqualsToken;
+                scanner->token.kind = TokenKind_SlashEquals;
                 AdvanceChar(scanner);
                 AdvanceChar(scanner);
             } else {
-                scanner->token.kind = SyntaxKind_SlashToken;
+                scanner->token.kind = TokenKind_Slash;
                 AdvanceChar(scanner);
             }
             break;
         }
         case '%': {
             if (Lookahead(scanner) == '=') {
-                scanner->token.kind = SyntaxKind_PercentEqualsToken;
+                scanner->token.kind = TokenKind_PercentEquals;
                 AdvanceChar(scanner);
                 AdvanceChar(scanner);
             } else {
-                scanner->token.kind = SyntaxKind_PercentToken;
+                scanner->token.kind = TokenKind_Percent;
                 AdvanceChar(scanner);
             }
             break;
         }
         case '.': {
             if (PeekChar(scanner, 1) == '.' && PeekChar(scanner, 2)) {
-                scanner->token.kind = SyntaxKind_DotDotDotToken;
+                scanner->token.kind = TokenKind_DotDotDot;
                 AdvanceChar(scanner);
                 AdvanceChar(scanner);
                 AdvanceChar(scanner);
             } else {
-                scanner->token.kind = SyntaxKind_DotToken;
+                scanner->token.kind = TokenKind_Dot;
                 AdvanceChar(scanner);
             }
             break;
         }
         case ',': {
-            scanner->token.kind = SyntaxKind_CommaToken;
+            scanner->token.kind = TokenKind_Comma;
             AdvanceChar(scanner);
             break;
         }
         case '?': {
-            scanner->token.kind = SyntaxKind_QuestionmarkToken;
+            scanner->token.kind = TokenKind_Questionmark;
             AdvanceChar(scanner);
             break;
         }
         case ':': {
             if (Lookahead(scanner) == ':') {
-                scanner->token.kind = SyntaxKind_ColonColonToken;
+                scanner->token.kind = TokenKind_ColonColon;
                 AdvanceChar(scanner);
                 AdvanceChar(scanner);
             } else {
-                scanner->token.kind = SyntaxKind_ColonToken;
+                scanner->token.kind = TokenKind_Colon;
                 AdvanceChar(scanner);
             }
             break;
         }
         case ';': {
-            scanner->token.kind = SyntaxKind_SemicolonToken;
+            scanner->token.kind = TokenKind_Semicolon;
             AdvanceChar(scanner);
             break;
         }
         case '~': {
-            scanner->token.kind = SyntaxKind_TildeToken;
+            scanner->token.kind = TokenKind_Tilde;
             AdvanceChar(scanner);
             break;
         }
         case '^': {
             if (Lookahead(scanner) == '=') {
-                scanner->token.kind = SyntaxKind_HatEqualsToken;
+                scanner->token.kind = TokenKind_HatEquals;
                 AdvanceChar(scanner);
                 AdvanceChar(scanner);
             } else {
-                scanner->token.kind = SyntaxKind_HatToken;
+                scanner->token.kind = TokenKind_Hat;
                 AdvanceChar(scanner);
             }
             break;
         }
         case '&': {
             if (Lookahead(scanner) == '&') {
-                scanner->token.kind = SyntaxKind_AmpersandAmpersandToken;
+                scanner->token.kind = TokenKind_AmpersandAmpersand;
                 AdvanceChar(scanner);
                 AdvanceChar(scanner);
             } else {
                 if (Lookahead(scanner) == '=') {
-                    scanner->token.kind = SyntaxKind_AmpersandEqualsToken;
+                    scanner->token.kind = TokenKind_AmpersandEquals;
                     AdvanceChar(scanner);
                     AdvanceChar(scanner);
                 } else {
-                    scanner->token.kind = SyntaxKind_AmpersandToken;
+                    scanner->token.kind = TokenKind_Ampersand;
                     AdvanceChar(scanner);
                 }
             }
@@ -2087,89 +2067,89 @@ static SyntaxToken ReadToken(Scanner* scanner) {
         }
         case '|': {
             if (Lookahead(scanner) == '|') {
-                scanner->token.kind = SyntaxKind_PipePipeToken;
+                scanner->token.kind = TokenKind_PipePipe;
                 AdvanceChar(scanner);
                 AdvanceChar(scanner);
             } else {
                 if (Lookahead(scanner) == '=') {
-                    scanner->token.kind = SyntaxKind_PipeEqualsToken;
+                    scanner->token.kind = TokenKind_PipeEquals;
                     AdvanceChar(scanner);
                     AdvanceChar(scanner);
                 } else {
-                    scanner->token.kind = SyntaxKind_PipeToken;
+                    scanner->token.kind = TokenKind_Pipe;
                     AdvanceChar(scanner);
                 }
             }
             break;
         }
         case '{': {
-            scanner->token.kind = SyntaxKind_LeftBraceToken;
+            scanner->token.kind = TokenKind_LeftBrace;
             AdvanceChar(scanner);
             break;
         }
         case '}': {
-            scanner->token.kind = SyntaxKind_RightBraceToken;
+            scanner->token.kind = TokenKind_RightBrace;
             AdvanceChar(scanner);
             break;
         }
         case '(': {
-            scanner->token.kind = SyntaxKind_LeftParenToken;
+            scanner->token.kind = TokenKind_LeftParen;
             AdvanceChar(scanner);
             break;
         }
         case ')': {
-            scanner->token.kind = SyntaxKind_RightParenToken;
+            scanner->token.kind = TokenKind_RightParen;
             AdvanceChar(scanner);
             break;
         }
         case '[': {
-            scanner->token.kind = SyntaxKind_LeftBracketToken;
+            scanner->token.kind = TokenKind_LeftBracket;
             AdvanceChar(scanner);
             break;
         }
         case ']': {
-            scanner->token.kind = SyntaxKind_RightBracketToken;
+            scanner->token.kind = TokenKind_RightBracket;
             AdvanceChar(scanner);
             break;
         }
         case '=': {
             if (Lookahead(scanner) == '=') {
-                scanner->token.kind = SyntaxKind_EqualsEqualsToken;
+                scanner->token.kind = TokenKind_EqualsEquals;
                 AdvanceChar(scanner);
                 AdvanceChar(scanner);
             } else {
-                scanner->token.kind = SyntaxKind_EqualsToken;
+                scanner->token.kind = TokenKind_Equals;
                 AdvanceChar(scanner);
             }
             break;
         }
         case '!': {
             if (Lookahead(scanner) == '=') {
-                scanner->token.kind = SyntaxKind_BangEqualsToken;
+                scanner->token.kind = TokenKind_BangEquals;
                 AdvanceChar(scanner);
                 AdvanceChar(scanner);
             } else {
                 AdvanceChar(scanner);
-                scanner->token.kind = SyntaxKind_BangToken;
+                scanner->token.kind = TokenKind_Bang;
             }
             break;
         }
         case '<': {
             if (Lookahead(scanner) == '=') {
-                scanner->token.kind = SyntaxKind_LessEqualsToken;
+                scanner->token.kind = TokenKind_LessEquals;
                 AdvanceChar(scanner);
                 AdvanceChar(scanner);
             } else {
                 if (Lookahead(scanner) == '<') {
-                    scanner->token.kind = SyntaxKind_LessLessToken;
+                    scanner->token.kind = TokenKind_LessLess;
                     AdvanceChar(scanner);
                     AdvanceChar(scanner);
                     if (CurrentChar(scanner) == '=') {
-                        scanner->token.kind = SyntaxKind_LessLessEqualsToken;
+                        scanner->token.kind = TokenKind_LessLessEquals;
                         AdvanceChar(scanner);
                     }
                 } else {
-                    scanner->token.kind = SyntaxKind_LessToken;
+                    scanner->token.kind = TokenKind_Less;
                     AdvanceChar(scanner);
                 }
             }
@@ -2177,20 +2157,20 @@ static SyntaxToken ReadToken(Scanner* scanner) {
         }
         case '>': {
             if (Lookahead(scanner) == '=') {
-                scanner->token.kind = SyntaxKind_GreaterEqualsToken;
+                scanner->token.kind = TokenKind_GreaterEquals;
                 AdvanceChar(scanner);
                 AdvanceChar(scanner);
             } else {
                 if (Lookahead(scanner) == '>') {
-                    scanner->token.kind = SyntaxKind_GreaterGreaterToken;
+                    scanner->token.kind = TokenKind_GreaterGreater;
                     AdvanceChar(scanner);
                     AdvanceChar(scanner);
                     if (CurrentChar(scanner) == '=') {
-                        scanner->token.kind = SyntaxKind_GreaterGreaterEqualsToken;
+                        scanner->token.kind = TokenKind_GreaterGreaterEquals;
                         AdvanceChar(scanner);
                     }
                 } else {
-                    scanner->token.kind = SyntaxKind_GreaterToken;
+                    scanner->token.kind = TokenKind_Greater;
                     AdvanceChar(scanner);
                 }
             }
@@ -2198,23 +2178,35 @@ static SyntaxToken ReadToken(Scanner* scanner) {
         }
         default: {
             if (IsDigit(ch)) {
-                ReadIntegerLiteral(scanner);
+                scanner->token = ReadIntegerLiteral(scanner);
                 break;
             } else {
                 if (IsAlpha(ch) || (ch == '_')) {
-                    ReadIdentifierOrKeyword(scanner);
+                    ReadIdentifier(scanner);
+                    String identifier = SourceGetSubstring(scanner->source, scanner->start, scanner->pos);
+                    TokenKind keywordKind = GetKeywordForIdentifier(identifier);
+                    if (keywordKind != TokenKind_EndOfFile) {
+                        scanner->token.kind = keywordKind;
+                    } else {
+                        scanner->token.kind = TokenKind_Identifier;
+                    }
                     break;
                 } else {
                     if (ch == '#') {
                         ReadPreprocessorDirective(scanner);
-                        break;
+                        String identifier = SourceGetSubstring(scanner->source, scanner->start, scanner->pos);
+                        TokenKind keywordKind = GetKeywordForIdentifier(identifier);
+                        if (keywordKind != TokenKind_EndOfFile) {
+                            scanner->token.kind = keywordKind;
+                            break;
+                        }
                     } else {
                         if (ch == '\'') {
-                            ReadCharacterLiteral(scanner);
+                            scanner->token = ReadCharacterLiteral(scanner);
                             break;
                         } else {
                             if (ch == '"') {
-                                ReadStringLiteral(scanner);
+                                scanner->token = ReadStringLiteral(scanner);
                                 break;
                             }
                         }
@@ -2225,45 +2217,41 @@ static SyntaxToken ReadToken(Scanner* scanner) {
             ReportError(location, "Unexpected character '%c'", ch);
         }
     }
-    scanner->token.location.start = scanner->start;
-    scanner->token.location.end = scanner->pos;
-    scanner->token.debugString = SourceGetSubstring(scanner->source, scanner->start, scanner->pos);
+    scanner->token.sourceStart = scanner->start;
+    scanner->token.sourceEnd = scanner->pos;
+    scanner->token.sourceString = SourceGetSubstring(scanner->source, scanner->start, scanner->pos);
     if (0) {
         fprintf(stdout, "Token %s", TokenKindToString(scanner->token.kind).cstr);
-        if (scanner->token.kind == SyntaxKind_IntegerLiteralToken) {
+        if (scanner->token.kind == TokenKind_IntegerLiteral) {
             fprintf(stdout, ", value '%lld'", scanner->token.intvalue);
         }
-        if (scanner->token.kind == SyntaxKind_CharacterLiteralToken) {
-            fprintf(stdout, ", value '%s'", scanner->token.stringValueWithoutQuotes.cstr);
+        if (scanner->token.kind == TokenKind_CharacterLiteral) {
+            fprintf(stdout, ", value '%s'", scanner->token.stringValue.cstr);
         }
-        if (scanner->token.kind == SyntaxKind_StringLiteralToken) {
-            fprintf(stdout, ", value '%s'", scanner->token.stringValueWithoutQuotes.cstr);
+        if (scanner->token.kind == TokenKind_StringLiteral) {
+            fprintf(stdout, ", value '%s'", scanner->token.stringValue.cstr);
         }
-        if (scanner->token.kind == SyntaxKind_IdentifierToken) {
+        if (scanner->token.kind == TokenKind_Identifier) {
             fprintf(stdout, ", name '%s'", TokenGetText(scanner->token).cstr);
         }
         fprintf(stdout, "\n");
     }
+}
+
+static Token NextToken(Scanner* scanner) {
+    SkipTrivia(scanner);
+    ReadToken(scanner);
     return scanner->token;
 }
 
-static SyntaxToken NextToken(Scanner* scanner) {
-    SyntaxTriviaArray leadingTrivia = ReadTrivia(scanner, true);
-    SyntaxToken result = ReadToken(scanner);
-    SyntaxTriviaArray trailingTrivia = ReadTrivia(scanner, false);
-    result.leadingTrivia = leadingTrivia;
-    result.trailingTrivia = trailingTrivia;
-    return result;
-}
-
-static int32 GetUnaryOperatorPrecedence(SyntaxKind kind) {
+static int32 GetUnaryOperatorPrecedence(TokenKind kind) {
     switch (kind) {
-        case SyntaxKind_PlusToken: // Fallthrough
-        case SyntaxKind_MinusToken: // Fallthrough
-        case SyntaxKind_BangToken: // Fallthrough
-        case SyntaxKind_TildeToken: // Fallthrough
-        case SyntaxKind_StarToken: // Fallthrough
-        case SyntaxKind_AmpersandToken: {
+        case TokenKind_Plus: // Fallthrough
+        case TokenKind_Minus: // Fallthrough
+        case TokenKind_Bang: // Fallthrough
+        case TokenKind_Tilde: // Fallthrough
+        case TokenKind_Star: // Fallthrough
+        case TokenKind_Ampersand: {
             return 13;
         }
         default: {
@@ -2272,19 +2260,19 @@ static int32 GetUnaryOperatorPrecedence(SyntaxKind kind) {
     }
 }
 
-static bool IsBinaryOperatorRightAssociative(SyntaxKind kind) {
+static bool IsBinaryOperatorRightAssociative(TokenKind kind) {
     switch (kind) {
-        case SyntaxKind_EqualsToken: // Fallthrough
-        case SyntaxKind_PlusEqualsToken: // Fallthrough
-        case SyntaxKind_MinusEqualsToken: // Fallthrough
-        case SyntaxKind_StarEqualsToken: // Fallthrough
-        case SyntaxKind_SlashEqualsToken: // Fallthrough
-        case SyntaxKind_PercentEqualsToken: // Fallthrough
-        case SyntaxKind_HatEqualsToken: // Fallthrough
-        case SyntaxKind_AmpersandEqualsToken: // Fallthrough
-        case SyntaxKind_PipeEqualsToken: // Fallthrough
-        case SyntaxKind_LessLessEqualsToken: // Fallthrough
-        case SyntaxKind_GreaterGreaterEqualsToken: {
+        case TokenKind_Equals: // Fallthrough
+        case TokenKind_PlusEquals: // Fallthrough
+        case TokenKind_MinusEquals: // Fallthrough
+        case TokenKind_StarEquals: // Fallthrough
+        case TokenKind_SlashEquals: // Fallthrough
+        case TokenKind_PercentEquals: // Fallthrough
+        case TokenKind_HatEquals: // Fallthrough
+        case TokenKind_AmpersandEquals: // Fallthrough
+        case TokenKind_PipeEquals: // Fallthrough
+        case TokenKind_LessLessEquals: // Fallthrough
+        case TokenKind_GreaterGreaterEquals: {
             return true;
         }
         default: {
@@ -2293,44 +2281,44 @@ static bool IsBinaryOperatorRightAssociative(SyntaxKind kind) {
     }
 }
 
-static int32 GetBinaryOperatorPrecedence(SyntaxKind kind) {
+static int32 GetBinaryOperatorPrecedence(TokenKind kind) {
     switch (kind) {
-        case SyntaxKind_StarToken: // Fallthrough
-        case SyntaxKind_SlashToken: // Fallthrough
-        case SyntaxKind_PercentToken: {
+        case TokenKind_Star: // Fallthrough
+        case TokenKind_Slash: // Fallthrough
+        case TokenKind_Percent: {
             return 12;
         }
-        case SyntaxKind_PlusToken: // Fallthrough
-        case SyntaxKind_MinusToken: {
+        case TokenKind_Plus: // Fallthrough
+        case TokenKind_Minus: {
             return 11;
         }
-        case SyntaxKind_LessLessToken: // Fallthrough
-        case SyntaxKind_GreaterGreaterToken: {
+        case TokenKind_LessLess: // Fallthrough
+        case TokenKind_GreaterGreater: {
             return 10;
         }
-        case SyntaxKind_LessToken: // Fallthrough
-        case SyntaxKind_LessEqualsToken: // Fallthrough
-        case SyntaxKind_GreaterToken: // Fallthrough
-        case SyntaxKind_GreaterEqualsToken: {
+        case TokenKind_Less: // Fallthrough
+        case TokenKind_LessEquals: // Fallthrough
+        case TokenKind_Greater: // Fallthrough
+        case TokenKind_GreaterEquals: {
             return 9;
         }
-        case SyntaxKind_EqualsEqualsToken: // Fallthrough
-        case SyntaxKind_BangEqualsToken: {
+        case TokenKind_EqualsEquals: // Fallthrough
+        case TokenKind_BangEquals: {
             return 8;
         }
-        case SyntaxKind_AmpersandToken: {
+        case TokenKind_Ampersand: {
             return 7;
         }
-        case SyntaxKind_HatToken: {
+        case TokenKind_Hat: {
             return 6;
         }
-        case SyntaxKind_PipeToken: {
+        case TokenKind_Pipe: {
             return 5;
         }
-        case SyntaxKind_AmpersandAmpersandToken: {
+        case TokenKind_AmpersandAmpersand: {
             return 4;
         }
-        case SyntaxKind_PipePipeToken: {
+        case TokenKind_PipePipe: {
             return 3;
         }
         default: {
@@ -2340,7 +2328,7 @@ static int32 GetBinaryOperatorPrecedence(SyntaxKind kind) {
 }
 
 struct UnaryOperator; typedef struct UnaryOperator UnaryOperator; struct UnaryOperator {
-    SyntaxKind tokenKind;
+    TokenKind tokenKind;
     ASTNodeKind operatorKind;
     Type operandType;
     Type resultType;
@@ -2348,7 +2336,7 @@ struct UnaryOperator; typedef struct UnaryOperator UnaryOperator; struct UnaryOp
     bool operandMustBeLValue;
 };
 
-static UnaryOperator GetUnaryOperationForToken(SyntaxToken token, Type operandType) {
+static UnaryOperator GetUnaryOperationForToken(Token token, Type operandType) {
     UnaryOperator result;
     result.tokenKind = token.kind;
     result.operandType = operandType;
@@ -2356,7 +2344,7 @@ static UnaryOperator GetUnaryOperationForToken(SyntaxToken token, Type operandTy
     result.resultIsRValue = true;
     result.operandMustBeLValue = false;
     if (IsPointerType(operandType) || operandType.kind == TypeKind_PrimitiveCString) {
-        if (token.kind == SyntaxKind_StarToken) {
+        if (token.kind == TokenKind_Star) {
             result.operatorKind = ASTNodeKind_Dereference;
             result.resultType = GetBaseTypeForPointerType(operandType);
             result.resultIsRValue = false;
@@ -2365,25 +2353,25 @@ static UnaryOperator GetUnaryOperationForToken(SyntaxToken token, Type operandTy
         }
     } else {
         if (IsNumberType(operandType)) {
-            if (token.kind == SyntaxKind_PlusToken) {
+            if (token.kind == TokenKind_Plus) {
                 result.operatorKind = ASTNodeKind_Identity;
                 return result;
             }
-            if (token.kind == SyntaxKind_MinusToken) {
+            if (token.kind == TokenKind_Minus) {
                 result.operatorKind = ASTNodeKind_Negation;
                 return result;
             }
-            if (token.kind == SyntaxKind_BangToken) {
+            if (token.kind == TokenKind_Bang) {
                 result.operatorKind = ASTNodeKind_LogicalNegation;
                 return result;
             }
-            if (token.kind == SyntaxKind_TildeToken) {
+            if (token.kind == TokenKind_Tilde) {
                 result.operatorKind = ASTNodeKind_BitwiseNegation;
                 return result;
             }
         }
     }
-    if (token.kind == SyntaxKind_AmpersandToken) {
+    if (token.kind == TokenKind_Ampersand) {
         result.operatorKind = ASTNodeKind_Address;
         result.resultType = GetPointerTypeForBaseType(operandType);
         result.resultIsRValue = false;
@@ -2395,7 +2383,7 @@ static UnaryOperator GetUnaryOperationForToken(SyntaxToken token, Type operandTy
 }
 
 struct BinaryOperator; typedef struct BinaryOperator BinaryOperator; struct BinaryOperator {
-    SyntaxKind tokenKind;
+    TokenKind tokenKind;
     ASTNodeKind operatorKind;
     Type leftType;
     Type rightType;
@@ -2405,7 +2393,7 @@ struct BinaryOperator; typedef struct BinaryOperator BinaryOperator; struct Bina
     bool rightMustBeLValue;
 };
 
-static BinaryOperator GetBinaryOperationForToken(SyntaxToken token, Type leftType, Type rightType) {
+static BinaryOperator GetBinaryOperationForToken(Token token, Type leftType, Type rightType) {
     BinaryOperator result;
     result.tokenKind = token.kind;
     result.leftType = leftType;
@@ -2414,7 +2402,7 @@ static BinaryOperator GetBinaryOperationForToken(SyntaxToken token, Type leftTyp
     result.resultIsRValue = true;
     result.leftMustBeLValue = false;
     result.rightMustBeLValue = false;
-    if (token.kind == SyntaxKind_EqualsToken) {
+    if (token.kind == TokenKind_Equals) {
         TypeConversionResult conversion = CanConvertTypeFromTo(rightType, leftType);
         if (conversion == TypeConversionResult_NonConvertible) {
             ReportError(TokenGetLocation(token), "Incompatible types for assignment '%s' = '%s'", TypeGetText(leftType).cstr, TypeGetText(rightType).cstr);
@@ -2426,38 +2414,38 @@ static BinaryOperator GetBinaryOperationForToken(SyntaxToken token, Type leftTyp
         result.leftMustBeLValue = true;
         return result;
     }
-    if ((token.kind == SyntaxKind_PlusToken) && IsPointerType(leftType) && IsNumberType(rightType)) {
+    if ((token.kind == TokenKind_Plus) && IsPointerType(leftType) && IsNumberType(rightType)) {
         result.operatorKind = ASTNodeKind_AddToPointer;
         result.resultIsRValue = false;
         result.leftMustBeLValue = true;
         return result;
     }
-    if ((token.kind == SyntaxKind_PlusEqualsToken) && IsPointerType(leftType) && IsNumberType(rightType)) {
+    if ((token.kind == TokenKind_PlusEquals) && IsPointerType(leftType) && IsNumberType(rightType)) {
         result.operatorKind = ASTNodeKind_AddToPointerAssignment;
         result.resultIsRValue = false;
         result.leftMustBeLValue = true;
         return result;
     }
-    if ((token.kind == SyntaxKind_MinusToken) && IsPointerType(leftType) && IsNumberType(rightType)) {
+    if ((token.kind == TokenKind_Minus) && IsPointerType(leftType) && IsNumberType(rightType)) {
         result.operatorKind = ASTNodeKind_SubtractFromPointer;
         result.resultIsRValue = false;
         result.leftMustBeLValue = true;
         return result;
     }
-    if ((token.kind == SyntaxKind_MinusEqualsToken) && IsPointerType(leftType) && IsNumberType(rightType)) {
+    if ((token.kind == TokenKind_MinusEquals) && IsPointerType(leftType) && IsNumberType(rightType)) {
         result.operatorKind = ASTNodeKind_SubtractFromPointerAssignment;
         result.resultIsRValue = false;
         result.leftMustBeLValue = true;
         return result;
     }
-    if ((token.kind == SyntaxKind_MinusToken) && IsPointerType(leftType) && IsPointerType(rightType) && leftType.baseIndirectionLevel == rightType.baseIndirectionLevel && (leftType.kind == rightType.kind)) {
+    if ((token.kind == TokenKind_Minus) && IsPointerType(leftType) && IsPointerType(rightType) && leftType.baseIndirectionLevel == rightType.baseIndirectionLevel && (leftType.kind == rightType.kind)) {
         result.operatorKind = ASTNodeKind_DistanceBetweenPointers;
         result.leftMustBeLValue = true;
         result.rightMustBeLValue = true;
         result.resultType = TypeCreatePrimitive(TypeKind_PrimitiveLong);
         return result;
     }
-    if (token.kind == SyntaxKind_EqualsEqualsToken) {
+    if (token.kind == TokenKind_EqualsEquals) {
         TypeConversionResult conversion = CanConvertTypeFromTo(leftType, rightType);
         if (conversion == TypeConversionResult_ImplictlyConvertible || conversion == TypeConversionResult_Identical) {
             result.operatorKind = ASTNodeKind_Equals;
@@ -2465,7 +2453,7 @@ static BinaryOperator GetBinaryOperationForToken(SyntaxToken token, Type leftTyp
             return result;
         }
     }
-    if (token.kind == SyntaxKind_BangEqualsToken) {
+    if (token.kind == TokenKind_BangEquals) {
         TypeConversionResult conversion = CanConvertTypeFromTo(leftType, rightType);
         if (conversion == TypeConversionResult_ImplictlyConvertible || conversion == TypeConversionResult_Identical) {
             result.operatorKind = ASTNodeKind_NotEquals;
@@ -2475,174 +2463,174 @@ static BinaryOperator GetBinaryOperationForToken(SyntaxToken token, Type leftTyp
     }
     if (leftType.kind == TypeKind_Enum && rightType.kind == TypeKind_Enum) {
         switch (token.kind) {
-            case SyntaxKind_EqualsEqualsToken: {
+            case TokenKind_EqualsEquals: {
                 result.operatorKind = ASTNodeKind_Equals;
                 result.resultType = TypeCreatePrimitive(TypeKind_PrimitiveBool);
                 return result;
             }
-            case SyntaxKind_BangEqualsToken: {
+            case TokenKind_BangEquals: {
                 result.operatorKind = ASTNodeKind_NotEquals;
                 result.resultType = TypeCreatePrimitive(TypeKind_PrimitiveBool);
                 return result;
             }
-            case SyntaxKind_LessToken: {
+            case TokenKind_Less: {
                 result.operatorKind = ASTNodeKind_Less;
                 result.resultType = TypeCreatePrimitive(TypeKind_PrimitiveBool);
                 return result;
             }
-            case SyntaxKind_LessEqualsToken: {
+            case TokenKind_LessEquals: {
                 result.operatorKind = ASTNodeKind_LessEquals;
                 result.resultType = TypeCreatePrimitive(TypeKind_PrimitiveBool);
                 return result;
             }
-            case SyntaxKind_GreaterToken: {
+            case TokenKind_Greater: {
                 result.operatorKind = ASTNodeKind_Greater;
                 result.resultType = TypeCreatePrimitive(TypeKind_PrimitiveBool);
                 return result;
             }
-            case SyntaxKind_GreaterEqualsToken: {
+            case TokenKind_GreaterEquals: {
                 result.operatorKind = ASTNodeKind_GreaterEquals;
                 result.resultType = TypeCreatePrimitive(TypeKind_PrimitiveBool);
                 return result;
             }
         }
     }
-    if (token.kind == SyntaxKind_AmpersandAmpersandToken && !IsVoidType(leftType) && !IsVoidType(rightType)) {
+    if (token.kind == TokenKind_AmpersandAmpersand && !IsVoidType(leftType) && !IsVoidType(rightType)) {
         result.operatorKind = ASTNodeKind_LogicalAnd;
         return result;
     }
-    if (token.kind == SyntaxKind_PipePipeToken && !IsVoidType(leftType) && !IsVoidType(rightType)) {
+    if (token.kind == TokenKind_PipePipe && !IsVoidType(leftType) && !IsVoidType(rightType)) {
         result.operatorKind = ASTNodeKind_LogicalOr;
         return result;
     }
     if (IsNumberType(leftType) && IsNumberType(rightType) || IsCharType(leftType) && IsCharType(rightType)) {
         switch (token.kind) {
-            case SyntaxKind_PlusToken: {
+            case TokenKind_Plus: {
                 result.operatorKind = ASTNodeKind_Add;
                 return result;
             }
-            case SyntaxKind_PlusEqualsToken: {
+            case TokenKind_PlusEquals: {
                 result.operatorKind = ASTNodeKind_AddAssignment;
                 result.resultIsRValue = false;
                 result.leftMustBeLValue = true;
                 return result;
             }
-            case SyntaxKind_MinusToken: {
+            case TokenKind_Minus: {
                 result.operatorKind = ASTNodeKind_Subtract;
                 return result;
             }
-            case SyntaxKind_MinusEqualsToken: {
+            case TokenKind_MinusEquals: {
                 result.operatorKind = ASTNodeKind_SubtractAssignment;
                 result.resultIsRValue = false;
                 result.leftMustBeLValue = true;
                 return result;
             }
-            case SyntaxKind_StarToken: {
+            case TokenKind_Star: {
                 result.operatorKind = ASTNodeKind_Multiply;
                 return result;
             }
-            case SyntaxKind_StarEqualsToken: {
+            case TokenKind_StarEquals: {
                 result.operatorKind = ASTNodeKind_MultiplyAssignment;
                 result.resultIsRValue = false;
                 result.leftMustBeLValue = true;
                 return result;
             }
-            case SyntaxKind_SlashToken: {
+            case TokenKind_Slash: {
                 result.operatorKind = ASTNodeKind_Divide;
                 return result;
             }
-            case SyntaxKind_SlashEqualsToken: {
+            case TokenKind_SlashEquals: {
                 result.operatorKind = ASTNodeKind_DivideAssignment;
                 result.resultIsRValue = false;
                 result.leftMustBeLValue = true;
                 return result;
             }
-            case SyntaxKind_PercentToken: {
+            case TokenKind_Percent: {
                 result.operatorKind = ASTNodeKind_Remainder;
                 return result;
             }
-            case SyntaxKind_PercentEqualsToken: {
+            case TokenKind_PercentEquals: {
                 result.operatorKind = ASTNodeKind_RemainderAssignment;
                 result.resultIsRValue = false;
                 result.leftMustBeLValue = true;
                 return result;
             }
-            case SyntaxKind_LessLessToken: {
+            case TokenKind_LessLess: {
                 result.operatorKind = ASTNodeKind_BitshiftLeft;
                 return result;
             }
-            case SyntaxKind_LessLessEqualsToken: {
+            case TokenKind_LessLessEquals: {
                 result.operatorKind = ASTNodeKind_BitshiftLeftAssignment;
                 result.resultIsRValue = false;
                 result.leftMustBeLValue = true;
                 return result;
             }
-            case SyntaxKind_GreaterGreaterToken: {
+            case TokenKind_GreaterGreater: {
                 result.operatorKind = ASTNodeKind_BitshiftRight;
                 return result;
             }
-            case SyntaxKind_GreaterGreaterEqualsToken: {
+            case TokenKind_GreaterGreaterEquals: {
                 result.operatorKind = ASTNodeKind_BitshiftRightAssignment;
                 result.resultIsRValue = false;
                 result.leftMustBeLValue = true;
                 return result;
             }
-            case SyntaxKind_HatToken: {
+            case TokenKind_Hat: {
                 result.operatorKind = ASTNodeKind_BitwiseXor;
                 return result;
             }
-            case SyntaxKind_HatEqualsToken: {
+            case TokenKind_HatEquals: {
                 result.operatorKind = ASTNodeKind_BitwiseXorAssignment;
                 result.resultIsRValue = false;
                 result.leftMustBeLValue = true;
                 return result;
             }
-            case SyntaxKind_AmpersandToken: {
+            case TokenKind_Ampersand: {
                 result.operatorKind = ASTNodeKind_BitwiseAnd;
                 return result;
             }
-            case SyntaxKind_AmpersandEqualsToken: {
+            case TokenKind_AmpersandEquals: {
                 result.operatorKind = ASTNodeKind_BitwiseAndAssignment;
                 result.resultIsRValue = false;
                 result.leftMustBeLValue = true;
                 return result;
             }
-            case SyntaxKind_PipeToken: {
+            case TokenKind_Pipe: {
                 result.operatorKind = ASTNodeKind_BitwiseOr;
                 return result;
             }
-            case SyntaxKind_PipeEqualsToken: {
+            case TokenKind_PipeEquals: {
                 result.operatorKind = ASTNodeKind_BitwiseOrAssignment;
                 result.resultIsRValue = false;
                 result.leftMustBeLValue = true;
                 return result;
             }
-            case SyntaxKind_EqualsEqualsToken: {
+            case TokenKind_EqualsEquals: {
                 result.operatorKind = ASTNodeKind_Equals;
                 result.resultType = TypeCreatePrimitive(TypeKind_PrimitiveBool);
                 return result;
             }
-            case SyntaxKind_BangEqualsToken: {
+            case TokenKind_BangEquals: {
                 result.operatorKind = ASTNodeKind_NotEquals;
                 result.resultType = TypeCreatePrimitive(TypeKind_PrimitiveBool);
                 return result;
             }
-            case SyntaxKind_LessToken: {
+            case TokenKind_Less: {
                 result.operatorKind = ASTNodeKind_Less;
                 result.resultType = TypeCreatePrimitive(TypeKind_PrimitiveBool);
                 return result;
             }
-            case SyntaxKind_LessEqualsToken: {
+            case TokenKind_LessEquals: {
                 result.operatorKind = ASTNodeKind_LessEquals;
                 result.resultType = TypeCreatePrimitive(TypeKind_PrimitiveBool);
                 return result;
             }
-            case SyntaxKind_GreaterToken: {
+            case TokenKind_Greater: {
                 result.operatorKind = ASTNodeKind_Greater;
                 result.resultType = TypeCreatePrimitive(TypeKind_PrimitiveBool);
                 return result;
             }
-            case SyntaxKind_GreaterEqualsToken: {
+            case TokenKind_GreaterEquals: {
                 result.operatorKind = ASTNodeKind_GreaterEquals;
                 result.resultType = TypeCreatePrimitive(TypeKind_PrimitiveBool);
                 return result;
@@ -2686,10 +2674,10 @@ struct Parser; typedef struct Parser Parser; struct Parser {
     SymbolTable* symbolTable;
     Source source;
     Scanner scanner;
-    SyntaxToken tokenPrev;
-    SyntaxToken tokenCur;
-    SyntaxToken tokenNext;
-    SyntaxToken tokenNextAfter;
+    Token tokenPrev;
+    Token tokenCur;
+    Token tokenNext;
+    Token tokenNextAfter;
     int32 loopLevel;
     int32 switchCaseLevel;
     Symbol* currentFunctionSymbol;
@@ -2700,7 +2688,7 @@ static Parser ParserCreate(Source source, SymbolTable* symbolTable) {
     result.symbolTable = symbolTable;
     result.source = source;
     result.scanner = ScannerCreate(source);
-    result.tokenPrev = SyntaxTokenCreateEmpty(source);
+    result.tokenPrev = TokenCreateEmpty(source);
     result.tokenCur = NextToken(&result.scanner);
     result.tokenNext = NextToken(&result.scanner);
     result.tokenNextAfter = NextToken(&result.scanner);
@@ -2710,8 +2698,8 @@ static Parser ParserCreate(Source source, SymbolTable* symbolTable) {
     return result;
 }
 
-static SyntaxToken AdvanceToken(Parser* parser) {
-    SyntaxToken result = parser->tokenCur;
+static Token AdvanceToken(Parser* parser) {
+    Token result = parser->tokenCur;
     parser->tokenPrev = parser->tokenCur;
     parser->tokenCur = parser->tokenNext;
     parser->tokenNext = parser->tokenNextAfter;
@@ -2719,7 +2707,7 @@ static SyntaxToken AdvanceToken(Parser* parser) {
     return result;
 }
 
-static SyntaxToken MatchAndAdvanceToken(Parser* parser, SyntaxKind kind) {
+static Token MatchAndAdvanceToken(Parser* parser, TokenKind kind) {
     if (kind == parser->tokenCur.kind) {
         return AdvanceToken(parser);
     }
@@ -2756,7 +2744,7 @@ static ASTNode* FlattenCompoundStatementIfNecessary(Parser* parser, ASTNode* nod
 }
 
 static ASTNode* ParseFunctionCallExpression(Parser* parser, ASTNode* left) {
-    SyntaxToken identifier = left->token;
+    Token identifier = left->token;
     String identifierText = TokenGetText(identifier);
     Symbol* funcSymbol = GetSymbol(parser->symbolTable, identifierText);
     if (funcSymbol == NULL) {
@@ -2765,18 +2753,18 @@ static ASTNode* ParseFunctionCallExpression(Parser* parser, ASTNode* left) {
     if (funcSymbol->kind != SymbolKind_Function) {
         ReportError(TokenGetLocation(identifier), "Identifier '%s' is not a callable function", identifierText.cstr);
     }
-    SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
+    Token leftParen = MatchAndAdvanceToken(parser, TokenKind_LeftParen);
     ASTNodeArray argumentList = ASTNodeArrayCreate();
-    while (parser->tokenCur.kind != SyntaxKind_RightParenToken) {
+    while (parser->tokenCur.kind != TokenKind_RightParen) {
         ASTNode* argument = ParseExpression(parser);
         ASTNodeArrayPush(&argumentList, argument);
-        if (parser->tokenCur.kind == SyntaxKind_CommaToken) {
-            MatchAndAdvanceToken(parser, SyntaxKind_CommaToken);
+        if (parser->tokenCur.kind == TokenKind_Comma) {
+            MatchAndAdvanceToken(parser, TokenKind_Comma);
         } else {
             break;
         }
     }
-    SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
+    Token rightParen = MatchAndAdvanceToken(parser, TokenKind_RightParen);
     if (funcSymbol->isVariadric) {
         if (argumentList.count < funcSymbol->membersSymbolTable->count) {
             ReportError(TokenGetLocation(leftParen), "Function '%s' expects at least %d arguments but %d arguments were provided", funcSymbol->name.cstr, funcSymbol->membersSymbolTable->count, argumentList.count);
@@ -2805,9 +2793,9 @@ static ASTNode* ParseFunctionCallExpression(Parser* parser, ASTNode* left) {
 }
 
 static ASTNode* ParseArrayIndexingExpression(Parser* parser, ASTNode* left) {
-    SyntaxToken leftBracket = MatchAndAdvanceToken(parser, SyntaxKind_LeftBracketToken);
+    Token leftBracket = MatchAndAdvanceToken(parser, TokenKind_LeftBracket);
     ASTNode* index = ParseExpression(parser);
-    SyntaxToken rightBracket = MatchAndAdvanceToken(parser, SyntaxKind_RightBracketToken);
+    Token rightBracket = MatchAndAdvanceToken(parser, TokenKind_RightBracket);
     if (!IsNumberType(index->type)) {
         ReportError(TokenGetLocation(leftBracket), "Array index after '%s' must be number type", TokenKindToString(leftBracket.kind).cstr);
     }
@@ -2827,11 +2815,11 @@ static ASTNode* ParseArrayIndexingExpression(Parser* parser, ASTNode* left) {
 }
 
 static ASTNode* ParseMemberAccess(Parser* parser, ASTNode* left, bool isArrow) {
-    SyntaxToken accessorToken;
+    Token accessorToken;
     if (isArrow) {
-        accessorToken = MatchAndAdvanceToken(parser, SyntaxKind_ArrowToken);
+        accessorToken = MatchAndAdvanceToken(parser, TokenKind_Arrow);
     } else {
-        accessorToken = MatchAndAdvanceToken(parser, SyntaxKind_DotToken);
+        accessorToken = MatchAndAdvanceToken(parser, TokenKind_Dot);
     }
     if (left->type.kind != TypeKind_Struct && left->type.kind != TypeKind_Union) {
         ReportError(TokenGetLocation(accessorToken), "Attempt to access member of non union or struct identifier '%s'", left->symbol->name.cstr);
@@ -2850,7 +2838,7 @@ static ASTNode* ParseMemberAccess(Parser* parser, ASTNode* left, bool isArrow) {
     if (!isArrow && TypeGetIndirectionLevel(left->type) > 0) {
         ReportError(TokenGetLocation(accessorToken), "Member access of '%s' with '.' is only allowed for non-pointer types", containerSymbol->name.cstr);
     }
-    SyntaxToken memberIdentifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
+    Token memberIdentifier = MatchAndAdvanceToken(parser, TokenKind_Identifier);
     String identifierText = TokenGetText(memberIdentifier);
     Symbol* memberSymbol = GetSymbol(containerSymbol->membersSymbolTable, identifierText);
     if (memberSymbol == NULL) {
@@ -2865,9 +2853,9 @@ static ASTNode* ParseMemberAccess(Parser* parser, ASTNode* left, bool isArrow) {
 }
 
 static ASTNode* ParseEnumLiteralExpression(Parser* parser) {
-    SyntaxToken enumIdentifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
-    SyntaxToken coloncolon = MatchAndAdvanceToken(parser, SyntaxKind_ColonColonToken);
-    SyntaxToken valueIdentifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
+    Token enumIdentifier = MatchAndAdvanceToken(parser, TokenKind_Identifier);
+    Token coloncolon = MatchAndAdvanceToken(parser, TokenKind_ColonColon);
+    Token valueIdentifier = MatchAndAdvanceToken(parser, TokenKind_Identifier);
     String enumText = TokenGetText(enumIdentifier);
     Symbol* enumSymbol = GetSymbol(parser->symbolTable, enumText);
     if (enumSymbol == NULL) {
@@ -2889,7 +2877,7 @@ static ASTNode* ParseEnumLiteralExpression(Parser* parser) {
 }
 
 static ASTNode* ParseTypeExpression(Parser* parser) {
-    SyntaxToken startToken = parser->tokenCur;
+    Token startToken = parser->tokenCur;
     Type type = ParseType(parser);
     ASTNode* result = ASTNodeCreate(ASTNodeKind_TypeExpression, parser->symbolTable, startToken);
     result->type = type;
@@ -2898,31 +2886,31 @@ static ASTNode* ParseTypeExpression(Parser* parser) {
 
 static ASTNode* ParsePrimaryExpression(Parser* parser) {
     switch (parser->tokenCur.kind) {
-        case SyntaxKind_LeftParenToken: {
-            SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
+        case TokenKind_LeftParen: {
+            Token leftParen = MatchAndAdvanceToken(parser, TokenKind_LeftParen);
             ASTNode* inner = ParseExpression(parser);
-            SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
+            Token rightParen = MatchAndAdvanceToken(parser, TokenKind_RightParen);
             ASTNode* result = ASTNodeCreate(ASTNodeKind_ParenthesizedExpression, parser->symbolTable, leftParen);
             result->type = inner->type;
             result->left = inner;
             return result;
         }
-        case SyntaxKind_SizeOfKeyword: {
-            SyntaxToken sizeofKeyword = MatchAndAdvanceToken(parser, SyntaxKind_SizeOfKeyword);
-            SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
+        case TokenKind_SizeOf: {
+            Token sizeofKeyword = MatchAndAdvanceToken(parser, TokenKind_SizeOf);
+            Token leftParen = MatchAndAdvanceToken(parser, TokenKind_LeftParen);
             ASTNode* typeExpr = ParseTypeExpression(parser);
-            SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
+            Token rightParen = MatchAndAdvanceToken(parser, TokenKind_RightParen);
             ASTNode* result = ASTNodeCreate(ASTNodeKind_SizeOfExpression, parser->symbolTable, sizeofKeyword);
             result->type = TypeCreatePrimitive(TypeKind_PrimitiveInt);
             result->left = typeExpr;
             result->isRValue = true;
             return result;
         }
-        case SyntaxKind_IdentifierToken: {
-            if (parser->tokenNext.kind == SyntaxKind_ColonColonToken) {
+        case TokenKind_Identifier: {
+            if (parser->tokenNext.kind == TokenKind_ColonColon) {
                 return ParseEnumLiteralExpression(parser);
             }
-            SyntaxToken identifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
+            Token identifier = MatchAndAdvanceToken(parser, TokenKind_Identifier);
             String identifierText = TokenGetText(identifier);
             Symbol* symbol = GetSymbol(parser->symbolTable, identifierText);
             if (symbol == NULL) {
@@ -2933,55 +2921,55 @@ static ASTNode* ParsePrimaryExpression(Parser* parser) {
             result->type = symbol->type;
             return result;
         }
-        case SyntaxKind_StringLiteralToken: {
-            SyntaxToken token = MatchAndAdvanceToken(parser, SyntaxKind_StringLiteralToken);
-            while (parser->tokenCur.kind == SyntaxKind_StringLiteralToken) {
-                SyntaxToken next = MatchAndAdvanceToken(parser, SyntaxKind_StringLiteralToken);
-                token.location.end = next.location.end;
-                token.debugString = TokenGetText(token);
-                token.stringValueWithoutQuotes = StringAppend(token.stringValueWithoutQuotes, next.stringValueWithoutQuotes);
+        case TokenKind_StringLiteral: {
+            Token token = MatchAndAdvanceToken(parser, TokenKind_StringLiteral);
+            while (parser->tokenCur.kind == TokenKind_StringLiteral) {
+                Token next = MatchAndAdvanceToken(parser, TokenKind_StringLiteral);
+                token.sourceEnd = next.sourceEnd;
+                token.sourceString = TokenGetText(token);
+                token.stringValue = StringAppend(token.stringValue, next.stringValue);
             }
             ASTNode* result = ASTNodeCreate(ASTNodeKind_StringLiteral, parser->symbolTable, token);
             result->isRValue = true;
-            result->stringvalue = token.stringValueWithoutQuotes;
+            result->stringvalue = token.stringValue;
             result->type = TypeCreate(TypeKind_PrimitiveChar, 1, StringCreateEmpty());
             return result;
         }
-        case SyntaxKind_NullKeyword: {
-            SyntaxToken token = MatchAndAdvanceToken(parser, SyntaxKind_NullKeyword);
+        case TokenKind_Null: {
+            Token token = MatchAndAdvanceToken(parser, TokenKind_Null);
             ASTNode* result = ASTNodeCreate(ASTNodeKind_NullLiteral, parser->symbolTable, token);
             result->isRValue = true;
             result->type = TypeCreate(TypeKind_PrimitiveNull, 1, StringCreateEmpty());
             return result;
         }
-        case SyntaxKind_CharacterLiteralToken: {
-            SyntaxToken token = MatchAndAdvanceToken(parser, SyntaxKind_CharacterLiteralToken);
+        case TokenKind_CharacterLiteral: {
+            Token token = MatchAndAdvanceToken(parser, TokenKind_CharacterLiteral);
             ASTNode* result = ASTNodeCreate(ASTNodeKind_CharacterLiteral, parser->symbolTable, token);
             result->isRValue = true;
             result->intvalue = token.intvalue;
-            result->stringvalue = token.stringValueWithoutQuotes;
+            result->stringvalue = token.stringValue;
             result->type = TypeCreatePrimitive(TypeKind_PrimitiveChar);
             return result;
         }
-        case SyntaxKind_TrueKeyword: {
-            SyntaxToken token = MatchAndAdvanceToken(parser, SyntaxKind_TrueKeyword);
+        case TokenKind_True: {
+            Token token = MatchAndAdvanceToken(parser, TokenKind_True);
             ASTNode* result = ASTNodeCreate(ASTNodeKind_BoolLiteral, parser->symbolTable, token);
             result->isRValue = true;
             result->intvalue = 1;
             result->type = TypeCreatePrimitive(TypeKind_PrimitiveBool);
             return result;
         }
-        case SyntaxKind_FalseKeyword: {
-            SyntaxToken token = MatchAndAdvanceToken(parser, SyntaxKind_FalseKeyword);
+        case TokenKind_False: {
+            Token token = MatchAndAdvanceToken(parser, TokenKind_False);
             ASTNode* result = ASTNodeCreate(ASTNodeKind_BoolLiteral, parser->symbolTable, token);
             result->isRValue = true;
             result->intvalue = 0;
             result->type = TypeCreatePrimitive(TypeKind_PrimitiveBool);
             return result;
         }
-        case SyntaxKind_IntegerLiteralToken: // Fallthrough
+        case TokenKind_IntegerLiteral: // Fallthrough
         default: {
-            SyntaxToken token = MatchAndAdvanceToken(parser, SyntaxKind_IntegerLiteralToken);
+            Token token = MatchAndAdvanceToken(parser, TokenKind_IntegerLiteral);
             ASTNode* result = ASTNodeCreate(ASTNodeKind_IntegerLiteral, parser->symbolTable, token);
             result->isRValue = true;
             result->intvalue = token.intvalue;
@@ -3005,10 +2993,10 @@ static ASTNode* ParsePrimaryExpression(Parser* parser) {
 
 static ASTNode* ParseArrayLiteralExpression(Parser* parser, Symbol* arraySymbol) {
     assert(arraySymbol->type.isArray);
-    SyntaxToken leftBrace = MatchAndAdvanceToken(parser, SyntaxKind_LeftBraceToken);
+    Token leftBrace = MatchAndAdvanceToken(parser, TokenKind_LeftBrace);
     ASTNode* result = ASTNodeCreate(ASTNodeKind_ArrayLiteral, parser->symbolTable, leftBrace);
     int32 elementCount = 0;
-    while (parser->tokenCur.kind != SyntaxKind_RightBraceToken) {
+    while (parser->tokenCur.kind != TokenKind_RightBrace) {
         ASTNode* expression = ParseExpression(parser);
         elementCount += 1;
         Type arrayElemType = GetElementTypeForArrayType(arraySymbol->type);
@@ -3017,13 +3005,13 @@ static ASTNode* ParseArrayLiteralExpression(Parser* parser, Symbol* arraySymbol)
             ReportError(TokenGetLocation(expression->token), "Cannot convert type '%s' of element %d in array initializer to array type '%s'", TypeGetText(expression->type).cstr, elementCount, TypeGetText(arrayElemType).cstr);
         }
         ASTNodeArrayPush(&result->children, expression);
-        if (parser->tokenCur.kind == SyntaxKind_RightBraceToken) {
+        if (parser->tokenCur.kind == TokenKind_RightBrace) {
             break;
         } else {
-            MatchAndAdvanceToken(parser, SyntaxKind_CommaToken);
+            MatchAndAdvanceToken(parser, TokenKind_Comma);
         }
     }
-    SyntaxToken rightBrace = MatchAndAdvanceToken(parser, SyntaxKind_RightBraceToken);
+    Token rightBrace = MatchAndAdvanceToken(parser, TokenKind_RightBrace);
     if (arraySymbol->type.arrayElementCount == -1) {
         arraySymbol->type.arrayElementCount = elementCount;
     }
@@ -3041,19 +3029,19 @@ static ASTNode* ParsePostFixExpression(Parser* parser) {
     bool foundPostfix = false;
     do {
         foundPostfix = false;
-        if (parser->tokenCur.kind == SyntaxKind_LeftParenToken) {
+        if (parser->tokenCur.kind == TokenKind_LeftParen) {
             foundPostfix = true;
             left = ParseFunctionCallExpression(parser, left);
         }
-        if (parser->tokenCur.kind == SyntaxKind_DotToken) {
+        if (parser->tokenCur.kind == TokenKind_Dot) {
             foundPostfix = true;
             left = ParseMemberAccess(parser, left, false);
         }
-        if (parser->tokenCur.kind == SyntaxKind_ArrowToken) {
+        if (parser->tokenCur.kind == TokenKind_Arrow) {
             foundPostfix = true;
             left = ParseMemberAccess(parser, left, true);
         }
-        if (parser->tokenCur.kind == SyntaxKind_LeftBracketToken) {
+        if (parser->tokenCur.kind == TokenKind_LeftBracket) {
             foundPostfix = true;
             left = ParseArrayIndexingExpression(parser, left);
         }
@@ -3069,13 +3057,13 @@ ASTNode* ParseBinaryExpression(Parser* parser, int32 parentPrecedence);
 ASTNode* ParseUnaryExpression(Parser* parser, int32 parentPrecedence);
 
 static ASTNode* ParseCastExpression(Parser* parser) {
-    if (parser->tokenCur.kind != SyntaxKind_LeftParenToken || parser->tokenNext.kind != SyntaxKind_AsKeyword) {
+    if (parser->tokenCur.kind != TokenKind_LeftParen || parser->tokenNext.kind != TokenKind_As) {
         return ParsePostFixExpression(parser);
     }
-    SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
-    SyntaxToken asKeyword = MatchAndAdvanceToken(parser, SyntaxKind_AsKeyword);
+    Token leftParen = MatchAndAdvanceToken(parser, TokenKind_LeftParen);
+    Token asKeyword = MatchAndAdvanceToken(parser, TokenKind_As);
     Type targetType = ParseType(parser);
-    SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
+    Token rightParen = MatchAndAdvanceToken(parser, TokenKind_RightParen);
     ASTNode* expression = ParseUnaryExpression(parser, 0);
     TypeConversionResult conversion = CanConvertTypeFromTo(expression->type, targetType);
     if (conversion == TypeConversionResult_NonConvertible) {
@@ -3091,7 +3079,7 @@ static ASTNode* ParseUnaryExpression(Parser* parser, int32 parentPrecedence) {
     ASTNode* left = NULL;
     int32 unaryOperatorPrecedence = GetUnaryOperatorPrecedence(parser->tokenCur.kind);
     if ((unaryOperatorPrecedence != 0) && (unaryOperatorPrecedence >= parentPrecedence)) {
-        SyntaxToken operatorToken = AdvanceToken(parser);
+        Token operatorToken = AdvanceToken(parser);
         ASTNode* operand = ParseBinaryExpression(parser, unaryOperatorPrecedence);
         UnaryOperator op = GetUnaryOperationForToken(operatorToken, operand->type);
         if (op.operandMustBeLValue && operand->isRValue) {
@@ -3115,7 +3103,7 @@ static ASTNode* ParseBinaryExpression(Parser* parser, int32 parentPrecedence) {
         if (precedence == 0 || precedence < parentPrecedence || precedence == parentPrecedence && !IsBinaryOperatorRightAssociative(parser->tokenCur.kind)) {
             break;
         }
-        SyntaxToken operatorToken = AdvanceToken(parser);
+        Token operatorToken = AdvanceToken(parser);
         ASTNode* right = ParseBinaryExpression(parser, precedence);
         BinaryOperator op = GetBinaryOperationForToken(operatorToken, left->type, right->type);
         if (op.leftMustBeLValue && left->isRValue) {
@@ -3136,10 +3124,10 @@ static ASTNode* ParseBinaryExpression(Parser* parser, int32 parentPrecedence) {
 
 static ASTNode* ParseTernaryConditionExpression(Parser* parser) {
     ASTNode* condition = ParseBinaryExpression(parser, 0);
-    if (parser->tokenCur.kind == SyntaxKind_QuestionmarkToken) {
-        SyntaxToken questionmark = MatchAndAdvanceToken(parser, SyntaxKind_QuestionmarkToken);
+    if (parser->tokenCur.kind == TokenKind_Questionmark) {
+        Token questionmark = MatchAndAdvanceToken(parser, TokenKind_Questionmark);
         ASTNode* thenExpression = ParseTernaryConditionExpression(parser);
-        SyntaxToken colon = MatchAndAdvanceToken(parser, SyntaxKind_ColonToken);
+        Token colon = MatchAndAdvanceToken(parser, TokenKind_Colon);
         ASTNode* elseExpression = ParseTernaryConditionExpression(parser);
         Type type = GetTypeThatFitsBothTypes(thenExpression->type, elseExpression->type);
         if (IsVoidType(type)) {
@@ -3159,18 +3147,18 @@ static ASTNode* ParseTernaryConditionExpression(Parser* parser) {
 static ASTNode* ParseAssignmentExpression(Parser* parser) {
     ASTNode* left = ParseTernaryConditionExpression(parser);
     switch (parser->tokenCur.kind) {
-        case SyntaxKind_EqualsToken: // Fallthrough
-        case SyntaxKind_PlusEqualsToken: // Fallthrough
-        case SyntaxKind_MinusEqualsToken: // Fallthrough
-        case SyntaxKind_StarEqualsToken: // Fallthrough
-        case SyntaxKind_SlashEqualsToken: // Fallthrough
-        case SyntaxKind_PercentEqualsToken: // Fallthrough
-        case SyntaxKind_HatEqualsToken: // Fallthrough
-        case SyntaxKind_AmpersandEqualsToken: // Fallthrough
-        case SyntaxKind_PipeEqualsToken: // Fallthrough
-        case SyntaxKind_LessLessEqualsToken: // Fallthrough
-        case SyntaxKind_GreaterGreaterEqualsToken: {
-            SyntaxToken assignmentToken = AdvanceToken(parser);
+        case TokenKind_Equals: // Fallthrough
+        case TokenKind_PlusEquals: // Fallthrough
+        case TokenKind_MinusEquals: // Fallthrough
+        case TokenKind_StarEquals: // Fallthrough
+        case TokenKind_SlashEquals: // Fallthrough
+        case TokenKind_PercentEquals: // Fallthrough
+        case TokenKind_HatEquals: // Fallthrough
+        case TokenKind_AmpersandEquals: // Fallthrough
+        case TokenKind_PipeEquals: // Fallthrough
+        case TokenKind_LessLessEquals: // Fallthrough
+        case TokenKind_GreaterGreaterEquals: {
+            Token assignmentToken = AdvanceToken(parser);
             ASTNode* right = ParseAssignmentExpression(parser);
             BinaryOperator op = GetBinaryOperationForToken(assignmentToken, left->type, right->type);
             if (left->isRValue) {
@@ -3197,22 +3185,22 @@ static ASTNode* ParseExpression(Parser* parser) {
 
 static ASTNode* ParseExpressionStatement(Parser* parser) {
     ASTNode* expression = ParseExpression(parser);
-    SyntaxToken semicolonToken = MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
+    Token semicolonToken = MatchAndAdvanceToken(parser, TokenKind_Semicolon);
     ASTNode* result = ASTNodeCreate(ASTNodeKind_ExpressionStatement, parser->symbolTable, expression->token);
     result->left = expression;
     return result;
 }
 
 static ASTNode* ParseIfStatement(Parser* parser) {
-    SyntaxToken ifKeyword = MatchAndAdvanceToken(parser, SyntaxKind_IfKeyword);
-    SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
+    Token ifKeyword = MatchAndAdvanceToken(parser, TokenKind_If);
+    Token leftParen = MatchAndAdvanceToken(parser, TokenKind_LeftParen);
     ASTNode* condition = ParseExpression(parser);
-    SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
+    Token rightParen = MatchAndAdvanceToken(parser, TokenKind_RightParen);
     ASTNode* thenBranch = ParseStatement(parser);
     thenBranch = WrapInCompoundStatementIfNecessary(parser, thenBranch);
     ASTNode* elseBranch = NULL;
-    if (parser->tokenCur.kind == SyntaxKind_ElseKeyword) {
-        SyntaxToken elseKeyword = MatchAndAdvanceToken(parser, SyntaxKind_ElseKeyword);
+    if (parser->tokenCur.kind == TokenKind_Else) {
+        Token elseKeyword = MatchAndAdvanceToken(parser, TokenKind_Else);
         elseBranch = ParseStatement(parser);
         elseBranch = WrapInCompoundStatementIfNecessary(parser, elseBranch);
     }
@@ -3224,10 +3212,10 @@ static ASTNode* ParseIfStatement(Parser* parser) {
 }
 
 static ASTNode* ParseWhileStatement(Parser* parser) {
-    SyntaxToken whileKeyword = MatchAndAdvanceToken(parser, SyntaxKind_WhileKeyword);
-    SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
+    Token whileKeyword = MatchAndAdvanceToken(parser, TokenKind_While);
+    Token leftParen = MatchAndAdvanceToken(parser, TokenKind_LeftParen);
     ASTNode* condition = ParseExpression(parser);
-    SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
+    Token rightParen = MatchAndAdvanceToken(parser, TokenKind_RightParen);
     parser->loopLevel += 1;
     ASTNode* body = ParseStatement(parser);
     body = WrapInCompoundStatementIfNecessary(parser, body);
@@ -3239,16 +3227,16 @@ static ASTNode* ParseWhileStatement(Parser* parser) {
 }
 
 static ASTNode* ParseDoWhileStatement(Parser* parser) {
-    SyntaxToken doKeyword = MatchAndAdvanceToken(parser, SyntaxKind_DoKeyword);
+    Token doKeyword = MatchAndAdvanceToken(parser, TokenKind_Do);
     parser->loopLevel += 1;
     ASTNode* body = ParseStatement(parser);
     body = WrapInCompoundStatementIfNecessary(parser, body);
     parser->loopLevel -= 1;
-    SyntaxToken whileKeyword = MatchAndAdvanceToken(parser, SyntaxKind_WhileKeyword);
-    SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
+    Token whileKeyword = MatchAndAdvanceToken(parser, TokenKind_While);
+    Token leftParen = MatchAndAdvanceToken(parser, TokenKind_LeftParen);
     ASTNode* condition = ParseExpression(parser);
-    SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
-    SyntaxToken semicolon = MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
+    Token rightParen = MatchAndAdvanceToken(parser, TokenKind_RightParen);
+    Token semicolon = MatchAndAdvanceToken(parser, TokenKind_Semicolon);
     ASTNode* result = ASTNodeCreate(ASTNodeKind_DoWhileStatement, parser->symbolTable, whileKeyword);
     result->left = condition;
     result->right = body;
@@ -3256,19 +3244,19 @@ static ASTNode* ParseDoWhileStatement(Parser* parser) {
 }
 
 static ASTNode* ParseForStatement(Parser* parser) {
-    SyntaxToken forKeyword = MatchAndAdvanceToken(parser, SyntaxKind_ForKeyword);
+    Token forKeyword = MatchAndAdvanceToken(parser, TokenKind_For);
     parser->symbolTable = SymbolTableCreate(parser->symbolTable);
     ASTNode* result = ASTNodeCreate(ASTNodeKind_ForStatement, parser->symbolTable, forKeyword);
-    SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
+    Token leftParen = MatchAndAdvanceToken(parser, TokenKind_LeftParen);
     ASTNode* initializer = NULL;
-    if (parser->tokenCur.kind == SyntaxKind_LetKeyword) {
+    if (parser->tokenCur.kind == TokenKind_Let) {
         initializer = ParseVariableDefinitionStatement(parser, false);
     } else {
         initializer = ParseExpressionStatement(parser);
     }
     ASTNode* condition = ParseExpressionStatement(parser);
     ASTNode* iterator = ParseExpression(parser);
-    SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
+    Token rightParen = MatchAndAdvanceToken(parser, TokenKind_RightParen);
     parser->loopLevel += 1;
     ASTNode* body = ParseStatement(parser);
     body = WrapInCompoundStatementIfNecessary(parser, body);
@@ -3282,19 +3270,19 @@ static ASTNode* ParseForStatement(Parser* parser) {
 }
 
 static ASTNode* ParseReturnStatement(Parser* parser) {
-    SyntaxToken returnKeyword = MatchAndAdvanceToken(parser, SyntaxKind_ReturnKeyword);
+    Token returnKeyword = MatchAndAdvanceToken(parser, TokenKind_Return);
     if (parser->currentFunctionSymbol == NULL) {
         ReportError(TokenGetLocation(returnKeyword), "Invalid 'return' statement found outside of function definition");
     }
     Type functionReturnType = parser->currentFunctionSymbol->type;
-    if (IsVoidType(functionReturnType) && parser->tokenCur.kind != SyntaxKind_SemicolonToken) {
+    if (IsVoidType(functionReturnType) && parser->tokenCur.kind != TokenKind_Semicolon) {
         ReportError(TokenGetLocation(returnKeyword), "Invalid return expression in void function");
     }
-    if (!IsVoidType(functionReturnType) && parser->tokenCur.kind == SyntaxKind_SemicolonToken) {
+    if (!IsVoidType(functionReturnType) && parser->tokenCur.kind == TokenKind_Semicolon) {
         ReportError(TokenGetLocation(returnKeyword), "Must return expression in non-void function");
     }
     ASTNode* expression = NULL;
-    if (parser->tokenCur.kind != SyntaxKind_SemicolonToken) {
+    if (parser->tokenCur.kind != TokenKind_Semicolon) {
         expression = ParseExpression(parser);
         TypeConversionResult conversion = CanConvertTypeFromTo(expression->type, functionReturnType);
         if (conversion == TypeConversionResult_NonConvertible) {
@@ -3304,69 +3292,69 @@ static ASTNode* ParseReturnStatement(Parser* parser) {
             ReportError(TokenGetLocation(returnKeyword), "Types cannot be implicitly converted for return expression '%s'", TokenKindToString(returnKeyword.kind).cstr);
         }
     }
-    SyntaxToken semicolonToken = MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
+    Token semicolonToken = MatchAndAdvanceToken(parser, TokenKind_Semicolon);
     ASTNode* result = ASTNodeCreate(ASTNodeKind_ReturnStatement, parser->symbolTable, returnKeyword);
     result->left = expression;
     return result;
 }
 
 static ASTNode* ParseBreakStatement(Parser* parser) {
-    SyntaxToken breakKeyword = MatchAndAdvanceToken(parser, SyntaxKind_BreakKeyword);
+    Token breakKeyword = MatchAndAdvanceToken(parser, TokenKind_Break);
     if (parser->loopLevel == 0 && parser->switchCaseLevel == 0) {
         ReportError(TokenGetLocation(breakKeyword), "Invalid 'break' statement found outside of loop or switch-case definition");
     }
-    SyntaxToken semicolonToken = MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
+    Token semicolonToken = MatchAndAdvanceToken(parser, TokenKind_Semicolon);
     ASTNode* result = ASTNodeCreate(ASTNodeKind_BreakStatement, parser->symbolTable, breakKeyword);
     return result;
 }
 
 static ASTNode* ParseContinueStatement(Parser* parser) {
-    SyntaxToken continueKeyword = MatchAndAdvanceToken(parser, SyntaxKind_ContinueKeyword);
+    Token continueKeyword = MatchAndAdvanceToken(parser, TokenKind_Continue);
     if (parser->loopLevel == 0) {
         ReportError(TokenGetLocation(continueKeyword), "Invalid 'continue' statement found outside of loop definition");
     }
-    SyntaxToken semicolonToken = MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
+    Token semicolonToken = MatchAndAdvanceToken(parser, TokenKind_Semicolon);
     ASTNode* result = ASTNodeCreate(ASTNodeKind_ContinueStatement, parser->symbolTable, continueKeyword);
     return result;
 }
 
 static Type ParseType(Parser* parser) {
     Type type = TypeCreateVoid();
-    SyntaxToken startToken = parser->tokenCur;
+    Token startToken = parser->tokenCur;
     switch (parser->tokenCur.kind) {
-        case SyntaxKind_VoidKeyword: {
+        case TokenKind_Void: {
             type.kind = TypeKind_PrimitiveVoid;
             break;
         }
-        case SyntaxKind_CharKeyword: {
+        case TokenKind_Char: {
             type.kind = TypeKind_PrimitiveChar;
             break;
         }
-        case SyntaxKind_BoolKeyword: {
+        case TokenKind_Bool: {
             type.kind = TypeKind_PrimitiveBool;
             break;
         }
-        case SyntaxKind_ByteKeyword: {
+        case TokenKind_Byte: {
             type.kind = TypeKind_PrimitiveByte;
             break;
         }
-        case SyntaxKind_ShortKeyword: {
+        case TokenKind_Short: {
             type.kind = TypeKind_PrimitiveShort;
             break;
         }
-        case SyntaxKind_IntKeyword: {
+        case TokenKind_Int: {
             type.kind = TypeKind_PrimitiveInt;
             break;
         }
-        case SyntaxKind_LongKeyword: {
+        case TokenKind_Long: {
             type.kind = TypeKind_PrimitiveLong;
             break;
         }
-        case SyntaxKind_CStringKeyword: {
+        case TokenKind_CString: {
             type.kind = TypeKind_PrimitiveCString;
             break;
         }
-        case SyntaxKind_IdentifierToken: {
+        case TokenKind_Identifier: {
             String name = TokenGetText(parser->tokenCur);
             Symbol* symbol = GetSymbol(parser->symbolTable, name);
             if (symbol != NULL) {
@@ -3390,11 +3378,11 @@ static Type ParseType(Parser* parser) {
             }
         }
         default: {
-            ReportError(TokenGetLocation(parser->tokenCur), "SyntaxToken '%s' is not a type", TokenGetText(parser->tokenCur).cstr);
+            ReportError(TokenGetLocation(parser->tokenCur), "Token '%s' is not a type", TokenGetText(parser->tokenCur).cstr);
         }
     }
     AdvanceToken(parser);
-    while (parser->tokenCur.kind == SyntaxKind_StarToken) {
+    while (parser->tokenCur.kind == TokenKind_Star) {
         AdvanceToken(parser);
         type = GetPointerTypeForBaseType(type);
     }
@@ -3409,18 +3397,18 @@ static Type ParseType(Parser* parser) {
 
 static ASTNode* ParseCompoundStatement(Parser* parser, bool inSwitch) {
     bool startsWithBrace = false;
-    SyntaxToken leftBrace = parser->tokenCur;
-    if (parser->tokenCur.kind == SyntaxKind_LeftBraceToken || !inSwitch) {
-        leftBrace = MatchAndAdvanceToken(parser, SyntaxKind_LeftBraceToken);
+    Token leftBrace = parser->tokenCur;
+    if (parser->tokenCur.kind == TokenKind_LeftBrace || !inSwitch) {
+        leftBrace = MatchAndAdvanceToken(parser, TokenKind_LeftBrace);
         startsWithBrace = true;
     }
     parser->symbolTable = SymbolTableCreate(parser->symbolTable);
     ASTNode* result = ASTNodeCreate(ASTNodeKind_CompoundStatement, parser->symbolTable, leftBrace);
-    while (parser->tokenCur.kind != SyntaxKind_RightBraceToken) {
-        if (inSwitch && parser->tokenCur.kind == SyntaxKind_CaseKeyword) {
+    while (parser->tokenCur.kind != TokenKind_RightBrace) {
+        if (inSwitch && parser->tokenCur.kind == TokenKind_Case) {
             break;
         }
-        if (inSwitch && parser->tokenCur.kind == SyntaxKind_DefaultKeyword) {
+        if (inSwitch && parser->tokenCur.kind == TokenKind_Default) {
             break;
         }
         ASTNode* statement = ParseStatement(parser);
@@ -3428,12 +3416,12 @@ static ASTNode* ParseCompoundStatement(Parser* parser, bool inSwitch) {
     }
     parser->symbolTable = parser->symbolTable->parent;
     if (startsWithBrace) {
-        SyntaxToken rightBrace = MatchAndAdvanceToken(parser, SyntaxKind_RightBraceToken);
+        Token rightBrace = MatchAndAdvanceToken(parser, TokenKind_RightBrace);
     }
     return FlattenCompoundStatementIfNecessary(parser, result);
 }
 
-static ASTNode* ParseVariableDeclarationWithoutTerminator(Parser* parser, Type type, SyntaxToken identifier, SymbolScopeKind symbolScopeKind) {
+static ASTNode* ParseVariableDeclarationWithoutTerminator(Parser* parser, Type type, Token identifier, SymbolScopeKind symbolScopeKind) {
     Symbol* varSymbol = AddSymbol(parser->symbolTable, TokenGetText(identifier), SymbolKind_Variable, symbolScopeKind, type);
     if (varSymbol == NULL) {
         ReportError(TokenGetLocation(identifier), "Symbol was '%s' already declared in current scope", TokenGetText(identifier).cstr);
@@ -3441,14 +3429,14 @@ static ASTNode* ParseVariableDeclarationWithoutTerminator(Parser* parser, Type t
     if (IsVoidType(type)) {
         ReportError(TokenGetLocation(identifier), "'void' not allowed as variables '%s' storage type", TokenGetText(identifier).cstr);
     }
-    if (parser->tokenCur.kind == SyntaxKind_LeftBracketToken) {
+    if (parser->tokenCur.kind == TokenKind_LeftBracket) {
         int64 arrayElementCount = -1;
-        SyntaxToken leftBracket = MatchAndAdvanceToken(parser, SyntaxKind_LeftBracketToken);
-        if (parser->tokenCur.kind == SyntaxKind_IntegerLiteralToken) {
-            SyntaxToken intLiteral = MatchAndAdvanceToken(parser, SyntaxKind_IntegerLiteralToken);
+        Token leftBracket = MatchAndAdvanceToken(parser, TokenKind_LeftBracket);
+        if (parser->tokenCur.kind == TokenKind_IntegerLiteral) {
+            Token intLiteral = MatchAndAdvanceToken(parser, TokenKind_IntegerLiteral);
             arrayElementCount = intLiteral.intvalue;
         }
-        SyntaxToken rightBracket = MatchAndAdvanceToken(parser, SyntaxKind_RightBracketToken);
+        Token rightBracket = MatchAndAdvanceToken(parser, TokenKind_RightBracket);
         if (arrayElementCount == 0) {
             ReportError(TokenGetLocation(identifier), "Array size cannot be zero for '%s'", TokenGetText(identifier).cstr);
         }
@@ -3462,14 +3450,14 @@ static ASTNode* ParseVariableDeclarationWithoutTerminator(Parser* parser, Type t
 
 static ASTNode* ParseUnionOrStructDefinitionStatement(Parser* parser, bool isExternal) {
     SymbolScopeKind symbolScopeKind = isExternal ? SymbolScopeKind_Extern : SymbolScopeKind_Global;
-    SyntaxToken structKeyword;
-    if (parser->tokenCur.kind == SyntaxKind_StructKeyword) {
-        structKeyword = MatchAndAdvanceToken(parser, SyntaxKind_StructKeyword);
+    Token structKeyword;
+    if (parser->tokenCur.kind == TokenKind_Struct) {
+        structKeyword = MatchAndAdvanceToken(parser, TokenKind_Struct);
     } else {
-        structKeyword = MatchAndAdvanceToken(parser, SyntaxKind_UnionKeyword);
+        structKeyword = MatchAndAdvanceToken(parser, TokenKind_Union);
     }
-    bool isUnion = structKeyword.kind == SyntaxKind_UnionKeyword;
-    SyntaxToken identifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
+    bool isUnion = structKeyword.kind == TokenKind_Union;
+    Token identifier = MatchAndAdvanceToken(parser, TokenKind_Identifier);
     String name = TokenGetText(identifier);
     if (parser->currentFunctionSymbol != NULL) {
         ReportError(TokenGetLocation(identifier), "Unexpected struct or union declaration of '%s' while already parsing function", name.cstr);
@@ -3490,28 +3478,28 @@ static ASTNode* ParseUnionOrStructDefinitionStatement(Parser* parser, bool isExt
         Type type = TypeCreate(isUnion ? TypeKind_Union : TypeKind_Struct, 0, name);
         structSymbol = AddSymbol(parser->symbolTable, name, isUnion ? SymbolKind_Union : SymbolKind_Struct, symbolScopeKind, type);
     }
-    if (parser->tokenCur.kind == SyntaxKind_SemicolonToken) {
-        MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
+    if (parser->tokenCur.kind == TokenKind_Semicolon) {
+        MatchAndAdvanceToken(parser, TokenKind_Semicolon);
         ASTNode* result = ASTNodeCreate(isUnion ? ASTNodeKind_UnionDeclarationStatement : ASTNodeKind_StructDeclarationStatement, parser->symbolTable, identifier);
         result->symbol = structSymbol;
         return result;
     } else {
         structSymbol->membersSymbolTable = SymbolTableCreate(parser->symbolTable);
         parser->symbolTable = structSymbol->membersSymbolTable;
-        SyntaxToken leftBrace = MatchAndAdvanceToken(parser, SyntaxKind_LeftBraceToken);
-        while (parser->tokenCur.kind != SyntaxKind_RightBraceToken) {
+        Token leftBrace = MatchAndAdvanceToken(parser, TokenKind_LeftBrace);
+        while (parser->tokenCur.kind != TokenKind_RightBrace) {
             Type memberType = ParseType(parser);
-            SyntaxToken memberIdent = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
+            Token memberIdent = MatchAndAdvanceToken(parser, TokenKind_Identifier);
             ASTNode* memberNode = ParseVariableDeclarationWithoutTerminator(parser, memberType, memberIdent, SymbolScopeKind_Local);
             memberNode->symbol->kind = SymbolKind_Member;
-            MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
+            MatchAndAdvanceToken(parser, TokenKind_Semicolon);
         }
-        SyntaxToken rightBrace = MatchAndAdvanceToken(parser, SyntaxKind_RightBraceToken);
+        Token rightBrace = MatchAndAdvanceToken(parser, TokenKind_RightBrace);
         parser->symbolTable = parser->symbolTable->parent;
         if (structSymbol->membersSymbolTable->count == 0) {
             ReportError(TokenGetLocation(identifier), "Struct or union '%s' needs at least one member", name.cstr);
         }
-        MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
+        MatchAndAdvanceToken(parser, TokenKind_Semicolon);
         if (structSymbol->alreadyDefined) {
             ReportError(TokenGetLocation(identifier), "Duplicate struct or union definition of '%s'", name.cstr);
         }
@@ -3524,9 +3512,9 @@ static ASTNode* ParseUnionOrStructDefinitionStatement(Parser* parser, bool isExt
 
 static ASTNode* ParseEnumDefinitionStatement(Parser* parser, bool isExternal) {
     SymbolScopeKind symbolScopeKind = isExternal ? SymbolScopeKind_Extern : SymbolScopeKind_Global;
-    SyntaxToken enumKeyword = MatchAndAdvanceToken(parser, SyntaxKind_EnumKeyword);
-    SyntaxToken classKeyword = MatchAndAdvanceToken(parser, SyntaxKind_ClassKeyword);
-    SyntaxToken identifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
+    Token enumKeyword = MatchAndAdvanceToken(parser, TokenKind_Enum);
+    Token classKeyword = MatchAndAdvanceToken(parser, TokenKind_Class);
+    Token identifier = MatchAndAdvanceToken(parser, TokenKind_Identifier);
     String name = TokenGetText(identifier);
     if (parser->currentFunctionSymbol != NULL) {
         ReportError(TokenGetLocation(identifier), "Unexpected enum declaration of '%s' while already parsing function", name.cstr);
@@ -3544,8 +3532,8 @@ static ASTNode* ParseEnumDefinitionStatement(Parser* parser, bool isExternal) {
         Type type = TypeCreate(TypeKind_Enum, 0, name);
         enumSymbol = AddSymbol(parser->symbolTable, name, SymbolKind_Enum, symbolScopeKind, type);
     }
-    if (parser->tokenCur.kind == SyntaxKind_SemicolonToken) {
-        MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
+    if (parser->tokenCur.kind == TokenKind_Semicolon) {
+        MatchAndAdvanceToken(parser, TokenKind_Semicolon);
         ASTNode* result = ASTNodeCreate(ASTNodeKind_EnumDeclarationStatement, parser->symbolTable, identifier);
         result->symbol = enumSymbol;
         return result;
@@ -3553,14 +3541,14 @@ static ASTNode* ParseEnumDefinitionStatement(Parser* parser, bool isExternal) {
         enumSymbol->membersSymbolTable = SymbolTableCreate(parser->symbolTable);
         parser->symbolTable = enumSymbol->membersSymbolTable;
         int64 valueCounter = 0;
-        SyntaxToken leftBrace = MatchAndAdvanceToken(parser, SyntaxKind_LeftBraceToken);
-        while (parser->tokenCur.kind != SyntaxKind_RightBraceToken) {
+        Token leftBrace = MatchAndAdvanceToken(parser, TokenKind_LeftBrace);
+        while (parser->tokenCur.kind != TokenKind_RightBrace) {
             Type memberType = TypeCreate(TypeKind_Enum, 0, enumSymbol->name);
-            SyntaxToken memberIdent = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
+            Token memberIdent = MatchAndAdvanceToken(parser, TokenKind_Identifier);
             ASTNode* memberNode = ParseVariableDeclarationWithoutTerminator(parser, memberType, memberIdent, SymbolScopeKind_Local);
-            if (parser->tokenCur.kind == SyntaxKind_EqualsToken) {
-                SyntaxToken equalsToken = MatchAndAdvanceToken(parser, SyntaxKind_EqualsToken);
-                SyntaxToken valueToken = MatchAndAdvanceToken(parser, SyntaxKind_IntegerLiteralToken);
+            if (parser->tokenCur.kind == TokenKind_Equals) {
+                Token equalsToken = MatchAndAdvanceToken(parser, TokenKind_Equals);
+                Token valueToken = MatchAndAdvanceToken(parser, TokenKind_IntegerLiteral);
                 if (valueToken.intvalue < valueCounter) {
                     ReportError(TokenGetLocation(identifier), "Assigned value of enum value literal '%s' must chosen such that all enum values of '%s' are unique - chosen value '%lld' would lead to duplicates", TokenGetText(memberIdent).cstr, enumSymbol->name.cstr, valueToken.intvalue);
                 }
@@ -3568,18 +3556,18 @@ static ASTNode* ParseEnumDefinitionStatement(Parser* parser, bool isExternal) {
             }
             memberNode->symbol->kind = SymbolKind_Enumvalue;
             memberNode->symbol->enumValue = valueCounter;
-            if (parser->tokenCur.kind == SyntaxKind_RightBraceToken) {
+            if (parser->tokenCur.kind == TokenKind_RightBrace) {
                 break;
             }
-            MatchAndAdvanceToken(parser, SyntaxKind_CommaToken);
+            MatchAndAdvanceToken(parser, TokenKind_Comma);
             valueCounter += 1;
         }
-        SyntaxToken rightBrace = MatchAndAdvanceToken(parser, SyntaxKind_RightBraceToken);
+        Token rightBrace = MatchAndAdvanceToken(parser, TokenKind_RightBrace);
         parser->symbolTable = parser->symbolTable->parent;
         if (enumSymbol->membersSymbolTable->count == 0) {
             ReportError(TokenGetLocation(identifier), "Enum '%s' needs at least one member", name.cstr);
         }
-        MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
+        MatchAndAdvanceToken(parser, TokenKind_Semicolon);
         if (enumSymbol->alreadyDefined) {
             ReportError(TokenGetLocation(identifier), "Duplicate enum definition of '%s'", name.cstr);
         }
@@ -3590,7 +3578,7 @@ static ASTNode* ParseEnumDefinitionStatement(Parser* parser, bool isExternal) {
     }
 }
 
-static Symbol* ParseFunctionDeclarationStatementWithoutTerminator(Parser* parser, Type returnType, SyntaxToken identifier, bool isExternal) {
+static Symbol* ParseFunctionDeclarationStatementWithoutTerminator(Parser* parser, Type returnType, Token identifier, bool isExternal) {
     if (parser->currentFunctionSymbol != NULL) {
         ReportError(TokenGetLocation(identifier), "Unexpected function declaration of '%s' while already parsing function", TokenGetText(identifier).cstr);
     }
@@ -3610,24 +3598,24 @@ static Symbol* ParseFunctionDeclarationStatementWithoutTerminator(Parser* parser
     SymbolTable* functionParamsSymbolTable = SymbolTableCreate(parser->symbolTable);
     parser->symbolTable = functionParamsSymbolTable;
     bool isVariadric = false;
-    SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
-    while (parser->tokenCur.kind != SyntaxKind_RightParenToken) {
-        if (parser->tokenCur.kind == SyntaxKind_DotDotDotToken) {
-            MatchAndAdvanceToken(parser, SyntaxKind_DotDotDotToken);
+    Token leftParen = MatchAndAdvanceToken(parser, TokenKind_LeftParen);
+    while (parser->tokenCur.kind != TokenKind_RightParen) {
+        if (parser->tokenCur.kind == TokenKind_DotDotDot) {
+            MatchAndAdvanceToken(parser, TokenKind_DotDotDot);
             isVariadric = true;
             break;
         }
         Type paramType = ParseType(parser);
-        SyntaxToken paramIdent = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
+        Token paramIdent = MatchAndAdvanceToken(parser, TokenKind_Identifier);
         ASTNode* paramNode = ParseVariableDeclarationWithoutTerminator(parser, paramType, paramIdent, SymbolScopeKind_Local);
         paramNode->symbol->kind = SymbolKind_Parameter;
-        if (parser->tokenCur.kind == SyntaxKind_CommaToken) {
-            MatchAndAdvanceToken(parser, SyntaxKind_CommaToken);
+        if (parser->tokenCur.kind == TokenKind_Comma) {
+            MatchAndAdvanceToken(parser, TokenKind_Comma);
         } else {
             break;
         }
     }
-    SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
+    Token rightParen = MatchAndAdvanceToken(parser, TokenKind_RightParen);
     parser->symbolTable = parser->symbolTable->parent;
     if (functionSymbol->membersSymbolTable != NULL) {
         if (!TypesIdentical(returnType, functionSymbol->type)) {
@@ -3653,13 +3641,13 @@ static Symbol* ParseFunctionDeclarationStatementWithoutTerminator(Parser* parser
 }
 
 static ASTNode* ParseFunctionDefinitionStatement(Parser* parser, bool isExternal) {
-    SyntaxToken funKeyword = MatchAndAdvanceToken(parser, SyntaxKind_FunKeyword);
+    Token funKeyword = MatchAndAdvanceToken(parser, TokenKind_Fun);
     Type type = ParseType(parser);
-    SyntaxToken identifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
+    Token identifier = MatchAndAdvanceToken(parser, TokenKind_Identifier);
     Symbol* functionSymbol = ParseFunctionDeclarationStatementWithoutTerminator(parser, type, identifier, isExternal);
     ASTNode* body = NULL;
-    if (parser->tokenCur.kind == SyntaxKind_SemicolonToken) {
-        MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
+    if (parser->tokenCur.kind == TokenKind_Semicolon) {
+        MatchAndAdvanceToken(parser, TokenKind_Semicolon);
     } else {
         if (isExternal) {
             ReportError(TokenGetLocation(identifier), "Cannot define external function '%s'", TokenGetText(identifier).cstr);
@@ -3681,14 +3669,14 @@ static ASTNode* ParseFunctionDefinitionStatement(Parser* parser, bool isExternal
 }
 
 static ASTNode* ParseVariableDefinitionStatement(Parser* parser, bool isExternal) {
-    SyntaxToken letKeyword = MatchAndAdvanceToken(parser, SyntaxKind_LetKeyword);
+    Token letKeyword = MatchAndAdvanceToken(parser, TokenKind_Let);
     bool isLocalPersist = false;
-    if (parser->tokenCur.kind == SyntaxKind_LocalPersistKeyword) {
-        SyntaxToken localPersist = MatchAndAdvanceToken(parser, SyntaxKind_LocalPersistKeyword);
+    if (parser->tokenCur.kind == TokenKind_LocalPersist) {
+        Token localPersist = MatchAndAdvanceToken(parser, TokenKind_LocalPersist);
         isLocalPersist = true;
     }
     Type type = ParseType(parser);
-    SyntaxToken identifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
+    Token identifier = MatchAndAdvanceToken(parser, TokenKind_Identifier);
     SymbolScopeKind symbolScopeKind = parser->currentFunctionSymbol == NULL ? SymbolScopeKind_Global : SymbolScopeKind_Local;
     if (isLocalPersist) {
         if (symbolScopeKind != SymbolScopeKind_Local) {
@@ -3703,8 +3691,8 @@ static ASTNode* ParseVariableDefinitionStatement(Parser* parser, bool isExternal
         symbolScopeKind = SymbolScopeKind_Extern;
     }
     ASTNode* result = ParseVariableDeclarationWithoutTerminator(parser, type, identifier, symbolScopeKind);
-    if (parser->tokenCur.kind == SyntaxKind_EqualsToken) {
-        SyntaxToken equalsToken = MatchAndAdvanceToken(parser, SyntaxKind_EqualsToken);
+    if (parser->tokenCur.kind == TokenKind_Equals) {
+        Token equalsToken = MatchAndAdvanceToken(parser, TokenKind_Equals);
         ASTNode* initializer = NULL;
         if (result->symbol->type.isArray) {
             initializer = ParseArrayLiteralExpression(parser, result->symbol);
@@ -3713,23 +3701,23 @@ static ASTNode* ParseVariableDefinitionStatement(Parser* parser, bool isExternal
         }
         result->left = initializer;
     }
-    SyntaxToken semicolonToken = MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
+    Token semicolonToken = MatchAndAdvanceToken(parser, TokenKind_Semicolon);
     return result;
 }
 
 static ASTNode* ParseDefinitionStatement(Parser* parser) {
     bool isExternal = false;
-    if (parser->tokenCur.kind == SyntaxKind_ExternKeyword) {
+    if (parser->tokenCur.kind == TokenKind_Extern) {
         isExternal = true;
         AdvanceToken(parser);
     }
-    if (parser->tokenCur.kind == SyntaxKind_EnumKeyword) {
+    if (parser->tokenCur.kind == TokenKind_Enum) {
         return ParseEnumDefinitionStatement(parser, isExternal);
     } else {
-        if (parser->tokenCur.kind == SyntaxKind_StructKeyword || parser->tokenCur.kind == SyntaxKind_UnionKeyword) {
+        if (parser->tokenCur.kind == TokenKind_Struct || parser->tokenCur.kind == TokenKind_Union) {
             return ParseUnionOrStructDefinitionStatement(parser, isExternal);
         } else {
-            if (parser->tokenCur.kind == SyntaxKind_FunKeyword) {
+            if (parser->tokenCur.kind == TokenKind_Fun) {
                 return ParseFunctionDefinitionStatement(parser, isExternal);
             } else {
                 return ParseVariableDefinitionStatement(parser, isExternal);
@@ -3739,10 +3727,10 @@ static ASTNode* ParseDefinitionStatement(Parser* parser) {
 }
 
 static ASTNode* ParseCaseStatement(Parser* parser, ASTNode* switchExpression) {
-    SyntaxToken caseLabel = SyntaxTokenCreateEmpty(parser->source);
+    Token caseLabel = TokenCreateEmpty(parser->source);
     ASTNode* caseExpression = NULL;
-    if (parser->tokenCur.kind == SyntaxKind_CaseKeyword) {
-        caseLabel = MatchAndAdvanceToken(parser, SyntaxKind_CaseKeyword);
+    if (parser->tokenCur.kind == TokenKind_Case) {
+        caseLabel = MatchAndAdvanceToken(parser, TokenKind_Case);
         if (parser->switchCaseLevel == 0) {
             ReportError(TokenGetLocation(caseLabel), "Unexpected case label outside of switch statement");
         }
@@ -3755,33 +3743,33 @@ static ASTNode* ParseCaseStatement(Parser* parser, ASTNode* switchExpression) {
             ReportError(TokenGetLocation(caseExpression->token), "Cannot convert type '%s' of case label literal '%s' to its switch expression type '%s'", TypeGetText(caseExpression->type).cstr, TokenGetText(caseExpression->token).cstr, TypeGetText(switchExpression->type).cstr);
         }
     } else {
-        caseLabel = MatchAndAdvanceToken(parser, SyntaxKind_DefaultKeyword);
+        caseLabel = MatchAndAdvanceToken(parser, TokenKind_Default);
         if (parser->switchCaseLevel == 0) {
             ReportError(TokenGetLocation(caseLabel), "Unexpected default case label outside of switch statement");
         }
     }
-    SyntaxToken colonToken = MatchAndAdvanceToken(parser, SyntaxKind_ColonToken);
+    Token colonToken = MatchAndAdvanceToken(parser, TokenKind_Colon);
     ASTNode* body = ParseCompoundStatement(parser, true);
     if (body->children.count == 0) {
         body = NULL;
     }
-    ASTNode* result = ASTNodeCreate(caseLabel.kind == SyntaxKind_CaseKeyword ? ASTNodeKind_CaseStatement : ASTNodeKind_DefaultStatement, parser->symbolTable, caseLabel);
+    ASTNode* result = ASTNodeCreate(caseLabel.kind == TokenKind_Case ? ASTNodeKind_CaseStatement : ASTNodeKind_DefaultStatement, parser->symbolTable, caseLabel);
     result->left = body;
     result->right = caseExpression;
     return result;
 }
 
 static ASTNode* ParseSwitchStatement(Parser* parser) {
-    SyntaxToken switchKeyword = MatchAndAdvanceToken(parser, SyntaxKind_SwitchKeyword);
-    SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
+    Token switchKeyword = MatchAndAdvanceToken(parser, TokenKind_Switch);
+    Token leftParen = MatchAndAdvanceToken(parser, TokenKind_LeftParen);
     ASTNode* switchExpression = ParseExpression(parser);
-    SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
+    Token rightParen = MatchAndAdvanceToken(parser, TokenKind_RightParen);
     parser->switchCaseLevel += 1;
-    SyntaxToken leftBrace = MatchAndAdvanceToken(parser, SyntaxKind_LeftBraceToken);
+    Token leftBrace = MatchAndAdvanceToken(parser, TokenKind_LeftBrace);
     int32 defaultTokenEncountered = false;
     ASTNodeArray caseStatements = ASTNodeArrayCreate();
-    while (parser->tokenCur.kind != SyntaxKind_EndOfFileToken) {
-        if (parser->tokenCur.kind == SyntaxKind_RightBraceToken) {
+    while (parser->tokenCur.kind != TokenKind_EndOfFile) {
+        if (parser->tokenCur.kind == TokenKind_RightBrace) {
             break;
         }
         ASTNode* caseStatement = ParseCaseStatement(parser, switchExpression);
@@ -3793,7 +3781,7 @@ static ASTNode* ParseSwitchStatement(Parser* parser) {
         }
         ASTNodeArrayPush(&caseStatements, caseStatement);
     }
-    SyntaxToken rightBrace = MatchAndAdvanceToken(parser, SyntaxKind_RightBraceToken);
+    Token rightBrace = MatchAndAdvanceToken(parser, TokenKind_RightBrace);
     parser->switchCaseLevel -= 1;
     if (caseStatements.count == 0) {
         ReportError(TokenGetLocation(switchKeyword), "Empty switch statements are not allowed");
@@ -3815,39 +3803,39 @@ static ASTNode* ParseSwitchStatement(Parser* parser) {
 
 static ASTNode* ParseStatement(Parser* parser) {
     switch (parser->tokenCur.kind) {
-        case SyntaxKind_LeftBraceToken: {
+        case TokenKind_LeftBrace: {
             return ParseCompoundStatement(parser, false);
         }
-        case SyntaxKind_IfKeyword: {
+        case TokenKind_If: {
             return ParseIfStatement(parser);
         }
-        case SyntaxKind_DoKeyword: {
+        case TokenKind_Do: {
             return ParseDoWhileStatement(parser);
         }
-        case SyntaxKind_WhileKeyword: {
+        case TokenKind_While: {
             return ParseWhileStatement(parser);
         }
-        case SyntaxKind_ForKeyword: {
+        case TokenKind_For: {
             return ParseForStatement(parser);
         }
-        case SyntaxKind_ReturnKeyword: {
+        case TokenKind_Return: {
             return ParseReturnStatement(parser);
         }
-        case SyntaxKind_BreakKeyword: {
+        case TokenKind_Break: {
             return ParseBreakStatement(parser);
         }
-        case SyntaxKind_ContinueKeyword: {
+        case TokenKind_Continue: {
             return ParseContinueStatement(parser);
         }
-        case SyntaxKind_SwitchKeyword: {
+        case TokenKind_Switch: {
             return ParseSwitchStatement(parser);
         }
-        case SyntaxKind_ExternKeyword: // Fallthrough
-        case SyntaxKind_StructKeyword: // Fallthrough
-        case SyntaxKind_UnionKeyword: // Fallthrough
-        case SyntaxKind_EnumKeyword: // Fallthrough
-        case SyntaxKind_FunKeyword: // Fallthrough
-        case SyntaxKind_LetKeyword: {
+        case TokenKind_Extern: // Fallthrough
+        case TokenKind_Struct: // Fallthrough
+        case TokenKind_Union: // Fallthrough
+        case TokenKind_Enum: // Fallthrough
+        case TokenKind_Fun: // Fallthrough
+        case TokenKind_Let: {
             return ParseDefinitionStatement(parser);
         }
         default: {
@@ -3857,64 +3845,64 @@ static ASTNode* ParseStatement(Parser* parser) {
 }
 
 static ASTNode* ParseGlobalStatements(Parser* parser) {
-    SyntaxToken root = SyntaxTokenCreateEmpty(parser->source);
+    Token root = TokenCreateEmpty(parser->source);
     ASTNode* result = ASTNodeCreate(ASTNodeKind_Root, parser->symbolTable, root);
-    while (parser->tokenCur.kind != SyntaxKind_EndOfFileToken) {
+    while (parser->tokenCur.kind != TokenKind_EndOfFile) {
         bool foundDirectives = true;
         while (foundDirectives) {
             foundDirectives = false;
-            while (parser->tokenCur.kind == SyntaxKind_TypedefKeyword) {
-                MatchAndAdvanceToken(parser, SyntaxKind_TypedefKeyword);
-                while (parser->tokenCur.kind != SyntaxKind_SemicolonToken) {
+            while (parser->tokenCur.kind == TokenKind_Typedef) {
+                MatchAndAdvanceToken(parser, TokenKind_Typedef);
+                while (parser->tokenCur.kind != TokenKind_Semicolon) {
                     AdvanceToken(parser);
                 }
-                MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
+                MatchAndAdvanceToken(parser, TokenKind_Semicolon);
                 foundDirectives = true;
             }
-            while (parser->tokenCur.kind == SyntaxKind_IncludeDirectiveKeyword) {
-                MatchAndAdvanceToken(parser, SyntaxKind_IncludeDirectiveKeyword);
-                if (parser->tokenCur.kind == SyntaxKind_LessToken) {
-                    MatchAndAdvanceToken(parser, SyntaxKind_LessToken);
+            while (parser->tokenCur.kind == TokenKind_IncludeDirective) {
+                MatchAndAdvanceToken(parser, TokenKind_IncludeDirective);
+                if (parser->tokenCur.kind == TokenKind_Less) {
+                    MatchAndAdvanceToken(parser, TokenKind_Less);
                     AdvanceToken(parser);
-                    MatchAndAdvanceToken(parser, SyntaxKind_DotToken);
+                    MatchAndAdvanceToken(parser, TokenKind_Dot);
                     AdvanceToken(parser);
-                    MatchAndAdvanceToken(parser, SyntaxKind_GreaterToken);
+                    MatchAndAdvanceToken(parser, TokenKind_Greater);
                 } else {
-                    MatchAndAdvanceToken(parser, SyntaxKind_StringLiteralToken);
+                    MatchAndAdvanceToken(parser, TokenKind_StringLiteral);
                 }
                 foundDirectives = true;
             }
-            while (parser->tokenCur.kind == SyntaxKind_PragmaDirectiveKeyword) {
-                MatchAndAdvanceToken(parser, SyntaxKind_PragmaDirectiveKeyword);
-                MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
+            while (parser->tokenCur.kind == TokenKind_PragmaDirective) {
+                MatchAndAdvanceToken(parser, TokenKind_PragmaDirective);
+                MatchAndAdvanceToken(parser, TokenKind_Identifier);
                 foundDirectives = true;
             }
-            while (parser->tokenCur.kind == SyntaxKind_IfDirectiveKeyword) {
-                MatchAndAdvanceToken(parser, SyntaxKind_IfDirectiveKeyword);
+            while (parser->tokenCur.kind == TokenKind_IfDirective) {
+                MatchAndAdvanceToken(parser, TokenKind_IfDirective);
                 AdvanceToken(parser);
                 foundDirectives = true;
             }
-            while (parser->tokenCur.kind == SyntaxKind_EndIfDefinedDirectiveKeyword) {
-                MatchAndAdvanceToken(parser, SyntaxKind_EndIfDefinedDirectiveKeyword);
+            while (parser->tokenCur.kind == TokenKind_EndIfDefinedDirective) {
+                MatchAndAdvanceToken(parser, TokenKind_EndIfDefinedDirective);
                 foundDirectives = true;
             }
-            while (parser->tokenCur.kind == SyntaxKind_DefineDirectiveKeyword) {
-                MatchAndAdvanceToken(parser, SyntaxKind_DefineDirectiveKeyword);
-                if (parser->tokenCur.kind == SyntaxKind_LetKeyword) {
-                    MatchAndAdvanceToken(parser, SyntaxKind_LetKeyword);
+            while (parser->tokenCur.kind == TokenKind_DefineDirective) {
+                MatchAndAdvanceToken(parser, TokenKind_DefineDirective);
+                if (parser->tokenCur.kind == TokenKind_Let) {
+                    MatchAndAdvanceToken(parser, TokenKind_Let);
                 } else {
-                    if (parser->tokenCur.kind == SyntaxKind_AsKeyword) {
-                        MatchAndAdvanceToken(parser, SyntaxKind_AsKeyword);
+                    if (parser->tokenCur.kind == TokenKind_As) {
+                        MatchAndAdvanceToken(parser, TokenKind_As);
                     } else {
-                        if (parser->tokenCur.kind == SyntaxKind_ByteKeyword) {
-                            MatchAndAdvanceToken(parser, SyntaxKind_ByteKeyword);
-                            MatchAndAdvanceToken(parser, SyntaxKind_CharKeyword);
+                        if (parser->tokenCur.kind == TokenKind_Byte) {
+                            MatchAndAdvanceToken(parser, TokenKind_Byte);
+                            MatchAndAdvanceToken(parser, TokenKind_Char);
                         } else {
-                            if (parser->tokenCur.kind == SyntaxKind_LocalPersistKeyword) {
-                                MatchAndAdvanceToken(parser, SyntaxKind_LocalPersistKeyword);
-                                MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
+                            if (parser->tokenCur.kind == TokenKind_LocalPersist) {
+                                MatchAndAdvanceToken(parser, TokenKind_LocalPersist);
+                                MatchAndAdvanceToken(parser, TokenKind_Identifier);
                             } else {
-                                MatchAndAdvanceToken(parser, SyntaxKind_FunKeyword);
+                                MatchAndAdvanceToken(parser, TokenKind_Fun);
                             }
                         }
                     }
@@ -4046,7 +4034,7 @@ static void EmitCharacterLiteral(Emitter* emitter, ASTNode* node) {
 }
 
 static void EmitIntegerLiteral(Emitter* emitter, ASTNode* node) {
-    assert(node->token.kind == SyntaxKind_IntegerLiteralToken);
+    assert(node->token.kind == TokenKind_IntegerLiteral);
     if (node->token.intvalueIsHex) {
         fprintf(emitter->outFile, "%s", TokenGetText(node->token).cstr);
     } else {
@@ -4690,32 +4678,34 @@ static void PreprocessorPreprocessFile(Preprocessor* preprocessor, String filepa
     if (PreprocessorSeenFile(preprocessor, filepath)) {
         return;
     }
+
     SourceFile sourceFile = ReadFileToString(filepath);
     SourceFileArrayPush(&preprocessor->seenFiles, sourceFile);
+
     Source dummy = SourceCreateEmpty();
     SourceFileArrayPush(&dummy.files, sourceFile);
     dummy.content = sourceFile.content;
     Scanner scanner = ScannerCreate(dummy);
     String result = StringCreateEmpty();
     while (true) {
-        SyntaxToken token = NextToken(&scanner);
-        if (token.kind == SyntaxKind_EndOfFileToken) {
+        Token token = NextToken(&scanner);
+        if (token.kind == TokenKind_EndOfFile) {
             break;
         }
-        if (token.kind != SyntaxKind_IncludeDirectiveKeyword) {
+        if (token.kind != TokenKind_IncludeDirective) {
             continue;
         }
         token = NextToken(&scanner);
-        if (token.kind == SyntaxKind_LessToken) {
+        if (token.kind == TokenKind_Less) {
             token = NextToken(&scanner);
             token = NextToken(&scanner);
-            assert(token.kind == SyntaxKind_DotToken);
+            assert(token.kind == TokenKind_Dot);
             token = NextToken(&scanner);
             token = NextToken(&scanner);
-            assert(token.kind == SyntaxKind_GreaterToken);
+            assert(token.kind == TokenKind_Greater);
         } else {
-            if (token.kind == SyntaxKind_StringLiteralToken) {
-                PreprocessorPreprocessFile(preprocessor, token.stringValueWithoutQuotes);
+            if (token.kind == TokenKind_StringLiteral) {
+                PreprocessorPreprocessFile(preprocessor, token.stringValue);
             } else {
                 ReportError(TokenGetLocation(token), "Expected filepath after '#include' directive in '%s'", filepath.cstr);
             }
@@ -4752,7 +4742,7 @@ static void Compile(String inputFilepath, String outputFilepath) {
     SymbolTable* symbolTable = SymbolTableCreate(NULL);
     Parser parser = ParserCreate(source, symbolTable);
     ASTNode* syntaxTree = ParseGlobalStatements(&parser);
-    if (parser.tokenCur.kind != SyntaxKind_EndOfFileToken) {
+    if (parser.tokenCur.kind != TokenKind_EndOfFile) {
         ReportError(TokenGetLocation(parser.tokenCur), "Expected EOF token after parsing file, instead got '%s'", TokenKindToString(parser.tokenCur.kind).cstr);
     }
     Binder binder = BinderCreate(source, syntaxTree);
@@ -4763,13 +4753,14 @@ static void Compile(String inputFilepath, String outputFilepath) {
 
 static void main(int32 argc, char** argv) {
     if (argc == 1 || argc % 2 != 1) {
-        fprintf(stderr, "Expects a multiple of two arguments: <inputfilepath> <outputfilepath>\n");
-        exit(1);
+      fprintf(stderr, "Expects a multiple of two arguments: <inputfilepath> <outputfilepath>\n");
+      exit(1);
     }
-    int32 counter = 1;
+
+    int counter = 1;
     while (counter < argc) {
-        Compile(StringCreateFromCStr(argv[counter]), StringCreateFromCStr(argv[counter + 1]));
-        counter += 2;
+      Compile(StringCreateFromCStr(argv[counter]), StringCreateFromCStr(argv[counter + 1]));
+      counter += 2;
     }
 }
 

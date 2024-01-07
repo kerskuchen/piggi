@@ -114,7 +114,7 @@ fun void EmitCharacterLiteral(Emitter* emitter, ASTNode* node) {
 }
 
 fun void EmitIntegerLiteral(Emitter* emitter, ASTNode* node) {
-    assert(node->token.kind == TokenKind::IntegerLiteral);
+    assert(node->token.kind == SyntaxKind::IntegerLiteralToken);
     if (node->token.intvalueIsHex)
         fprintf(emitter->outFile, "%s", TokenGetText(node->token).cstr);
     else

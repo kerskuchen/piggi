@@ -219,6 +219,21 @@ fun SourceLocation SourceGetLocationForCharPos(Source source, int charPos) {
     return result;
 }
 
+
+struct SourceLocation2 {
+    Source source;
+    int start;
+    int end;
+};
+
+fun SourceLocation2 SourceLocation2Create(Source source, int start, int end) {
+    let SourceLocation2 result;
+    result.source = source;
+    result.start = start;
+    result.end = end;
+    return result;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Errors 
 
@@ -237,300 +252,510 @@ fun void ReportError(SourceLocation location, char* format, ...) {
     exit(1);
 }
 
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Tokens 
+// Syntax 
 
-enum class TokenKind {
-    EndOfFile,
+enum class SyntaxKind {
+    BadToken,
 
-    // Basic Tokens
-    Plus,
-    PlusEquals,
-    Minus,
-    MinusEquals,
-    Star,
-    StarEquals,
-    Slash,
-    SlashEquals,
-    Percent,
-    PercentEquals,
+    // ---------------------------------------------------------------------------------------------
+    // Trivia
 
-    Equals,
-    EqualsEquals,
-    Bang,
-    BangEquals,
-    Less,
-    LessEquals,
-    Greater,
-    GreaterEquals,
+    SkippedTextTrivia,
+    LineBreakTrivia,
+    WhitespaceTrivia,
+    SingleLineCommentTrivia,
+    MultiLineCommentTrivia,
 
-    LessLess,
-    LessLessEquals,
-    GreaterGreater,
-    GreaterGreaterEquals,
-    Tilde,
-    Hat,
-    HatEquals,
-    Pipe,
-    PipeEquals,
-    PipePipe,
-    Ampersand,
-    AmpersandEquals,
-    AmpersandAmpersand,
+    // ---------------------------------------------------------------------------------------------
+    // Tokens
 
-    Questionmark,
-    Colon,
-    ColonColon,
-    Arrow,
-    Dot,
-    DotDotDot,
-    Comma,
-    Semicolon,
-    LeftBrace,
-    RightBrace,
-    LeftParen,
-    RightParen,
-    LeftBracket,
-    RightBracket,
+    EndOfFileToken,
+
+    /////// Unary operators
+
+    BangToken,
+    TildeToken,
+
+    /////// Binary operators
+
+    PlusToken,
+    MinusToken,
+    StarToken,
+    SlashToken,
+    PercentToken,
+
+    // Assignments
+    EqualsToken,
+    PlusEqualsToken,
+    MinusEqualsToken,
+    StarEqualsToken,
+    SlashEqualsToken,
+    PercentEqualsToken,
+    LessLessEqualsToken,
+    GreaterGreaterEqualsToken,
+    HatEqualsToken,
+    PipeEqualsToken,
+    AmpersandEqualsToken,
+
+    // Logical
+    PipePipeToken,
+    AmpersandAmpersandToken,
+
+    // Comparisons
+    EqualsEqualsToken,
+    BangEqualsToken,
+    LessToken,
+    LessEqualsToken,
+    GreaterToken,
+    GreaterEqualsToken,
+
+    // Bits
+    LessLessToken,
+    GreaterGreaterToken,
+    HatToken,
+    PipeToken,
+    AmpersandToken,
+
+    /////// Punctuation
+    QuestionmarkToken,
+    ColonToken,
+    ColonColonToken,
+    ArrowToken,
+    DotToken,
+    DotDotDotToken,
+    CommaToken,
+    SemicolonToken,
+    LeftBraceToken,
+    RightBraceToken,
+    LeftParenToken,
+    RightParenToken,
+    LeftBracketToken,
+    RightBracketToken,
+
+    /////// Literals
+    IntegerLiteralToken,
+    CharacterLiteralToken,
+    StringLiteralToken,
+
+    /////// Keywords and identifiers
+
+    IdentifierToken,
+
+    // Primitive types
+    VoidKeyword,
+    CharKeyword,
+    ByteKeyword,
+    ShortKeyword,
+    IntKeyword,
+    LongKeyword,
+    NullKeyword,
+    CStringKeyword,
+    BoolKeyword,
+    TrueKeyword,
+    FalseKeyword,
+
+    // Declarations
+    FunKeyword,
+    LetKeyword,
+    StructKeyword,
+    UnionKeyword,
+    EnumKeyword,
+    ClassKeyword,
+
+    // Control flow
+    IfKeyword,
+    ElseKeyword,
+    DoKeyword,
+    WhileKeyword,
+    ForKeyword,
+    ReturnKeyword,
+    BreakKeyword,
+    ContinueKeyword,
+    SwitchKeyword,
+    CaseKeyword,
+    DefaultKeyword,
+
+    // Misc
+    AsKeyword,
+    SizeOfKeyword,
+
+    // Storage location
+    LocalPersistKeyword,
+    ExternKeyword,
+
+    // TODO get rid of these 
+    IncludeDirectiveKeyword,
+    DefineDirectiveKeyword,
+    IfDirectiveKeyword,
+    EndIfDefinedDirectiveKeyword,
+    PragmaDirectiveKeyword,
+    TypedefKeyword,
+
+    // ---------------------------------------------------------------------------------------------
+    // 
+
+    // Expressions
+    FunccallExpression,
+    ArrayIndexExpression,
+    MemberAccessExpression,
+    TypeCastExpression,
+    ParenthesizedExpression,
+    TernaryConditionalExpression,
+    AssignmentExpression,
+    SizeOfExpression,
+    TypeExpression, // TODO: currently used for sizeof expression. lets see if we need this in the long run
 
     // Literals
-    IntegerLiteral,
-    CharacterLiteral,
-    StringLiteral,
+    NullLiteralExpression,
+    IntegerLiteralExpression,
+    CharacterLiteralExpression,
+    BoolLiteralExpression,
+    StringLiteralExpression,
+    EnumValueLiteralExpression,
+    ArrayLiteralExpression,
 
-    // Keywords and identifiers
-    Void,
-    Char,
-    Byte,
-    Short,
-    Int,
-    Long,
-    Null,
-    CString,
-    Bool,
-    True,
-    False,
+    // Misc
+    NameExpression,
 
-    If,
-    Else,
-    Do,
-    While,
-    For,
-    Return,
-    Break,
-    Continue,
-    Switch,
-    Case,
-    Default,
-    As,
-    SizeOf,
+    // Statements
+    BlockStatement,
+    ExpressionStatement,
 
-    Fun,
-    Let,
-    Struct,
-    Union,
-    Enum,
-    Class,
+    IfStatement,
+    DoWhileStatement,
+    WhileStatement,
+    ForStatement,
+    ReturnStatement,
+    BreakStatement,
+    ContinueStatement,
+    SwitchStatement,
+    CaseStatement,
+    DefaultStatement,
 
-    LocalPersist,
-    Extern,
-    IncludeDirective,
-    DefineDirective,
-    IfDirective,
-    EndIfDefinedDirective,
-    PragmaDirective,
-    Typedef,
+    VariableDeclarationStatement,
+    ArrayDeclarationStatement,
 
-    Identifier,
+    // Module
+    Module,
+    ImportDeclaration,
+    GlobalVariableDeclaration,
+    EnumDeclarationStatement,
+    EnumDefinitionStatement,
+    StructDeclarationStatement,
+    StructDefinitionStatement,
+    UnionDeclarationStatement,
+    UnionDefinitionStatement,
+    FunctionDeclarationStatement,
+    FunctionDefinitionStatement,
 };
 
-fun String TokenKindToString(TokenKind kind) {
+union SyntaxNode;
+struct SyntaxInfo {
+    SyntaxKind kind;
+    SyntaxNode* parent;
+};
+
+struct SyntaxNodeArray {
+    SyntaxNode** nodes;
+    int count;
+    int capacity;
+};
+
+fun SyntaxNodeArray SyntaxNodeArrayCreate() {
+    let SyntaxNodeArray result;
+    result.nodes = nullptr;
+    result.count = 0;
+    result.capacity = 0;
+    return result;
+}
+
+fun int SyntaxNodeArrayPush(SyntaxNodeArray* array, SyntaxNode* node) {
+    if (array->count == array->capacity) {
+        let int newCapacity = 2 * array->capacity;
+        if (newCapacity == 0)
+            newCapacity = 64;
+        array->capacity = newCapacity;
+        array->nodes = (as SyntaxNode**) realloc(array->nodes, newCapacity * sizeof(SyntaxNode*));
+        assert (array->nodes != nullptr);
+    }
+    let int insertionIndex = array->count;
+    array->nodes[insertionIndex] = node;
+    array->count += 1;
+    return insertionIndex;
+}
+
+// -------------------------------------------------------------------------------------------------
+// Trivia 
+
+struct SyntaxTrivia {
+    SyntaxKind kind;
+    SourceLocation2 location;
+};
+
+fun SyntaxTrivia SyntaxTriviaCreate(SyntaxKind kind, SourceLocation2 location) {
+    let SyntaxTrivia result;
+    result.kind = kind;
+    result.location = location;
+    return result;
+}
+
+struct SyntaxTriviaArray {
+    SyntaxTrivia* nodes;
+    int count;
+    int capacity;
+};
+
+fun SyntaxTriviaArray SyntaxTriviaArrayCreate() {
+    let SyntaxTriviaArray result;
+    result.nodes = nullptr;
+    result.count = 0;
+    result.capacity = 0;
+    return result;
+}
+
+fun int SyntaxTriviaArrayPush(SyntaxTriviaArray* array, SyntaxTrivia node) {
+    if (array->count == array->capacity) {
+        let int newCapacity = 2 * array->capacity;
+        if (newCapacity == 0)
+            newCapacity = 64;
+        array->capacity = newCapacity;
+        array->nodes = (as SyntaxTrivia*) realloc(array->nodes, newCapacity * sizeof(SyntaxTrivia));
+        assert (array->nodes != nullptr);
+    }
+    let int insertionIndex = array->count;
+    array->nodes[insertionIndex] = node;
+    array->count += 1;
+    return insertionIndex;
+}
+
+// -------------------------------------------------------------------------------------------------
+// Tokens 
+
+struct SyntaxToken
+{
+    SyntaxKind kind;
+    SyntaxNode* parent;
+    SourceLocation2 location;
+
+    SyntaxTriviaArray leadingTrivia;
+    SyntaxTriviaArray trailingTrivia;
+
+    longint intvalue;   // for integer literals
+    bool intvalueIsHex; // makes the emit more readable
+    String stringValueWithoutQuotes; // for char and string literals
+
+    String debugString;
+};
+
+fun SyntaxToken SyntaxTokenCreateEmpty(Source source) {
+    let SyntaxToken result;
+    result.kind = SyntaxKind::BadToken;
+    result.parent = nullptr;
+
+    result.location.source = source;
+    result.location.start = 0;
+    result.location.end = 0;
+
+    result.leadingTrivia = SyntaxTriviaArrayCreate();
+    result.trailingTrivia = SyntaxTriviaArrayCreate();
+
+    result.intvalue = 0;
+    result.intvalueIsHex = false;
+    result.stringValueWithoutQuotes = StringCreateEmpty();
+
+    result.debugString = StringCreateEmpty();
+    return result;
+}
+
+fun String TokenKindToString(SyntaxKind kind) {
     switch (kind) {
-        case TokenKind::EndOfFile:
+        case SyntaxKind::EndOfFileToken:
             return StringCreateFromCStr("eof");
 
-        case TokenKind::Plus:
+        case SyntaxKind::PlusToken:
             return StringCreateFromCStr("+");
-        case TokenKind::PlusEquals:
+        case SyntaxKind::PlusEqualsToken:
             return StringCreateFromCStr("+=");
-        case TokenKind::Minus:
+        case SyntaxKind::MinusToken:
             return StringCreateFromCStr("-");
-        case TokenKind::MinusEquals:
+        case SyntaxKind::MinusEqualsToken:
             return StringCreateFromCStr("-=");
-        case TokenKind::Star:
+        case SyntaxKind::StarToken:
             return StringCreateFromCStr("*");
-        case TokenKind::StarEquals:
+        case SyntaxKind::StarEqualsToken:
             return StringCreateFromCStr("*=");
-        case TokenKind::Slash:
+        case SyntaxKind::SlashToken:
             return StringCreateFromCStr("/");
-        case TokenKind::SlashEquals:
+        case SyntaxKind::SlashEqualsToken:
             return StringCreateFromCStr("/=");
-        case TokenKind::Percent:
+        case SyntaxKind::PercentToken:
             return StringCreateFromCStr("%");
-        case TokenKind::PercentEquals:
+        case SyntaxKind::PercentEqualsToken:
             return StringCreateFromCStr("%=");
 
-        case TokenKind::Equals:
+        case SyntaxKind::EqualsToken:
             return StringCreateFromCStr("=");
-        case TokenKind::EqualsEquals:
+        case SyntaxKind::EqualsEqualsToken:
             return StringCreateFromCStr("==");
-        case TokenKind::Bang:
+        case SyntaxKind::BangToken:
             return StringCreateFromCStr("!");
-        case TokenKind::BangEquals:
+        case SyntaxKind::BangEqualsToken:
             return StringCreateFromCStr("!=");
-        case TokenKind::Less:
+        case SyntaxKind::LessToken:
             return StringCreateFromCStr("<");
-        case TokenKind::LessEquals:
+        case SyntaxKind::LessEqualsToken:
             return StringCreateFromCStr("<=");
-        case TokenKind::Greater:
+        case SyntaxKind::GreaterToken:
             return StringCreateFromCStr(">");
-        case TokenKind::GreaterEquals:
+        case SyntaxKind::GreaterEqualsToken:
             return StringCreateFromCStr(">=");
 
-        case TokenKind::LessLess:
+        case SyntaxKind::LessLessToken:
             return StringCreateFromCStr("<<");
-        case TokenKind::LessLessEquals:
+        case SyntaxKind::LessLessEqualsToken:
             return StringCreateFromCStr("<<=");
-        case TokenKind::GreaterGreater:
+        case SyntaxKind::GreaterGreaterToken:
             return StringCreateFromCStr(">>");
-        case TokenKind::GreaterGreaterEquals:
+        case SyntaxKind::GreaterGreaterEqualsToken:
             return StringCreateFromCStr(">>=");
-        case TokenKind::Tilde:
+        case SyntaxKind::TildeToken:
             return StringCreateFromCStr("~");
-        case TokenKind::Hat:
+        case SyntaxKind::HatToken:
             return StringCreateFromCStr("^");
-        case TokenKind::HatEquals:
+        case SyntaxKind::HatEqualsToken:
             return StringCreateFromCStr("^=");
-        case TokenKind::Pipe:
+        case SyntaxKind::PipeToken:
             return StringCreateFromCStr("|");
-        case TokenKind::PipeEquals:
+        case SyntaxKind::PipeEqualsToken:
             return StringCreateFromCStr("|=");
-        case TokenKind::PipePipe:
+        case SyntaxKind::PipePipeToken:
             return StringCreateFromCStr("||");
-        case TokenKind::Ampersand:
+        case SyntaxKind::AmpersandToken:
             return StringCreateFromCStr("&");
-        case TokenKind::AmpersandEquals:
+        case SyntaxKind::AmpersandEqualsToken:
             return StringCreateFromCStr("&=");
-        case TokenKind::AmpersandAmpersand:
+        case SyntaxKind::AmpersandAmpersandToken:
             return StringCreateFromCStr("&&");
 
-        case TokenKind::Questionmark:
+        case SyntaxKind::QuestionmarkToken:
             return StringCreateFromCStr("?");
-        case TokenKind::Colon:
+        case SyntaxKind::ColonToken:
             return StringCreateFromCStr(":");
-        case TokenKind::ColonColon:
+        case SyntaxKind::ColonColonToken:
             return StringCreateFromCStr("::");
-        case TokenKind::Arrow:
+        case SyntaxKind::ArrowToken:
             return StringCreateFromCStr("->");
-        case TokenKind::Dot:
+        case SyntaxKind::DotToken:
             return StringCreateFromCStr(".");
-        case TokenKind::DotDotDot:
+        case SyntaxKind::DotDotDotToken:
             return StringCreateFromCStr("...");
-        case TokenKind::Comma:
+        case SyntaxKind::CommaToken:
             return StringCreateFromCStr(",");
-        case TokenKind::Semicolon:
+        case SyntaxKind::SemicolonToken:
             return StringCreateFromCStr(";");
-        case TokenKind::LeftBrace:
+        case SyntaxKind::LeftBraceToken:
             return StringCreateFromCStr("{");
-        case TokenKind::RightBrace:
+        case SyntaxKind::RightBraceToken:
             return StringCreateFromCStr("}");
-        case TokenKind::LeftParen:
+        case SyntaxKind::LeftParenToken:
             return StringCreateFromCStr("(");
-        case TokenKind::RightParen:
+        case SyntaxKind::RightParenToken:
             return StringCreateFromCStr(")");
-        case TokenKind::LeftBracket:
+        case SyntaxKind::LeftBracketToken:
             return StringCreateFromCStr("[");
-        case TokenKind::RightBracket:
+        case SyntaxKind::RightBracketToken:
             return StringCreateFromCStr("]");
 
-        case TokenKind::IntegerLiteral:
+        case SyntaxKind::IntegerLiteralToken:
             return StringCreateFromCStr("int-lit");
-        case TokenKind::CharacterLiteral:
+        case SyntaxKind::CharacterLiteralToken:
             return StringCreateFromCStr("chr-lit");
-        case TokenKind::StringLiteral:
+        case SyntaxKind::StringLiteralToken:
             return StringCreateFromCStr("str-lit");
 
-        case TokenKind::Char:
+        case SyntaxKind::CharKeyword:
             return StringCreateFromCStr("char");
-        case TokenKind::Byte:
+        case SyntaxKind::ByteKeyword:
             return StringCreateFromCStr("byte");
-        case TokenKind::Short:
+        case SyntaxKind::ShortKeyword:
             return StringCreateFromCStr("short");
-        case TokenKind::Int:
+        case SyntaxKind::IntKeyword:
             return StringCreateFromCStr("int");
-        case TokenKind::Long:
+        case SyntaxKind::LongKeyword:
             return StringCreateFromCStr("longint");
-        case TokenKind::Void:
+        case SyntaxKind::VoidKeyword:
             return StringCreateFromCStr("void");
-        case TokenKind::Null:
+        case SyntaxKind::NullKeyword:
             return StringCreateFromCStr("nullptr");
-        case TokenKind::CString:
+        case SyntaxKind::CStringKeyword:
             return StringCreateFromCStr("cstring");
-        case TokenKind::Bool:
+        case SyntaxKind::BoolKeyword:
             return StringCreateFromCStr("bool");
-        case TokenKind::True:
+        case SyntaxKind::TrueKeyword:
             return StringCreateFromCStr("true");
-        case TokenKind::False:
+        case SyntaxKind::FalseKeyword:
             return StringCreateFromCStr("false");
 
-        case TokenKind::If:
+        case SyntaxKind::IfKeyword:
             return StringCreateFromCStr("if");
-        case TokenKind::Else:
+        case SyntaxKind::ElseKeyword:
             return StringCreateFromCStr("else");
-        case TokenKind::Do:
+        case SyntaxKind::DoKeyword:
             return StringCreateFromCStr("do");
-        case TokenKind::While:
+        case SyntaxKind::WhileKeyword:
             return StringCreateFromCStr("while");
-        case TokenKind::For:
+        case SyntaxKind::ForKeyword:
             return StringCreateFromCStr("for");
-        case TokenKind::Return:
+        case SyntaxKind::ReturnKeyword:
             return StringCreateFromCStr("return");
-        case TokenKind::Break:
+        case SyntaxKind::BreakKeyword:
             return StringCreateFromCStr("break");
-        case TokenKind::Continue:
+        case SyntaxKind::ContinueKeyword:
             return StringCreateFromCStr("continue");
-        case TokenKind::Switch:
+        case SyntaxKind::SwitchKeyword:
             return StringCreateFromCStr("switch");
-        case TokenKind::Case:
+        case SyntaxKind::CaseKeyword:
             return StringCreateFromCStr("case");
-        case TokenKind::Default:
+        case SyntaxKind::DefaultKeyword:
             return StringCreateFromCStr("default");
-        case TokenKind::As:
+        case SyntaxKind::AsKeyword:
             return StringCreateFromCStr("as");
-        case TokenKind::SizeOf:
+        case SyntaxKind::SizeOfKeyword:
             return StringCreateFromCStr("sizeof");
 
-        case TokenKind::Let:
+        case SyntaxKind::LetKeyword:
             return StringCreateFromCStr("let");
-        case TokenKind::Fun:
+        case SyntaxKind::FunKeyword:
             return StringCreateFromCStr("fun");
-        case TokenKind::Struct:
+        case SyntaxKind::StructKeyword:
             return StringCreateFromCStr("struct");
-        case TokenKind::Union:
+        case SyntaxKind::UnionKeyword:
             return StringCreateFromCStr("union");
-        case TokenKind::Enum:
+        case SyntaxKind::EnumKeyword:
             return StringCreateFromCStr("enum");
-        case TokenKind::Class:
+        case SyntaxKind::ClassKeyword:
             return StringCreateFromCStr("class");
 
-        case TokenKind::LocalPersist:
+        case SyntaxKind::LocalPersistKeyword:
             return StringCreateFromCStr("localpersist");
-        case TokenKind::Extern:
+        case SyntaxKind::ExternKeyword:
             return StringCreateFromCStr("extern");
-        case TokenKind::IncludeDirective:
+        case SyntaxKind::IncludeDirectiveKeyword:
             return StringCreateFromCStr("#include");
-        case TokenKind::DefineDirective:
+        case SyntaxKind::DefineDirectiveKeyword:
             return StringCreateFromCStr("#define");
-        case TokenKind::IfDirective:
+        case SyntaxKind::IfDirectiveKeyword:
             return StringCreateFromCStr("#if");
-        case TokenKind::EndIfDefinedDirective:
+        case SyntaxKind::EndIfDefinedDirectiveKeyword:
             return StringCreateFromCStr("#endif");
-        case TokenKind::PragmaDirective:
+        case SyntaxKind::PragmaDirectiveKeyword:
             return StringCreateFromCStr("#pragma");
-        case TokenKind::Typedef:
+        case SyntaxKind::TypedefKeyword:
             return StringCreateFromCStr("typedef");
 
-        case TokenKind::Identifier:
+        case SyntaxKind::IdentifierToken:
             return StringCreateFromCStr("identifier");
         
         default:
@@ -539,120 +764,160 @@ fun String TokenKindToString(TokenKind kind) {
     }
 }
 
-fun TokenKind GetKeywordForIdentifier(String identifier) {
-    if (StringEquals(identifier, TokenKindToString(TokenKind::Char)))
-        return TokenKind::Char;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::Byte)))
-        return TokenKind::Byte;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::Short)))
-        return TokenKind::Short;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::Int)))
-        return TokenKind::Int;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::Long)))
-        return TokenKind::Long;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::Void)))
-        return TokenKind::Void;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::Null)))
-        return TokenKind::Null;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::CString)))
-        return TokenKind::CString;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::Bool)))
-        return TokenKind::Bool;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::True)))
-        return TokenKind::True;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::False)))
-        return TokenKind::False;
+fun SyntaxKind GetKeywordForIdentifier(String identifier) {
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::CharKeyword)))
+        return SyntaxKind::CharKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::ByteKeyword)))
+        return SyntaxKind::ByteKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::ShortKeyword)))
+        return SyntaxKind::ShortKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::IntKeyword)))
+        return SyntaxKind::IntKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::LongKeyword)))
+        return SyntaxKind::LongKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::VoidKeyword)))
+        return SyntaxKind::VoidKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::NullKeyword)))
+        return SyntaxKind::NullKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::CStringKeyword)))
+        return SyntaxKind::CStringKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::BoolKeyword)))
+        return SyntaxKind::BoolKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::TrueKeyword)))
+        return SyntaxKind::TrueKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::FalseKeyword)))
+        return SyntaxKind::FalseKeyword;
 
-    if (StringEquals(identifier, TokenKindToString(TokenKind::If)))
-        return TokenKind::If;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::Else)))
-        return TokenKind::Else;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::Do)))
-        return TokenKind::Do;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::While)))
-        return TokenKind::While;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::For)))
-        return TokenKind::For;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::Return)))
-        return TokenKind::Return;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::Break)))
-        return TokenKind::Break;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::Continue)))
-        return TokenKind::Continue;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::Switch)))
-        return TokenKind::Switch;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::Case)))
-        return TokenKind::Case;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::Default)))
-        return TokenKind::Default;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::IfKeyword)))
+        return SyntaxKind::IfKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::ElseKeyword)))
+        return SyntaxKind::ElseKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::DoKeyword)))
+        return SyntaxKind::DoKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::WhileKeyword)))
+        return SyntaxKind::WhileKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::ForKeyword)))
+        return SyntaxKind::ForKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::ReturnKeyword)))
+        return SyntaxKind::ReturnKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::BreakKeyword)))
+        return SyntaxKind::BreakKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::ContinueKeyword)))
+        return SyntaxKind::ContinueKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::SwitchKeyword)))
+        return SyntaxKind::SwitchKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::CaseKeyword)))
+        return SyntaxKind::CaseKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::DefaultKeyword)))
+        return SyntaxKind::DefaultKeyword;
 
-    if (StringEquals(identifier, TokenKindToString(TokenKind::Fun)))
-        return TokenKind::Fun;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::Let)))
-        return TokenKind::Let;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::Struct)))
-        return TokenKind::Struct;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::Union)))
-        return TokenKind::Union;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::Enum)))
-        return TokenKind::Enum;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::Class)))
-        return TokenKind::Class;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::As)))
-        return TokenKind::As;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::SizeOf)))
-        return TokenKind::SizeOf;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::FunKeyword)))
+        return SyntaxKind::FunKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::LetKeyword)))
+        return SyntaxKind::LetKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::StructKeyword)))
+        return SyntaxKind::StructKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::UnionKeyword)))
+        return SyntaxKind::UnionKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::EnumKeyword)))
+        return SyntaxKind::EnumKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::ClassKeyword)))
+        return SyntaxKind::ClassKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::AsKeyword)))
+        return SyntaxKind::AsKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::SizeOfKeyword)))
+        return SyntaxKind::SizeOfKeyword;
 
-    if (StringEquals(identifier, TokenKindToString(TokenKind::LocalPersist)))
-        return TokenKind::LocalPersist;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::Extern)))
-        return TokenKind::Extern;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::IncludeDirective)))
-        return TokenKind::IncludeDirective;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::DefineDirective)))
-        return TokenKind::DefineDirective;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::IfDirective)))
-        return TokenKind::IfDirective;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::EndIfDefinedDirective)))
-        return TokenKind::EndIfDefinedDirective;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::PragmaDirective)))
-        return TokenKind::PragmaDirective;
-    if (StringEquals(identifier, TokenKindToString(TokenKind::Typedef)))
-        return TokenKind::Typedef;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::LocalPersistKeyword)))
+        return SyntaxKind::LocalPersistKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::ExternKeyword)))
+        return SyntaxKind::ExternKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::IncludeDirectiveKeyword)))
+        return SyntaxKind::IncludeDirectiveKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::DefineDirectiveKeyword)))
+        return SyntaxKind::DefineDirectiveKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::IfDirectiveKeyword)))
+        return SyntaxKind::IfDirectiveKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::EndIfDefinedDirectiveKeyword)))
+        return SyntaxKind::EndIfDefinedDirectiveKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::PragmaDirectiveKeyword)))
+        return SyntaxKind::PragmaDirectiveKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::TypedefKeyword)))
+        return SyntaxKind::TypedefKeyword;
 
-    return TokenKind::EndOfFile;
+    return SyntaxKind::EndOfFileToken;
 }
 
-struct Token {
-    TokenKind kind;
-    longint intvalue;      // for integer literals
-    bool intvalueIsHex; // makes the emit more readable
-    String stringValue; // for char and string literals
-    Source source;
-    int sourceStart;
-    int sourceEnd;
-    String sourceString; // for debug purposes
+fun String TokenGetText(SyntaxToken token) {
+    return SourceGetSubstring(token.location.source, token.location.start, token.location.end);
+}
+
+fun SourceLocation TokenGetLocation(SyntaxToken token) {
+    return SourceGetLocationForCharPos(token.location.source, token.location.start);
+}
+
+// -------------------------------------------------------------------------------------------------
+// Expressions 
+
+struct UnaryExpressionSyntax {
+    SyntaxInfo info;
+
+    SyntaxToken operatorToken;
+    SyntaxNode* operand;
 };
 
-fun Token TokenCreateEmpty(Source source) {
-    let Token result;
-    result.kind = TokenKind::EndOfFile;
-    result.intvalue = 0;
-    result.intvalueIsHex = false;
-    result.stringValue = StringCreateEmpty();
-    result.source = source;
-    result.sourceStart = 0;
-    result.sourceEnd = 0;
-    result.sourceString = StringCreateEmpty();
-    return result;
-}
+struct BinaryExpressionSyntax {
+    SyntaxInfo info;
 
-fun String TokenGetText(Token token) {
-    return SourceGetSubstring(token.source, token.sourceStart, token.sourceEnd);
-}
+    SyntaxNode* left;
+    SyntaxToken operatorToken;
+    SyntaxNode* right;
+};
 
-fun SourceLocation TokenGetLocation(Token token) {
-    return SourceGetLocationForCharPos(token.source, token.sourceStart);
+struct ParenthesizedExpressionSyntax {
+    SyntaxInfo info;
+
+    SyntaxToken leftParen;
+    SyntaxNode* expression;
+    SyntaxToken rightParen;
+};
+
+struct PrimitiveLiteralExpressionSyntax {
+    SyntaxInfo info;
+
+    SyntaxToken literalToken;
+};
+
+struct ArrayLiteralExpressionSyntax {
+    SyntaxInfo info;
+
+    SyntaxToken leftBrace;
+    // TODO
+    SyntaxToken rightBrace;
+};
+
+
+// -------------------------------------------------------------------------------------------------
+// Statements 
+
+union SyntaxNode {
+    SyntaxKind kind;
+    SyntaxInfo info;
+
+    SyntaxToken token;
+    UnaryExpressionSyntax unaryExpression;
+    BinaryExpressionSyntax binaryExpression;
+    ParenthesizedExpressionSyntax parenthesizedExpression;
+    PrimitiveLiteralExpressionSyntax primitiveLiteralExpression;
+    ArrayLiteralExpressionSyntax arrayLiteralExpression;
+};
+
+fun SyntaxNode* SyntaxNodeCreate(SyntaxKind kind, SyntaxNode* parent) {
+    let SyntaxNode* node = (as SyntaxNode*) malloc(sizeof(SyntaxNode));
+    assert(node != nullptr);
+    node->info.kind = kind;
+    node->info.parent = parent;
+    return node;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1089,7 +1354,7 @@ struct ASTNode {
     // These are used in a variety of ways by our nodes. For now we can look at what the parser
     // and emitter does to understand how each of these are filled/used until we have something 
     // more useful.
-    Token token;
+    SyntaxToken token;
     ASTNode* left;
     ASTNode* right;
     ASTNode* extra1; // Used by 'while' statements
@@ -1104,7 +1369,7 @@ struct ASTNode {
     ASTNodeArray children;
 };
 
-fun ASTNode* ASTNodeCreate(ASTNodeKind kind, SymbolTable* symbolTable, Token token) {
+fun ASTNode* ASTNodeCreate(ASTNodeKind kind, SymbolTable* symbolTable, SyntaxToken token) {
     let ASTNode* node = (as ASTNode*) malloc(sizeof(ASTNode));
     if (node == nullptr) {
         fprintf(stderr, "Unable to malloc new AST Node");

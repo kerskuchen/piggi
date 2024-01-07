@@ -16,7 +16,7 @@ echo:
 
 
 pushd bin
-cl.exe /W2 /WX /Zi /EHsc /nologo ../piggi.cpp /Fepiggi0 /Fopiggi0
+cl.exe /W2 /WX /Zi /EHsc /nologo ../piggi.c /Fepiggi0 /Fopiggi0
 if %errorlevel% neq 0 (
     popd
     goto :error

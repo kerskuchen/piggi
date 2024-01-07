@@ -58,7 +58,7 @@ fun void Compile(String inputFilepath, String outputFilepath) {
 
     let Parser parser = ParserCreate(source, symbolTable);
     let ASTNode* syntaxTree = ParseGlobalStatements(&parser);
-    if (parser.tokenCur.kind != TokenKind::EndOfFile)
+    if (parser.tokenCur.kind != SyntaxKind::EndOfFileToken)
     {
         ReportError(
             TokenGetLocation(parser.tokenCur),
@@ -76,10 +76,14 @@ fun void Compile(String inputFilepath, String outputFilepath) {
 
 fun void main(int argc, char** argv)
 {
-    if (argc != 3) {
-      fprintf(stderr, "Expects two arguments: <inputfilepath> <outputfilepath>\n");
+    if (argc == 1 || argc % 2 != 1) {
+      fprintf(stderr, "Expects a multiple of two arguments: <inputfilepath> <outputfilepath>\n");
       exit(1);
     }
 
-    Compile(StringCreateFromCStr(argv[1]), StringCreateFromCStr(argv[2]));
+    let int counter = 1;
+    while (counter < argc) {
+      Compile(StringCreateFromCStr(argv[counter]), StringCreateFromCStr(argv[counter + 1]));
+      counter += 2;
+    }
 }

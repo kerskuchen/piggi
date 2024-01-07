@@ -27,19 +27,33 @@ fun SourceFile ReadFileToString(String filepath) {
 
 struct Preprocessor {
     Source source;
+    SourceFileArray seenFiles;
 };
 
 fun Preprocessor PreprocessorCreate() {
     let Preprocessor result;
     result.source = SourceCreateEmpty();
+    result.seenFiles = SourceFileArrayCreate();
     return result;
 }
 
+fun bool PreprocessorSeenFile(Preprocessor* preprocessor, String filepath) {
+    for (let int index = 0; index < preprocessor->seenFiles.count; index += 1) {
+        if (StringEquals(preprocessor->seenFiles.files[index].filepath, filepath)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 fun void PreprocessorPreprocessFile(Preprocessor* preprocessor, String filepath) {
-    if (SourceContainsFile(preprocessor->source, filepath))
+    if (PreprocessorSeenFile(preprocessor, filepath))
         return;
 
     let SourceFile sourceFile = ReadFileToString(filepath);
+    SourceFileArrayPush(&preprocessor->seenFiles, sourceFile);
+
+    // TODO: get rid of all this nonesense
     let Source dummy = SourceCreateEmpty();
     SourceFileArrayPush(&dummy.files, sourceFile);
     dummy.content = sourceFile.content;
@@ -47,23 +61,23 @@ fun void PreprocessorPreprocessFile(Preprocessor* preprocessor, String filepath)
 
     let String result = StringCreateEmpty();
     while (true) {
-        let Token token = NextToken(&scanner);
-        if (token.kind == TokenKind::EndOfFile)
+        let SyntaxToken token = NextToken(&scanner);
+        if (token.kind == SyntaxKind::EndOfFileToken)
             break;
-        if (token.kind != TokenKind::IncludeDirective)
+        if (token.kind != SyntaxKind::IncludeDirectiveKeyword)
             continue;
 
 
         token = NextToken(&scanner);
-        if (token.kind == TokenKind::Less) {
+        if (token.kind == SyntaxKind::LessToken) {
             token = NextToken(&scanner); // ex. stdio
             token = NextToken(&scanner); // .
-            assert(token.kind == TokenKind::Dot);
+            assert(token.kind == SyntaxKind::DotToken);
             token = NextToken(&scanner); // ex. hpp
             token = NextToken(&scanner); // >
-            assert(token.kind == TokenKind::Greater);
-        } else if (token.kind == TokenKind::StringLiteral) {
-            PreprocessorPreprocessFile(preprocessor, token.stringValue);
+            assert(token.kind == SyntaxKind::GreaterToken);
+        } else if (token.kind == SyntaxKind::StringLiteralToken) {
+            PreprocessorPreprocessFile(preprocessor, token.stringValueWithoutQuotes);
         } else {
             ReportError(
                 TokenGetLocation(token),
