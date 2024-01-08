@@ -1,7 +1,16 @@
 #include "parser.cpp"
+#include "parser2.cpp"
 #include "emitter.cpp"
 #include "preprocessor.cpp"
-#include "binder.cpp"
+// #include "binder.cpp"
+
+// #if 0
+// import "parser.cpp"
+// import "parser2.cpp"
+// import "emitter.cpp"
+// import "preprocessor.cpp"
+// import "binder.cpp"
+// #endif
 
 /*
 TODO:
@@ -67,11 +76,22 @@ fun void Compile(String inputFilepath, String outputFilepath) {
         );
     }
 
-    let Binder binder = BinderCreate(source, syntaxTree);
-    let ASTNode* boundTree = BinderBindTree(&binder);
+    let Parser2 parser2 = Parser2Create(source, symbolTable);
+    let SyntaxNode* syntaxTree2 = _ParseModule(&parser2);
+    if (parser2.tokenCur.kind != SyntaxKind::EndOfFileToken)
+    {
+        ReportError(
+            TokenGetLocation(parser2.tokenCur),
+            "Expected EOF token after parsing file, instead got '%s'", 
+            TokenKindToString(parser2.tokenCur.kind).cstr
+        );
+    }
+
+    // let Binder binder = BinderCreate(source, syntaxTree);
+    // let ASTNode* boundTree = BinderBindTree(&binder);
 
     let Emitter emitter = EmitterCreate(outputFilepath);
-    EmitRoot(&emitter, boundTree);
+    EmitRoot(&emitter, syntaxTree);
 }
 
 fun void main(int argc, char** argv)

@@ -1,4 +1,7 @@
 #include "definitions.hpp"
+// #if 0
+// import "definitions.hpp"
+// #endif
 
 fun SourceFile ReadFileToString(String filepath) {
     let char* buffer = nullptr;

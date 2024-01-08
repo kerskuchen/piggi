@@ -1,4 +1,7 @@
 #include "definitions.hpp"
+// #if 0
+// import "definitions.hpp"
+// #endif
 
 struct Emitter {
     FILE* outFile;
@@ -82,7 +85,15 @@ fun void EmitUnaryExpression(Emitter* emitter, ASTNode* node) {
 
 fun void EmitBinaryExpression(Emitter* emitter, ASTNode* node) {
     EmitExpression(emitter, node->left);
-    fprintf(emitter->outFile, " %s ", TokenKindToString(node->token.kind).cstr);
+    let SyntaxToken token;
+    if (node->syntax == nullptr) {
+        token = node->token;
+    } else {
+        assert(node->syntax->kind == SyntaxKind::BinaryExpression);
+        let BinaryExpressionSyntax* syntax = (as BinaryExpressionSyntax*)node->syntax;
+        token = syntax->operatorToken;
+    }
+    fprintf(emitter->outFile, " %s ", TokenKindToString(token.kind).cstr);
     EmitExpression(emitter, node->right);
 }
 
@@ -114,9 +125,17 @@ fun void EmitCharacterLiteral(Emitter* emitter, ASTNode* node) {
 }
 
 fun void EmitIntegerLiteral(Emitter* emitter, ASTNode* node) {
-    assert(node->token.kind == SyntaxKind::IntegerLiteralToken);
-    if (node->token.intvalueIsHex)
-        fprintf(emitter->outFile, "%s", TokenGetText(node->token).cstr);
+    let SyntaxToken token;
+    if (node->syntax == nullptr) {
+        token = node->token;
+    } else {
+        assert(node->syntax->kind == SyntaxKind::IntegerLiteralExpression);
+        let IntegerLiteralExpressionSyntax* syntax = (as IntegerLiteralExpressionSyntax*)node->syntax;
+        token = syntax->integerLiteral;
+    }
+    assert(token.kind == SyntaxKind::IntegerLiteralToken);
+    if (token.intvalueIsHex)
+        fprintf(emitter->outFile, "%s", TokenGetText(token).cstr);
     else
         fprintf(emitter->outFile, "%lld", node->intvalue);
 }
