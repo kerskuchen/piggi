@@ -2,7 +2,7 @@
 #include "parser2.cpp"
 #include "emitter.cpp"
 #include "preprocessor.cpp"
-// #include "binder.cpp"
+#include "binder.cpp"
 
 // #if 0
 // import "parser.cpp"
@@ -15,6 +15,8 @@
 /*
 TODO:
 
+* token create empty vs token create missing
+* make let and letpersist keywords instead of let + localpersist
 * test extern things more thorougly (structs/unions, enums, functions and also global variables)
 * introduce concept of truthyness for logical operators || && and conditions like in if, while, for
 * debugging facilities like dumping AST and SymbolTable
@@ -76,22 +78,18 @@ fun void Compile(String inputFilepath, String outputFilepath) {
         );
     }
 
-    let Parser2 parser2 = Parser2Create(source, symbolTable);
-    let SyntaxNode* syntaxTree2 = _ParseModule(&parser2);
-    if (parser2.tokenCur.kind != SyntaxKind::EndOfFileToken)
-    {
-        ReportError(
-            TokenGetLocation(parser2.tokenCur),
-            "Expected EOF token after parsing file, instead got '%s'", 
-            TokenKindToString(parser2.tokenCur.kind).cstr
-        );
-    }
-
-    // let Binder binder = BinderCreate(source, syntaxTree);
-    // let ASTNode* boundTree = BinderBindTree(&binder);
-
-    let Emitter emitter = EmitterCreate(outputFilepath);
+    let Emitter emitter = EmitterCreate(StringAppend(outputFilepath, StringCreateFromCStr("old")));
     EmitRoot(&emitter, syntaxTree);
+
+    let Parser2 parser2 = Parser2Create(source);
+    let SyntaxTree* syntaxTree2 = _ParseModule(&parser2);
+
+    let SymbolTable* symbolTable2 = SymbolTableCreate(nullptr);
+    let Binder binder = BinderCreate(source, symbolTable2);
+    let ASTNode* boundTree = BindModule(&binder, syntaxTree2->moduleRoot);
+
+    let Emitter emitter2 = EmitterCreate(outputFilepath);
+    EmitRoot(&emitter2, boundTree);
 }
 
 fun void main(int argc, char** argv)

@@ -158,7 +158,7 @@ fun void EmitNullLiteral(Emitter* emitter, ASTNode* node) {
     fprintf(emitter->outFile, "NULL");
 }
 
-fun void EmitIdentifier(Emitter* emitter, ASTNode* node) {
+fun void EmitNameExpression(Emitter* emitter, ASTNode* node) {
     let String name = node->symbol->name;
     fprintf(emitter->outFile, "%s", name.cstr);
 }
@@ -254,8 +254,8 @@ fun void EmitExpression(Emitter* emitter, ASTNode* node) {
             EmitTernaryConditionalExpression(emitter, node);
             break;
 
-        case ASTNodeKind::Identifier:
-            EmitIdentifier(emitter, node);
+        case ASTNodeKind::NameExpression:
+            EmitNameExpression(emitter, node);
             break;
         case ASTNodeKind::BoolLiteral:
             EmitBoolLiteral(emitter, node);
@@ -462,7 +462,7 @@ fun void EmitVariableDeclarationStatement(Emitter* emitter, ASTNode* node) {
     fprintf(emitter->outFile, ";");
 }
 
-fun void EmitCompoundStatement(Emitter* emitter, ASTNode* node) {
+fun void EmitBlockStatement(Emitter* emitter, ASTNode* node) {
     if (node->children.count == 0) {
         fprintf(emitter->outFile, "{}");
     } else {
@@ -580,7 +580,7 @@ fun void EmitFunctionDefinitionStatement(Emitter* emitter, ASTNode* node) {
     fprintf(emitter->outFile, "static ");
     EmitFunctionDeclarationWithoutTerminator(emitter, node);
     fprintf(emitter->outFile, " ");
-    EmitCompoundStatement(emitter, node->left);
+    EmitBlockStatement(emitter, node->left);
 }
 
 fun void EmitPreamble(Emitter* emitter) {
@@ -676,8 +676,8 @@ fun void EmitStatement(Emitter* emitter, ASTNode* node) {
         case ASTNodeKind::ExpressionStatement:
             EmitExpressionStatement(emitter, node);
             break;
-        case ASTNodeKind::CompoundStatement:
-            EmitCompoundStatement(emitter, node);
+        case ASTNodeKind::BlockStatement:
+            EmitBlockStatement(emitter, node);
             break;
 
         default:
@@ -687,7 +687,7 @@ fun void EmitStatement(Emitter* emitter, ASTNode* node) {
 }
 
 fun void EmitRoot(Emitter* emitter, ASTNode* node) {
-    assert(node->kind == ASTNodeKind::Root);
+    assert(node->kind == ASTNodeKind::Module);
 
     EmitPreamble(emitter);
     for (let int index = 0; index < node->children.count; index += 1) {

@@ -60,7 +60,10 @@ fun void PreprocessorPreprocessFile(Preprocessor* preprocessor, String filepath)
     let Source dummy = SourceCreateEmpty();
     SourceFileArrayPush(&dummy.files, sourceFile);
     dummy.content = sourceFile.content;
-    let Scanner scanner = ScannerCreate(dummy);
+    let SyntaxTree tree;
+    tree.moduleRoot = nullptr;
+    tree.source = dummy;
+    let Scanner scanner = ScannerCreate(&tree);
 
     let String result = StringCreateEmpty();
     while (true) {

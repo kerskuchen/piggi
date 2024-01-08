@@ -360,8 +360,9 @@ enum class SyntaxKind {
     FalseKeyword,
 
     // Declarations
-    FunKeyword,
     LetKeyword,
+    LetLocalPersistKeyword,
+    FunKeyword,
     StructKeyword,
     UnionKeyword,
     EnumKeyword,
@@ -386,7 +387,6 @@ enum class SyntaxKind {
     SizeOfKeyword,
 
     // Storage location
-    LocalPersistKeyword,
     ExternKeyword,
 
     // TODO get rid of these 
@@ -403,15 +403,15 @@ enum class SyntaxKind {
     // Expressions
     UnaryExpression,
     BinaryExpression,
-    FunccallExpression,
+    FuncCallExpression,
     ArrayIndexExpression,
     MemberAccessExpression,
     TypeCastExpression,
     ParenthesizedExpression,
     TernaryConditionalExpression,
-    AssignmentExpression,
     SizeOfExpression,
-    TypeExpression, // TODO: currently used for sizeof expression. lets see if we need this in the long run
+    NameExpression,
+    TypeExpression,
 
     // Literals
     NullLiteralExpression,
@@ -423,7 +423,7 @@ enum class SyntaxKind {
     ArrayLiteralExpression,
 
     // Misc
-    NameExpression,
+    EnumMemberClauseSyntax,
 
     // Statements
     BlockStatement,
@@ -439,9 +439,7 @@ enum class SyntaxKind {
     SwitchStatement,
     CaseStatement,
     DefaultStatement,
-
     VariableDeclarationStatement,
-    ArrayDeclarationStatement,
 
     // Module
     Module,
@@ -456,10 +454,15 @@ enum class SyntaxKind {
 };
 
 union SyntaxNode;
+struct ModuleStatementSyntax;
+
+struct SyntaxTree {
+    Source source;
+    ModuleStatementSyntax* moduleRoot;
+};
 struct SyntaxInfo {
     SyntaxKind kind;
-    // TODO: Add syntaxtree here which contains the source and an array of child->parent links
-    SyntaxNode* parent;
+    SyntaxTree* tree;
 };
 
 struct SyntaxNodeArray {
@@ -541,7 +544,7 @@ fun int SyntaxTriviaArrayPush(SyntaxTriviaArray* array, SyntaxTrivia node) {
 struct SyntaxToken
 {
     SyntaxKind kind;
-    SyntaxNode* parent;
+    SyntaxTree* tree;
     SourceLocation2 location;
 
     SyntaxTriviaArray leadingTrivia;
@@ -554,12 +557,12 @@ struct SyntaxToken
     String debugString;
 };
 
-fun SyntaxToken SyntaxTokenCreateEmpty(Source source) {
+fun SyntaxToken SyntaxTokenCreateEmpty(SyntaxTree* tree) {
     let SyntaxToken result;
     result.kind = SyntaxKind::BadToken;
-    result.parent = nullptr;
+    result.tree = tree;
 
-    result.location.source = source;
+    result.location.source = tree->source;
     result.location.start = 0;
     result.location.end = 0;
 
@@ -732,6 +735,8 @@ fun String TokenKindToString(SyntaxKind kind) {
 
         case SyntaxKind::LetKeyword:
             return StringCreateFromCStr("let");
+        case SyntaxKind::LetLocalPersistKeyword:
+            return StringCreateFromCStr("letpersist");
         case SyntaxKind::FunKeyword:
             return StringCreateFromCStr("fun");
         case SyntaxKind::StructKeyword:
@@ -745,8 +750,6 @@ fun String TokenKindToString(SyntaxKind kind) {
         case SyntaxKind::ImportKeyword:
             return StringCreateFromCStr("import");
 
-        case SyntaxKind::LocalPersistKeyword:
-            return StringCreateFromCStr("localpersist");
         case SyntaxKind::ExternKeyword:
             return StringCreateFromCStr("extern");
         case SyntaxKind::IncludeDirectiveKeyword:
@@ -826,6 +829,8 @@ fun SyntaxKind GetKeywordForIdentifier(String identifier) {
         return SyntaxKind::FunKeyword;
     if (StringEquals(identifier, TokenKindToString(SyntaxKind::LetKeyword)))
         return SyntaxKind::LetKeyword;
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind::LetLocalPersistKeyword)))
+        return SyntaxKind::LetLocalPersistKeyword;
     if (StringEquals(identifier, TokenKindToString(SyntaxKind::StructKeyword)))
         return SyntaxKind::StructKeyword;
     if (StringEquals(identifier, TokenKindToString(SyntaxKind::UnionKeyword)))
@@ -837,8 +842,6 @@ fun SyntaxKind GetKeywordForIdentifier(String identifier) {
     if (StringEquals(identifier, TokenKindToString(SyntaxKind::ImportKeyword)))
         return SyntaxKind::ImportKeyword;
 
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind::LocalPersistKeyword)))
-        return SyntaxKind::LocalPersistKeyword;
     if (StringEquals(identifier, TokenKindToString(SyntaxKind::ExternKeyword)))
         return SyntaxKind::ExternKeyword;
     if (StringEquals(identifier, TokenKindToString(SyntaxKind::IncludeDirectiveKeyword)))
@@ -992,20 +995,12 @@ struct TernaryConditionalExpressionSyntax {
     SyntaxNode* elseExpression;
 };
 
-struct AssignmentExpressionSyntax {
-    SyntaxInfo info;
-
-    SyntaxNode* left;
-    SyntaxToken assignmentOperator;
-    SyntaxNode* right;
-};
-
 struct SizeofExpressionSyntax {
     SyntaxInfo info;
 
     SyntaxToken sizeofKeyword;
     SyntaxToken leftParen;
-    SyntaxNode* typeExpreesion;
+    SyntaxNode* typeExpression;
     SyntaxToken rightParen;
 };
 
@@ -1137,31 +1132,17 @@ struct VariableDeclarationStatementSyntax {
     SyntaxInfo info;
 
     SyntaxToken letKeyword;
-    SyntaxToken localpersistKeyword;
     SyntaxNode* typeExpression;
     SyntaxToken identifier;
 
-    // NOTE: Until here this matches up with `ArrayVariableDeclarationStatementSyntax`
-    SyntaxToken equalsToken;
-    SyntaxNode* initializerExpression;
-    SyntaxToken semicolon;
-};
-
-struct ArrayVariableDeclarationStatementSyntax {
-    SyntaxInfo info;
-
-    SyntaxToken letKeyword;
-    SyntaxToken localpersistKeyword;
-    SyntaxNode* typeExpression;
-    SyntaxToken identifier;
-
-    // NOTE: Until here this matches up with `ArrayVariableDeclarationStatementSyntax`
+    // NOTE: These three are optional
     SyntaxToken leftBracket;
     SyntaxToken arraySizeLiteral;
     SyntaxToken rightBracket;
+    
     SyntaxToken equalsToken;
     SyntaxNode* initializerExpression;
-    SyntaxToken semicolon;
+    SyntaxToken terminatorToken;
 };
 
 // -------------------------------------------------------------------------------------------------
@@ -1187,6 +1168,15 @@ struct GlobalVariableStatementSyntax {
     SyntaxNode* variableDeclarationStatement;
 };
 
+struct EnumMemberClauseSyntax {
+    SyntaxInfo info;
+
+    SyntaxToken identifier;
+    SyntaxToken equals;
+    SyntaxToken integerLiteral;
+    SyntaxToken comma;
+};
+
 struct EnumDeclarationStatementSyntax {
     SyntaxInfo info;
 
@@ -1209,7 +1199,7 @@ struct EnumDefinitionStatementSyntax {
 
     // NOTE: Until here this matches up with `EnumDeclarationStatementSyntax`
     SyntaxToken leftBrace;
-    SyntaxNodeArray membersAndValuesWithSeparators;
+    SyntaxNodeArray memberClauses;
     SyntaxToken rightBrace;
     SyntaxToken semicolon;
 };
@@ -1239,6 +1229,15 @@ struct StructOrUnionDefinitionStatementSyntax {
     SyntaxToken semicolon;
 };
 
+struct FunctionParameterClauseSyntax {
+    SyntaxInfo info;
+
+    SyntaxNode* typeExpression;
+    SyntaxToken identifier;
+    SyntaxToken comma;
+    SyntaxToken dotdot;
+};
+
 struct FunctionDeclarationStatementSyntax {
     SyntaxInfo info;
 
@@ -1248,7 +1247,7 @@ struct FunctionDeclarationStatementSyntax {
     SyntaxToken identifier;
 
     SyntaxToken leftParen;
-    SyntaxNodeArray parameterDeclarationsWithSeparators;
+    SyntaxNodeArray params;
     SyntaxToken rightParen;
 
     // NOTE: Until here this matches up with `FunctionDefinitionStatementSyntax`
@@ -1264,7 +1263,7 @@ struct FunctionDefinitionStatementSyntax {
     SyntaxToken identifier;
 
     SyntaxToken leftParen;
-    SyntaxNodeArray parameterDeclarationsWithSeparators;
+    SyntaxNodeArray params;
     SyntaxToken rightParen;
 
     // NOTE: Until here this matches up with `FunctionDeclarationStatementSyntax`
@@ -1299,7 +1298,6 @@ union SyntaxNode {
     MemberAccessExpressionSyntax memberAccessExpr; 
     TypeCastExpressionSyntax typeCastExpr; 
     TernaryConditionalExpressionSyntax ternaryConditionalExpr; 
-    AssignmentExpressionSyntax assignmentExpr; 
     SizeofExpressionSyntax sizeofExpr; 
     TypeExpressionSyntax typeExpr; 
 
@@ -1317,7 +1315,9 @@ union SyntaxNode {
     CaseStatementSyntax caseStmt; 
     DefaultStatementSyntax defaultStmt; 
     VariableDeclarationStatementSyntax variableDeclarationStmt; 
-    ArrayVariableDeclarationStatementSyntax arrayVariableDeclarationStmt; 
+
+    // Helper clauses
+    EnumMemberClauseSyntax enumMember;
 
     // Module 
     ModuleStatementSyntax moduleStmt; 
@@ -1331,11 +1331,11 @@ union SyntaxNode {
     FunctionDefinitionStatementSyntax functionDefinitionStmt; 
 };
 
-fun SyntaxNode* SyntaxNodeCreate(SyntaxKind kind) {
+fun SyntaxNode* SyntaxNodeCreate(SyntaxKind kind, SyntaxTree* tree) {
     let SyntaxNode* node = (as SyntaxNode*) malloc(sizeof(SyntaxNode));
     assert(node != nullptr);
     node->info.kind = kind;
-    node->info.parent = nullptr;
+    node->info.tree = tree;
     return node;
 }
 
@@ -1673,6 +1673,7 @@ enum class ASTNodeKind {
     GreaterEquals,
 
     // Expressions
+    NameExpression,
     FunccallExpression,
     Arrayindexing,
     Memberaccess,
@@ -1691,11 +1692,8 @@ enum class ASTNodeKind {
     EnumValueLiteral,
     ArrayLiteral,
 
-    // Misc
-    Identifier,
-
     // Statements
-    CompoundStatement,
+    BlockStatement,
     ExpressionStatement,
 
     IfStatement,
@@ -1721,7 +1719,7 @@ enum class ASTNodeKind {
     ArrayDeclarationStatement,
 
     // Contains global function- and variable declarations
-    Root,
+    Module,
 };
 
 struct ASTNode;
@@ -1784,7 +1782,7 @@ struct ASTNode {
     longint intvalue;     // For ASTNodeKind::Integerliteral and ASTNodeKind::IntegerliteralHex
     String stringvalue;      // For ASTNodeKind::Stringliteral
     Symbol* symbol;         // For variable/function declarations
-    // For ASTNodeKind::CompoundStatement, ASTNodeKind::FunccallExpression arguments, 
+    // For ASTNodeKind::BlockStatement, ASTNodeKind::FunccallExpression arguments, 
     // and ASTNodeKind::SwitchStatement
     ASTNodeArray children;
 };

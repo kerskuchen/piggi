@@ -4,7 +4,7 @@
             "name": "build and debug",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}\\bin\\piggi.exe",
+            "program": "${workspaceFolder}\\bin\\piggi1.exe",
             "args": ["test.cpp", "bin\\test.c", "piggi.cpp", "bin\\piggi.c"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

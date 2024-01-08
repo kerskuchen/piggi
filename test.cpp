@@ -618,7 +618,7 @@ fun void TestSizeof() {
 }
 
 fun int LocalPersistFunc() {
-    let localpersist int s_counter = 0;
+    letpersist int s_counter = 0;
     let int result = s_counter;
     s_counter += 1;
     return result;

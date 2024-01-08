@@ -6,8 +6,8 @@
 // #endif
 
 struct Parser2 {
-    Source source;
     Scanner scanner;
+    SyntaxTree* tree;
     SyntaxToken tokenPrev;
     SyntaxToken tokenCur;
     SyntaxToken tokenNext;
@@ -18,11 +18,15 @@ struct Parser2 {
     int functionLevel;
 };
 
-fun Parser2 Parser2Create(Source source, SymbolTable* symbolTable) {
+fun Parser2 Parser2Create(Source source) {
+    let SyntaxTree* tree = (as SyntaxTree*)malloc(sizeof(SyntaxTree));
+    tree->source = source;
+    tree->moduleRoot = nullptr; // Will be set `_ParseModule(..)`
+
     let Parser2 result;
-    result.source = source;
-    result.scanner = ScannerCreate(source);
-    result.tokenPrev = SyntaxTokenCreateEmpty(source);
+    result.tree = tree;
+    result.scanner = ScannerCreate(tree);
+    result.tokenPrev = SyntaxTokenCreateEmpty(tree);
     result.tokenCur = NextToken(&result.scanner);
     result.tokenNext = NextToken(&result.scanner);
     result.tokenNextAfter = NextToken(&result.scanner);
@@ -57,6 +61,12 @@ fun SyntaxToken _MatchAndAdvanceToken(Parser2* parser, SyntaxKind kind) {
     exit(1);
 }
 
+fun SyntaxNode* WrapTokenInNode(Parser2* parser, SyntaxToken token) {
+    let SyntaxNode* wrapper = SyntaxNodeCreate(token.kind, parser->tree);
+    wrapper->token = token;
+    return wrapper;
+}
+
 fun SyntaxNode* _ParseStatement(Parser2* parser);
 fun SyntaxNode* _ParseExpression(Parser2* parser);
 fun SyntaxNode* _ParseBinaryExpression(Parser2* parser, int parentPrecedence);
@@ -85,16 +95,16 @@ fun SyntaxNode* _ParseTypeExpression(Parser2* parser) {
             );
     }
 
-    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::TypeExpression);
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::TypeExpression, parser->tree);
     result->typeExpr.typeTokens = SyntaxNodeArrayCreate();
 
     let SyntaxToken identifier = _AdvanceToken(parser);
-    let SyntaxNode* identifierWrapper = SyntaxNodeCreate(identifier.kind);
+    let SyntaxNode* identifierWrapper = WrapTokenInNode(parser, identifier);
     SyntaxNodeArrayPush(&result->typeExpr.typeTokens, identifierWrapper);
 
     while (parser->tokenCur.kind == SyntaxKind::StarToken) {
         let SyntaxToken star = _AdvanceToken(parser);
-        let SyntaxNode* starWrapper = SyntaxNodeCreate(star.kind);
+        let SyntaxNode* starWrapper = WrapTokenInNode(parser, star);
         SyntaxNodeArrayPush(&result->typeExpr.typeTokens, starWrapper);
     }
 
@@ -102,7 +112,7 @@ fun SyntaxNode* _ParseTypeExpression(Parser2* parser) {
 }
 
 fun SyntaxNode* _ParseFunctionCallExpression(Parser2* parser, SyntaxNode* func) {
-    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::FunccallExpression);
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::FuncCallExpression, parser->tree);
     result->funcCallExpr.func = func;
     result->funcCallExpr.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
 
@@ -113,8 +123,7 @@ fun SyntaxNode* _ParseFunctionCallExpression(Parser2* parser, SyntaxNode* func) 
         
         if (parser->tokenCur.kind == SyntaxKind::CommaToken) {
             let SyntaxToken comma = _MatchAndAdvanceToken(parser, SyntaxKind::CommaToken);
-            let SyntaxNode* commaWrapper = SyntaxNodeCreate(comma.kind);
-            commaWrapper->token = comma;
+            let SyntaxNode* commaWrapper = WrapTokenInNode(parser, comma);
             SyntaxNodeArrayPush(&result->funcCallExpr.argumentsWithSeparators, commaWrapper);
         } else {
             break;
@@ -125,7 +134,7 @@ fun SyntaxNode* _ParseFunctionCallExpression(Parser2* parser, SyntaxNode* func) 
 }
 
 fun SyntaxNode* _ParseArrayIndexingExpression(Parser2* parser, SyntaxNode* arr) {
-    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::ArrayIndexExpression);
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::ArrayIndexExpression, parser->tree);
     result->arrayIndexExpr.arr = arr;
     result->arrayIndexExpr.leftBracket = _MatchAndAdvanceToken(parser, SyntaxKind::LeftBracketToken);
     result->arrayIndexExpr.indexExpression = _ParseExpression(parser);
@@ -134,7 +143,7 @@ fun SyntaxNode* _ParseArrayIndexingExpression(Parser2* parser, SyntaxNode* arr) 
 }
 
 fun SyntaxNode* _ParseMemberAccess(Parser2* parser, SyntaxNode* container) {
-    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::MemberAccessExpression);
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::MemberAccessExpression, parser->tree);
     result->memberAccessExpr.container = container;
     if (parser->tokenCur.kind == SyntaxKind::ArrowToken) 
         result->memberAccessExpr.accessToken = _MatchAndAdvanceToken(parser, SyntaxKind::ArrowToken);
@@ -145,7 +154,7 @@ fun SyntaxNode* _ParseMemberAccess(Parser2* parser, SyntaxNode* container) {
 }
 
 fun SyntaxNode* _ParseEnumLiteralExpression(Parser2* parser) {
-    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::EnumValueLiteralExpression);
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::EnumValueLiteralExpression, parser->tree);
     result->enumLiteralExpr.enumIdentifier = _MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
     result->enumLiteralExpr.coloncolon = _MatchAndAdvanceToken(parser, SyntaxKind::ColonColonToken);
     result->enumLiteralExpr.valueIdentifier = _MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
@@ -155,17 +164,17 @@ fun SyntaxNode* _ParseEnumLiteralExpression(Parser2* parser) {
 fun SyntaxNode* _ParsePrimaryExpression(Parser2* parser) {
     switch (parser->tokenCur.kind) {
         case SyntaxKind::LeftParenToken: {
-            let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::ParenthesizedExpression);
+            let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::ParenthesizedExpression, parser->tree);
             result->parenthesizedExpr.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
             result->parenthesizedExpr.expression = _ParseExpression(parser);
             result->parenthesizedExpr.rightParen = _MatchAndAdvanceToken(parser, SyntaxKind::RightParenToken);
             return result;
         }
         case SyntaxKind::SizeOfKeyword: {
-            let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::SizeOfExpression);
+            let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::SizeOfExpression, parser->tree);
             result->sizeofExpr.sizeofKeyword = _MatchAndAdvanceToken(parser, SyntaxKind::SizeOfKeyword);
             result->sizeofExpr.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
-            result->sizeofExpr.typeExpreesion = _ParseTypeExpression(parser);
+            result->sizeofExpr.typeExpression = _ParseTypeExpression(parser);
             result->sizeofExpr.rightParen = _MatchAndAdvanceToken(parser, SyntaxKind::RightParenToken);
             return result;
         }
@@ -173,40 +182,39 @@ fun SyntaxNode* _ParsePrimaryExpression(Parser2* parser) {
             if (parser->tokenNext.kind == SyntaxKind::ColonColonToken)
                 return _ParseEnumLiteralExpression(parser);
 
-            let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::NameExpression);
+            let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::NameExpression, parser->tree);
             result->nameExpr.identifier = _MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
             return result;
         }
         case SyntaxKind::StringLiteralToken: {
-            let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::StringLiteralExpression);
+            let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::StringLiteralExpression, parser->tree);
             result->stringLiteralExpr.stringLiteralTokens = SyntaxNodeArrayCreate();
             while (parser->tokenCur.kind == SyntaxKind::StringLiteralToken) {
                 let SyntaxToken literal = _MatchAndAdvanceToken(parser, SyntaxKind::StringLiteralToken);
-                let SyntaxNode* literalWrapper = SyntaxNodeCreate(literal.kind);
-                literalWrapper->token = literal;
+                let SyntaxNode* literalWrapper = WrapTokenInNode(parser, literal);
                 SyntaxNodeArrayPush(&result->stringLiteralExpr.stringLiteralTokens, literalWrapper);
             }
             return result;
         }
         case SyntaxKind::NullKeyword: {
-            let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::NullLiteralExpression);
+            let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::NullLiteralExpression, parser->tree);
             result->nullLiteralExpr.nullLiteral = _MatchAndAdvanceToken(parser, SyntaxKind::NullKeyword);
             return result;
         }
         case SyntaxKind::CharacterLiteralToken: {
-            let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::CharacterLiteralExpression);
+            let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::CharacterLiteralExpression, parser->tree);
             result->characterLiteralExpr.characterLiteral = _MatchAndAdvanceToken(parser, SyntaxKind::CharacterLiteralToken);
             return result;
         }
         case SyntaxKind::FalseKeyword:
         case SyntaxKind::TrueKeyword: {
-            let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::BoolLiteralExpression);
+            let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::BoolLiteralExpression, parser->tree);
             result->boolLiteralExpr.boolLiteral = _AdvanceToken(parser);
             return result;
         }
         case SyntaxKind::IntegerLiteralToken:
         default: {
-            let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::IntegerLiteralExpression);
+            let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::IntegerLiteralExpression, parser->tree);
             result->integerLiteralExpr.integerLiteral = _MatchAndAdvanceToken(parser, SyntaxKind::IntegerLiteralToken);
             return result;
         }
@@ -214,7 +222,7 @@ fun SyntaxNode* _ParsePrimaryExpression(Parser2* parser) {
 }
 
 fun SyntaxNode* _ParseArrayLiteralExpression(Parser2* parser) { 
-    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::ArrayLiteralExpression);
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::ArrayLiteralExpression, parser->tree);
     result->arrayLiteralExpr.leftBrace = _MatchAndAdvanceToken(parser, SyntaxKind::LeftBraceToken);
 
     result->arrayLiteralExpr.elemsWithSeparators = SyntaxNodeArrayCreate();
@@ -223,8 +231,7 @@ fun SyntaxNode* _ParseArrayLiteralExpression(Parser2* parser) {
         SyntaxNodeArrayPush(&result->arrayLiteralExpr.elemsWithSeparators, expression);
         if (parser->tokenCur.kind == SyntaxKind::CommaToken) {
             let SyntaxToken comma = _MatchAndAdvanceToken(parser, SyntaxKind::CommaToken);
-            let SyntaxNode* commaWrapper = SyntaxNodeCreate(comma.kind);
-            commaWrapper->token = comma;
+            let SyntaxNode* commaWrapper = WrapTokenInNode(parser, comma);
             SyntaxNodeArrayPush(&result->arrayLiteralExpr.elemsWithSeparators, commaWrapper);
         } else {
             break;
@@ -261,7 +268,7 @@ fun SyntaxNode* _ParseCastExpression(Parser2* parser) {
     if (parser->tokenCur.kind != SyntaxKind::LeftParenToken || parser->tokenNext.kind != SyntaxKind::AsKeyword)
         return _ParsePostFixExpression(parser);
 
-    let SyntaxNode* result =  SyntaxNodeCreate(SyntaxKind::TypeCastExpression);
+    let SyntaxNode* result =  SyntaxNodeCreate(SyntaxKind::TypeCastExpression, parser->tree);
     result->typeCastExpr.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
     result->typeCastExpr.asKeyword = _MatchAndAdvanceToken(parser, SyntaxKind::AsKeyword);
     result->typeCastExpr.targetTypeExpression = _ParseTypeExpression(parser);
@@ -274,7 +281,7 @@ fun SyntaxNode* _ParseUnaryExpression(Parser2* parser, int parentPrecedence) {
     let SyntaxNode* left = nullptr;
     let int unaryOperatorPrecedence = GetUnaryOperatorPrecedence(parser->tokenCur.kind);
     if ((unaryOperatorPrecedence != 0) && (unaryOperatorPrecedence >= parentPrecedence)) {
-        let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::UnaryExpression);
+        let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::UnaryExpression, parser->tree);
         result->unaryExpr.operatorToken = _AdvanceToken(parser);
         result->unaryExpr.operand = _ParseBinaryExpression(parser, unaryOperatorPrecedence);
         left = result;
@@ -294,7 +301,7 @@ fun SyntaxNode* _ParseBinaryExpression(Parser2* parser, int parentPrecedence) {
          || precedence == parentPrecedence && !IsBinaryOperatorRightAssociative(parser->tokenCur.kind)) {
             break;
         }
-        let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::BinaryExpression);
+        let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::BinaryExpression, parser->tree);
         result->binaryExpr.left = left;
         result->binaryExpr.operatorToken = _AdvanceToken(parser);
         result->binaryExpr.right = _ParseBinaryExpression(parser, precedence);
@@ -307,7 +314,7 @@ fun SyntaxNode* _ParseTernaryConditionExpression(Parser2* parser) {
     let SyntaxNode* left = _ParseBinaryExpression(parser, 0);
 
     if (parser->tokenCur.kind == SyntaxKind::QuestionmarkToken) {
-        let SyntaxNode* ternary = SyntaxNodeCreate(SyntaxKind::TernaryConditionalExpression);
+        let SyntaxNode* ternary = SyntaxNodeCreate(SyntaxKind::TernaryConditionalExpression, parser->tree);
         ternary->ternaryConditionalExpr.conditionExpression = left;
         ternary->ternaryConditionalExpr.questionmark = _MatchAndAdvanceToken(parser, SyntaxKind::QuestionmarkToken);
         ternary->ternaryConditionalExpr.thenExpression = _ParseTernaryConditionExpression(parser);
@@ -334,10 +341,10 @@ fun SyntaxNode* _ParseAssignmentExpression(Parser2* parser) {
         case SyntaxKind::LessLessEqualsToken:
         case SyntaxKind::GreaterGreaterEqualsToken:
         {
-            let SyntaxNode* assignment = SyntaxNodeCreate(SyntaxKind::AssignmentExpression);
-            assignment->assignmentExpr.left = left;
-            assignment->assignmentExpr.assignmentOperator = _AdvanceToken(parser);
-            assignment->assignmentExpr.right = _ParseAssignmentExpression(parser);
+            let SyntaxNode* assignment = SyntaxNodeCreate(SyntaxKind::BinaryExpression, parser->tree);
+            assignment->binaryExpr.left = left;
+            assignment->binaryExpr.operatorToken = _AdvanceToken(parser);
+            assignment->binaryExpr.right = _ParseAssignmentExpression(parser);
             return assignment;
         } 
     }
@@ -352,56 +359,66 @@ fun SyntaxNode* _ParseExpression(Parser2* parser) {
 // Statements
 
 fun SyntaxNode* _ParseExpressionStatement(Parser2* parser) {
-    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::ExpressionStatement);
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::ExpressionStatement, parser->tree);
     result->expressionStmt.expression = _ParseExpression(parser);
     result->expressionStmt.semicolon = _MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
     return result;
 }
 
-fun SyntaxNode* _ParseVariableDefinitionStatement(Parser2* parser, bool skipLet) {
-    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::VariableDeclarationStatement);
-    if (skipLet)
-        result->variableDeclarationStmt.letKeyword = SyntaxTokenCreateEmpty(parser->source);
-    else 
-        result->variableDeclarationStmt.letKeyword = _MatchAndAdvanceToken(parser, SyntaxKind::LetKeyword);
-    if (parser->tokenCur.kind == SyntaxKind::LocalPersistKeyword) 
-        result->variableDeclarationStmt.localpersistKeyword = _MatchAndAdvanceToken(parser, SyntaxKind::LocalPersistKeyword);
-    else
-        result->variableDeclarationStmt.localpersistKeyword = SyntaxTokenCreateEmpty(parser->source);
+fun SyntaxNode* _ParseVariableDefinitionStatement(Parser2* parser, bool skipLet, bool allowInitializer, SyntaxKind terminator) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::VariableDeclarationStatement, parser->tree);
+
+    if (skipLet) {
+        result->variableDeclarationStmt.letKeyword = SyntaxTokenCreateEmpty(parser->tree);
+    } else {
+        if (parser->tokenCur.kind == SyntaxKind::LetLocalPersistKeyword) 
+            result->variableDeclarationStmt.letKeyword = _MatchAndAdvanceToken(parser, SyntaxKind::LetLocalPersistKeyword);
+        else
+            result->variableDeclarationStmt.letKeyword = _MatchAndAdvanceToken(parser, SyntaxKind::LetKeyword);
+    }
+
     result->variableDeclarationStmt.typeExpression = _ParseTypeExpression(parser);
     result->variableDeclarationStmt.identifier = _MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
 
     if (parser->tokenCur.kind == SyntaxKind::LeftBracketToken) {
         // Array definition
-        result->kind = SyntaxKind::ArrayDeclarationStatement;
-        let longint arrayElementCount = -1;
-        result->arrayVariableDeclarationStmt.leftBracket = _MatchAndAdvanceToken(parser, SyntaxKind::LeftBracketToken);
+        result->variableDeclarationStmt.leftBracket = _MatchAndAdvanceToken(parser, SyntaxKind::LeftBracketToken);
         if (parser->tokenCur.kind == SyntaxKind::IntegerLiteralToken)
-            result->arrayVariableDeclarationStmt.arraySizeLiteral = _MatchAndAdvanceToken(parser, SyntaxKind::IntegerLiteralToken);
-        else 
-            result->arrayVariableDeclarationStmt.arraySizeLiteral = SyntaxTokenCreateEmpty(parser->source);
-        result->arrayVariableDeclarationStmt.rightBracket = _MatchAndAdvanceToken(parser, SyntaxKind::RightBracketToken);
+            result->variableDeclarationStmt.arraySizeLiteral = _MatchAndAdvanceToken(parser, SyntaxKind::IntegerLiteralToken);
+        result->variableDeclarationStmt.rightBracket = _MatchAndAdvanceToken(parser, SyntaxKind::RightBracketToken);
 
-        if (parser->tokenCur.kind == SyntaxKind::EqualsToken) {
+        if (parser->tokenCur.kind == SyntaxKind::EqualsToken && allowInitializer) {
             result->variableDeclarationStmt.equalsToken = _MatchAndAdvanceToken(parser, SyntaxKind::EqualsToken);
-            result->arrayVariableDeclarationStmt.initializerExpression = _ParseArrayLiteralExpression(parser);
-        } 
-        result->arrayVariableDeclarationStmt.semicolon = _MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
-        return result;
+            result->variableDeclarationStmt.initializerExpression = _ParseArrayLiteralExpression(parser);
+        } else {
+            result->variableDeclarationStmt.equalsToken = SyntaxTokenCreateEmpty(parser->tree);
+            result->variableDeclarationStmt.initializerExpression = nullptr;
+        }
     } else {
         // Regular non-array variable
+        result->variableDeclarationStmt.leftBracket = SyntaxTokenCreateEmpty(parser->tree);
+        result->variableDeclarationStmt.arraySizeLiteral = SyntaxTokenCreateEmpty(parser->tree);
+        result->variableDeclarationStmt.rightBracket = SyntaxTokenCreateEmpty(parser->tree);
 
-        if (parser->tokenCur.kind == SyntaxKind::EqualsToken) {
+        if (parser->tokenCur.kind == SyntaxKind::EqualsToken && allowInitializer) {
             result->variableDeclarationStmt.equalsToken = _MatchAndAdvanceToken(parser, SyntaxKind::EqualsToken);
             result->variableDeclarationStmt.initializerExpression = _ParseExpression(parser);
-        } 
-        result->variableDeclarationStmt.semicolon = _MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
-        return result;
+        } else {
+            result->variableDeclarationStmt.equalsToken = SyntaxTokenCreateEmpty(parser->tree);
+            result->variableDeclarationStmt.initializerExpression = nullptr;
+        }
     }
+
+    if (terminator == SyntaxKind::BadToken) 
+        result->variableDeclarationStmt.terminatorToken = SyntaxTokenCreateEmpty(parser->tree);
+    else
+        result->variableDeclarationStmt.terminatorToken = _MatchAndAdvanceToken(parser, terminator);
+
+    return result;
 }
 
 fun SyntaxNode* _ParseIfStatement(Parser2* parser) {
-    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::IfStatement);
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::IfStatement, parser->tree);
     result->ifStmt.ifKeyword = _MatchAndAdvanceToken(parser, SyntaxKind::IfKeyword);
     result->ifStmt.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
     result->ifStmt.condition = _ParseExpression(parser);
@@ -409,7 +426,7 @@ fun SyntaxNode* _ParseIfStatement(Parser2* parser) {
 
     result->ifStmt.thenBlock = _ParseStatement(parser);
     result->ifStmt.elseBlock = nullptr;
-    result->ifStmt.elseKeyword = SyntaxTokenCreateEmpty(parser->source);
+    result->ifStmt.elseKeyword = SyntaxTokenCreateEmpty(parser->tree);
     if (parser->tokenCur.kind == SyntaxKind::ElseKeyword) {
         result->ifStmt.elseKeyword = _MatchAndAdvanceToken(parser, SyntaxKind::ElseKeyword);
         result->ifStmt.elseBlock = _ParseStatement(parser);
@@ -418,7 +435,7 @@ fun SyntaxNode* _ParseIfStatement(Parser2* parser) {
 }
 
 fun SyntaxNode* _ParseWhileStatement(Parser2* parser) {
-    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::WhileStatement);
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::WhileStatement, parser->tree);
     result->whileStmt.whileKeyword = _MatchAndAdvanceToken(parser, SyntaxKind::WhileKeyword);
     result->whileStmt.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
     result->whileStmt.condition = _ParseExpression(parser);
@@ -431,7 +448,7 @@ fun SyntaxNode* _ParseWhileStatement(Parser2* parser) {
 }
 
 fun SyntaxNode* _ParseDoWhileStatement(Parser2* parser) {
-    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::DoWhileStatement);
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::DoWhileStatement, parser->tree);
     result->doWhileStmt.doKeyword = _MatchAndAdvanceToken(parser, SyntaxKind::DoKeyword);
     parser->loopLevel += 1;
     result->doWhileStmt.body = _ParseStatement(parser);
@@ -446,12 +463,12 @@ fun SyntaxNode* _ParseDoWhileStatement(Parser2* parser) {
 }
 
 fun SyntaxNode* _ParseForStatement(Parser2* parser) {
-    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::ForStatement);
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::ForStatement, parser->tree);
     result->forStmt.forKeyword = _MatchAndAdvanceToken(parser, SyntaxKind::ForKeyword);
 
     result->forStmt.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
     if (parser->tokenCur.kind == SyntaxKind::LetKeyword)
-        result->forStmt.initializerStatement = _ParseVariableDefinitionStatement(parser, false);
+        result->forStmt.initializerStatement = _ParseVariableDefinitionStatement(parser, false, true, SyntaxKind::SemicolonToken);
     else 
         result->forStmt.initializerStatement = _ParseExpressionStatement(parser);
     result->forStmt.conditionStatement = _ParseExpressionStatement(parser);
@@ -465,7 +482,7 @@ fun SyntaxNode* _ParseForStatement(Parser2* parser) {
 }
 
 fun SyntaxNode* _ParseReturnStatement(Parser2* parser) {
-    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::ReturnStatement);
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::ReturnStatement, parser->tree);
     result->returnStmt.returnKeyword = _MatchAndAdvanceToken(parser, SyntaxKind::ReturnKeyword);
     if (parser->functionLevel == 0) {
         ReportError(
@@ -482,7 +499,7 @@ fun SyntaxNode* _ParseReturnStatement(Parser2* parser) {
 }
 
 fun SyntaxNode* _ParseBreakStatement(Parser2* parser) {
-    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::BreakStatement);
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::BreakStatement, parser->tree);
     result->breakStmt.breakKeyword = _MatchAndAdvanceToken(parser, SyntaxKind::BreakKeyword);
     if (parser->loopLevel == 0 && parser->switchCaseLevel == 0) {
         ReportError(
@@ -495,7 +512,7 @@ fun SyntaxNode* _ParseBreakStatement(Parser2* parser) {
 }
 
 fun SyntaxNode* _ParseContinueStatement(Parser2* parser) {
-    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::ContinueKeyword);
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::ContinueStatement, parser->tree);
     result->continueStmt.continueKeyword = _MatchAndAdvanceToken(parser, SyntaxKind::ContinueKeyword);
     if (parser->loopLevel == 0) {
         ReportError(
@@ -508,12 +525,12 @@ fun SyntaxNode* _ParseContinueStatement(Parser2* parser) {
 }
 
 fun SyntaxNode* _ParseBlockStatement(Parser2* parser, bool inSwitch) {
-    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::BlockStatement);
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::BlockStatement, parser->tree);
     if (parser->tokenCur.kind == SyntaxKind::LeftBraceToken || !inSwitch) {
         result->blockStmt.leftBrace = _MatchAndAdvanceToken(parser, SyntaxKind::LeftBraceToken);
     } else {
         // We allow omitting the braces in switch statements
-        result->blockStmt.leftBrace = SyntaxTokenCreateEmpty(parser->source);
+        result->blockStmt.leftBrace = SyntaxTokenCreateEmpty(parser->tree);
     }
 
     result->blockStmt.statements = SyntaxNodeArrayCreate();
@@ -534,7 +551,7 @@ fun SyntaxNode* _ParseBlockStatement(Parser2* parser, bool inSwitch) {
 }
 
 fun SyntaxNode* _ParseCaseStatement(Parser2* parser, SyntaxNode* switchExpression) {
-    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::CaseStatement);
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::CaseStatement, parser->tree);
     result->caseStmt.caseKeyword = _MatchAndAdvanceToken(parser, SyntaxKind::CaseKeyword);
 
     if (parser->switchCaseLevel == 0) {
@@ -566,7 +583,7 @@ fun SyntaxNode* _ParseCaseStatement(Parser2* parser, SyntaxNode* switchExpressio
 }
 
 fun SyntaxNode* _ParseDefaultStatement(Parser2* parser, SyntaxNode* switchExpression) {
-    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::DefaultStatement);
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::DefaultStatement, parser->tree);
     result->defaultStmt.defaultKeyword = _MatchAndAdvanceToken(parser, SyntaxKind::DefaultKeyword);
     if (parser->switchCaseLevel == 0) {
         ReportError(
@@ -580,7 +597,7 @@ fun SyntaxNode* _ParseDefaultStatement(Parser2* parser, SyntaxNode* switchExpres
 }
 
 fun SyntaxNode* _ParseSwitchStatement(Parser2* parser) {
-    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::SwitchStatement);
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::SwitchStatement, parser->tree);
     result->switchStmt.switchKeyword = _MatchAndAdvanceToken(parser, SyntaxKind::SwitchKeyword);
     result->switchStmt.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
     result->switchStmt.switchExpression = _ParseExpression(parser);
@@ -629,7 +646,8 @@ fun SyntaxNode* _ParseStatement(Parser2* parser) {
         case SyntaxKind::SwitchKeyword:
             return _ParseSwitchStatement(parser);
         case SyntaxKind::LetKeyword:
-            return _ParseVariableDefinitionStatement(parser, false);
+        case SyntaxKind::LetLocalPersistKeyword:
+            return _ParseVariableDefinitionStatement(parser, false, true, SyntaxKind::SemicolonToken);
         default:
             return _ParseExpressionStatement(parser);
     }
@@ -638,8 +656,9 @@ fun SyntaxNode* _ParseStatement(Parser2* parser) {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Module
 
-fun SyntaxNode* _ParseStructOrUnionDefinitionStatement(Parser2* parser, SyntaxToken externalKeyword) {
-    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::StructOrUnionDeclarationStatement);
+fun SyntaxNode* _ParseStructOrUnionDefinitionStatement(Parser2* parser, SyntaxToken externKeyword) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::StructOrUnionDeclarationStatement, parser->tree);
+    result->structOrUnionDeclarationStmt.externKeyword = externKeyword;
     if (parser->tokenCur.kind == SyntaxKind::StructKeyword)
         result->structOrUnionDeclarationStmt.structOrUnionKeyword = _MatchAndAdvanceToken(parser, SyntaxKind::StructKeyword);
     else 
@@ -655,7 +674,7 @@ fun SyntaxNode* _ParseStructOrUnionDefinitionStatement(Parser2* parser, SyntaxTo
 
         result->structOrUnionDefinitionStmt.leftBrace = _MatchAndAdvanceToken(parser, SyntaxKind::LeftBraceToken);
         while (parser->tokenCur.kind != SyntaxKind::RightBraceToken) {
-            let SyntaxNode* memberDeclaration = _ParseVariableDefinitionStatement(parser, true);
+            let SyntaxNode* memberDeclaration = _ParseVariableDefinitionStatement(parser, true, false, SyntaxKind::SemicolonToken);
             SyntaxNodeArrayPush(&result->structOrUnionDefinitionStmt.memberDeclarationStatements, memberDeclaration);
         }
         result->structOrUnionDefinitionStmt.rightBrace = _MatchAndAdvanceToken(parser, SyntaxKind::RightBraceToken);
@@ -664,8 +683,29 @@ fun SyntaxNode* _ParseStructOrUnionDefinitionStatement(Parser2* parser, SyntaxTo
     }
 }
 
-fun SyntaxNode* _ParseEnumDefinitionStatement(Parser2* parser, SyntaxToken externalKeyword) {
-    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::EnumDeclarationStatement);
+fun SyntaxNode* _ParseEnumMemberClause(Parser2* parser) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::EnumMemberClauseSyntax, parser->tree);
+
+    result->enumMember.identifier = _MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
+    if (parser->tokenCur.kind == SyntaxKind::EqualsToken) {
+        result->enumMember.equals = _MatchAndAdvanceToken(parser, SyntaxKind::EqualsToken);
+        result->enumMember.integerLiteral = _MatchAndAdvanceToken(parser, SyntaxKind::IntegerLiteralToken);
+    } else {
+        result->enumMember.equals = SyntaxTokenCreateEmpty(parser->tree);
+        result->enumMember.integerLiteral = SyntaxTokenCreateEmpty(parser->tree);
+    }
+
+    if (parser->tokenCur.kind == SyntaxKind::CommaToken)
+        result->enumMember.comma = _MatchAndAdvanceToken(parser, SyntaxKind::CommaToken);
+    else
+        result->enumMember.comma = SyntaxTokenCreateEmpty(parser->tree);
+
+    return result;
+}
+
+fun SyntaxNode* _ParseEnumDefinitionStatement(Parser2* parser, SyntaxToken externKeyword) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::EnumDeclarationStatement, parser->tree);
+    result->enumDeclarationStmt.externKeyword = externKeyword;
     result->enumDeclarationStmt.enumKeyword = _MatchAndAdvanceToken(parser, SyntaxKind::EnumKeyword);
     result->enumDeclarationStmt.classKeyword = _MatchAndAdvanceToken(parser, SyntaxKind::ClassKeyword);
     result->enumDeclarationStmt.identifier = _MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
@@ -677,30 +717,14 @@ fun SyntaxNode* _ParseEnumDefinitionStatement(Parser2* parser, SyntaxToken exter
     } else {
         // Definition including body
         result->kind = SyntaxKind::EnumDefinitionStatement;
-        result->enumDefinitionStmt.membersAndValuesWithSeparators = SyntaxNodeArrayCreate();
+        result->enumDefinitionStmt.memberClauses = SyntaxNodeArrayCreate();
 
         result->enumDefinitionStmt.leftBrace = _MatchAndAdvanceToken(parser, SyntaxKind::LeftBraceToken);
         while (parser->tokenCur.kind != SyntaxKind::RightBraceToken) {
-            let SyntaxToken memberIdent = _MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
-                let SyntaxNode* memberIdentWrapper = SyntaxNodeCreate(memberIdent.kind);
-                SyntaxNodeArrayPush(&result->enumDefinitionStmt.membersAndValuesWithSeparators, memberIdentWrapper);
-
-            if (parser->tokenCur.kind == SyntaxKind::EqualsToken) {
-                let SyntaxToken equals = _MatchAndAdvanceToken(parser, SyntaxKind::EqualsToken);
-                let SyntaxNode* equalsWrapper = SyntaxNodeCreate(equals.kind);
-                SyntaxNodeArrayPush(&result->enumDefinitionStmt.membersAndValuesWithSeparators, equalsWrapper);
-
-                let SyntaxToken value = _MatchAndAdvanceToken(parser, SyntaxKind::IntegerLiteralToken);
-                let SyntaxNode* valueWrapper = SyntaxNodeCreate(value.kind);
-                SyntaxNodeArrayPush(&result->enumDefinitionStmt.membersAndValuesWithSeparators, valueWrapper);
-            }
-            if (parser->tokenCur.kind == SyntaxKind::CommaToken) {
-                let SyntaxToken comma = _MatchAndAdvanceToken(parser, SyntaxKind::CommaToken);
-                let SyntaxNode* commaWrapper = SyntaxNodeCreate(comma.kind);
-                SyntaxNodeArrayPush(&result->enumDefinitionStmt.membersAndValuesWithSeparators, commaWrapper);
-            } else {
+            let SyntaxNode* memberClause = _ParseEnumMemberClause(parser);
+            SyntaxNodeArrayPush(&result->enumDefinitionStmt.memberClauses, memberClause);
+            if (memberClause->enumMember.comma.kind != SyntaxKind::CommaToken)
                 break;
-            }
         }
         result->enumDefinitionStmt.rightBrace = _MatchAndAdvanceToken(parser, SyntaxKind::RightBraceToken);
         result->enumDefinitionStmt.semicolon = _MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
@@ -708,33 +732,28 @@ fun SyntaxNode* _ParseEnumDefinitionStatement(Parser2* parser, SyntaxToken exter
     }
 }
 
-fun SyntaxNode* _ParseFunctionDefinitionStatement(Parser2* parser, SyntaxToken externalKeyword) {
-    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::FunctionDeclarationStatement);
-    result->functionDeclarationStmt.parameterDeclarationsWithSeparators = SyntaxNodeArrayCreate();
-
+fun SyntaxNode* _ParseFunctionDefinitionStatement(Parser2* parser, SyntaxToken externKeyword) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::FunctionDeclarationStatement, parser->tree);
+    result->functionDeclarationStmt.externKeyword = externKeyword;
     result->functionDeclarationStmt.funKeyword = _MatchAndAdvanceToken(parser, SyntaxKind::FunKeyword);
     result->functionDeclarationStmt.returnType = _ParseTypeExpression(parser);
     result->functionDeclarationStmt.identifier = _MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
 
     result->functionDeclarationStmt.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
+    result->functionDeclarationStmt.params = SyntaxNodeArrayCreate();
     while (parser->tokenCur.kind != SyntaxKind::RightParenToken) {
         if (parser->tokenCur.kind == SyntaxKind::DotDotDotToken) {
             let SyntaxToken dotdot = _MatchAndAdvanceToken(parser, SyntaxKind::DotDotDotToken);
-            let SyntaxNode* dotdotWrapper = SyntaxNodeCreate(dotdot.kind);
-            SyntaxNodeArrayPush(&result->functionDeclarationStmt.parameterDeclarationsWithSeparators, dotdotWrapper);
+            let SyntaxNode* dotdotWrapper = WrapTokenInNode(parser, dotdot);
+            SyntaxNodeArrayPush(&result->functionDeclarationStmt.params, dotdotWrapper);
             break;
         }
-        let SyntaxNode* paramType = _ParseTypeExpression(parser);
-        SyntaxNodeArrayPush(&result->functionDeclarationStmt.parameterDeclarationsWithSeparators, paramType);
 
-        let SyntaxToken paramIdent = _MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
-        let SyntaxNode* paramIdentWrapper = SyntaxNodeCreate(paramIdent.kind);
-        SyntaxNodeArrayPush(&result->functionDeclarationStmt.parameterDeclarationsWithSeparators, paramIdentWrapper);
+        let SyntaxNode* parameter = _ParseVariableDefinitionStatement(parser, true, false, SyntaxKind::BadToken);
+        SyntaxNodeArrayPush(&result->functionDeclarationStmt.params, parameter);
 
         if (parser->tokenCur.kind == SyntaxKind::CommaToken) {
-            let SyntaxToken comma = _MatchAndAdvanceToken(parser, SyntaxKind::CommaToken);
-            let SyntaxNode* commaWrapper = SyntaxNodeCreate(comma.kind);
-            SyntaxNodeArrayPush(&result->functionDeclarationStmt.parameterDeclarationsWithSeparators, commaWrapper);
+            parameter->variableDeclarationStmt.terminatorToken = _MatchAndAdvanceToken(parser, SyntaxKind::CommaToken);
         } else {
             break;
         }
@@ -755,32 +774,35 @@ fun SyntaxNode* _ParseFunctionDefinitionStatement(Parser2* parser, SyntaxToken e
     }
 }
 
-fun SyntaxNode* _ParseGlobalVariableDefinitionStatement(Parser2* parser, SyntaxToken externalKeyword) {
-    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::GlobalVariableDeclarationStatement);
-    result->globalVariableStmt.externKeyword = externalKeyword;
-    result->globalVariableStmt.variableDeclarationStatement = _ParseVariableDefinitionStatement(parser, false);
+fun SyntaxNode* _ParseGlobalVariableDefinitionStatement(Parser2* parser, SyntaxToken externKeyword) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::GlobalVariableDeclarationStatement, parser->tree);
+    result->globalVariableStmt.externKeyword = externKeyword;
+    result->globalVariableStmt.variableDeclarationStatement = _ParseVariableDefinitionStatement(parser, false, true, SyntaxKind::SemicolonToken);
     return result;
 }
 
 fun SyntaxNode* _ParseGlobalDefinitionStatement(Parser2* parser) {
     assert(parser->functionLevel == 0);
 
-    let SyntaxToken externalKeyword = SyntaxTokenCreateEmpty(parser->source);
+    let SyntaxToken externKeyword = SyntaxTokenCreateEmpty(parser->tree);
     if (parser->tokenCur.kind == SyntaxKind::ExternKeyword) 
-        externalKeyword = _AdvanceToken(parser);
+        externKeyword = _AdvanceToken(parser);
 
-    if (parser->tokenCur.kind == SyntaxKind::EnumKeyword)
-        return _ParseEnumDefinitionStatement(parser, externalKeyword);
-    else if (parser->tokenCur.kind == SyntaxKind::StructKeyword || parser->tokenCur.kind == SyntaxKind::UnionKeyword)
-        return _ParseStructOrUnionDefinitionStatement(parser, externalKeyword);
-    else if (parser->tokenCur.kind == SyntaxKind::FunKeyword)
-        return _ParseFunctionDefinitionStatement(parser, externalKeyword);
-    else 
-        return _ParseGlobalVariableDefinitionStatement(parser, externalKeyword);
+    switch (parser->tokenCur.kind) {
+        case SyntaxKind::EnumKeyword:
+            return _ParseEnumDefinitionStatement(parser, externKeyword);
+        case SyntaxKind::StructKeyword: 
+        case SyntaxKind::UnionKeyword:
+            return _ParseStructOrUnionDefinitionStatement(parser, externKeyword);
+        case SyntaxKind::FunKeyword:
+            return _ParseFunctionDefinitionStatement(parser, externKeyword);
+        default:
+            return _ParseGlobalVariableDefinitionStatement(parser, externKeyword);
+    }
 }
 
 fun SyntaxNode* _ParseImportDeclarationStatement(Parser2* parser) {
-    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::ImportDeclarationStatement);
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::ImportDeclarationStatement, parser->tree);
     result->importStmt.importKeyword = _MatchAndAdvanceToken(parser, SyntaxKind::ImportKeyword);
     result->importStmt.modulenameLiteral = _MatchAndAdvanceToken(parser, SyntaxKind::StringLiteralToken);
     return result;
@@ -801,21 +823,22 @@ fun SyntaxNode* _ParseModuleStatement(Parser2* parser) {
             ReportError(
                 TokenGetLocation(parser->tokenCur),
                 "Expected global module definition got unexpected token '%s' instead",
-                TokenGetText(parser->tokenCur)
+                TokenGetText(parser->tokenCur).cstr
             );
             exit(1);
     }
 }
 
-fun SyntaxNode* _ParseModule(Parser2* parser) {
-    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::Module);
+fun SyntaxTree* _ParseModule(Parser2* parser) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::Module, parser->tree);
+    parser->tree->moduleRoot = (as ModuleStatementSyntax*)result;
     result->moduleStmt.globalStatements = SyntaxNodeArrayCreate();
 
     while (parser->tokenCur.kind != SyntaxKind::EndOfFileToken) {
         // TODO get rid of these hacks when we do our own language
         // Skip pragmas, include directives, define directives, typedefs
-        let bool foundDirectives = true;
-        while (foundDirectives) { 
+        let bool foundDirectives = false;
+        do { 
             foundDirectives = false;
             if (parser->tokenCur.kind == SyntaxKind::TypedefKeyword) {
                 _MatchAndAdvanceToken(parser, SyntaxKind::TypedefKeyword);
@@ -861,19 +884,28 @@ fun SyntaxNode* _ParseModule(Parser2* parser) {
                 } else if (parser->tokenCur.kind == SyntaxKind::ByteKeyword) {
                     _MatchAndAdvanceToken(parser, SyntaxKind::ByteKeyword);
                     _MatchAndAdvanceToken(parser, SyntaxKind::CharKeyword);
-                } else if (parser->tokenCur.kind == SyntaxKind::LocalPersistKeyword) {
-                    _MatchAndAdvanceToken(parser, SyntaxKind::LocalPersistKeyword);
+                } else if (parser->tokenCur.kind == SyntaxKind::LetLocalPersistKeyword) {
+                    _MatchAndAdvanceToken(parser, SyntaxKind::LetLocalPersistKeyword);
                     _MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
                 } else {
                     _MatchAndAdvanceToken(parser, SyntaxKind::FunKeyword);
                 }
                 foundDirectives = true;
             }
-        }
+        } while (foundDirectives);
         let SyntaxNode* statement = _ParseModuleStatement(parser);
         SyntaxNodeArrayPush(&result->moduleStmt.globalStatements, statement);
     }
 
+    if (parser->tokenCur.kind != SyntaxKind::EndOfFileToken)
+    {
+        ReportError(
+            TokenGetLocation(parser->tokenCur),
+            "Expected EOF token after parsing file, instead got '%s'", 
+            TokenKindToString(parser->tokenCur.kind).cstr
+        );
+    }
     // TODO: figure out and assign all parents to all nodes in the tree here
-    return result;
+
+    return parser->tree;
 }

@@ -38,6 +38,7 @@ fun bool IsAlpha(char ch) {
 // Scanner
 
 struct Scanner {
+    SyntaxTree* tree;
     Source source;
     int start;
     int pos;
@@ -49,12 +50,13 @@ struct Scanner {
     char debugCharNextNext;
 };
 
-fun Scanner ScannerCreate(Source source) {
+fun Scanner ScannerCreate(SyntaxTree* tree) {
     let Scanner result;
-    result.source = source;
+    result.tree = tree;
+    result.source = tree->source;
     result.start = 0;
     result.pos = 0;
-    result.token = SyntaxTokenCreateEmpty(source);
+    result.token = SyntaxTokenCreateEmpty(tree);
 
     result.debugCharPrev = '\0';
     result.debugCharCur = '\0';
@@ -179,7 +181,7 @@ fun SyntaxTriviaArray ReadTrivia(Scanner* scanner, bool isLeading)
     let bool done = false;
     while (!done) {
         scanner->start = scanner->pos;
-        scanner->token = SyntaxTokenCreateEmpty(scanner->source);
+        scanner->token = SyntaxTokenCreateEmpty(scanner->tree);
 
         switch (CurrentChar(scanner)) {
             case '\0':
@@ -386,7 +388,7 @@ fun void ReadIdentifierOrKeyword(Scanner* scanner) {
 
 fun SyntaxToken ReadToken(Scanner* scanner) {
     scanner->start = scanner->pos;
-    scanner->token = SyntaxTokenCreateEmpty(scanner->source);
+    scanner->token = SyntaxTokenCreateEmpty(scanner->tree);
 
     let char ch = CurrentChar(scanner);
     switch (ch) {
@@ -654,5 +656,6 @@ fun SyntaxToken NextToken(Scanner* scanner) {
     result.leadingTrivia = leadingTrivia;
     result.trailingTrivia = trailingTrivia;
 
+    // TODO: sum up all token lengths when reaching EOF and make sure that it matches exactly the file length
     return result;
 }

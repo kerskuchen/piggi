@@ -5,13 +5,8 @@
 
 struct Binder {
     SymbolTable* symbolTable;
-
     Source source;
-    Scanner scanner;
-    SyntaxToken tokenPrev;
-    SyntaxToken tokenCur;
-    SyntaxToken tokenNext;
-    SyntaxToken tokenNextAfter;
+    ModuleStatementSyntax* tree;
 
     int loopLevel;
     int switchCaseLevel;
@@ -22,47 +17,19 @@ fun Binder BinderCreate(Source source, SymbolTable* symbolTable) {
     let Binder result;
     result.symbolTable = symbolTable;
     result.source = source;
-    result.scanner = ScannerCreate(source);
-    result.tokenPrev = SyntaxTokenCreateEmpty(source);
-    result.tokenCur = NextToken(&result.scanner);
-    result.tokenNext = NextToken(&result.scanner);
-    result.tokenNextAfter = NextToken(&result.scanner);
     result.loopLevel = 0;
     result.switchCaseLevel = 0;
     result.currentFunctionSymbol = nullptr;
     return result;
 }
 
-fun SyntaxToken AdvanceToken(Binder* binder) {
-    let SyntaxToken result = binder->tokenCur;
-    binder->tokenPrev = binder->tokenCur;
-    binder->tokenCur = binder->tokenNext;
-    binder->tokenNext = binder->tokenNextAfter;
-    binder->tokenNextAfter = NextToken(&binder->scanner);
-    return result;
-}
+fun ASTNode* BindStatement(Binder* binder, SyntaxNode* syntax);
+fun ASTNode* BindExpression(Binder* binder, SyntaxNode* syntax);
+fun ASTNode* BindVariableDefinitionStatement(Binder* binder, SyntaxNode* syntax, SymbolScopeKind symbolScopeKind);
 
-fun SyntaxToken MatchAndAdvanceToken(Binder* binder, SyntaxKind kind) {
-    if (kind == binder->tokenCur.kind) {
-        return AdvanceToken(binder);
-    } 
-
-    ReportError(
-        TokenGetLocation(binder->tokenCur),
-        "Expected token '%s' but got token '%s'", 
-        TokenKindToString(kind).cstr, TokenKindToString(binder->tokenCur.kind).cstr
-    );
-    exit(1);
-}
-
-fun ASTNode* BindStatement(Binder* binder);
-fun ASTNode* BindExpression(Binder* binder);
-fun ASTNode* BindVariableDefinitionStatement(Binder* binder, bool isExternal);
-fun Type BindType(Binder* binder);
-
-fun ASTNode* WrapInCompoundStatementIfNecessary(Binder* binder, ASTNode* node) {
-    if (node->kind != ASTNodeKind::CompoundStatement) {
-        let ASTNode* block = ASTNodeCreate(ASTNodeKind::CompoundStatement, binder->symbolTable, node->token);
+fun ASTNode* _WrapInBlockStatementIfNecessary(Binder* binder, ASTNode* node) {
+    if (node->kind != ASTNodeKind::BlockStatement) {
+        let ASTNode* block = ASTNodeCreate2(ASTNodeKind::BlockStatement, binder->symbolTable, nullptr);
         ASTNodeArrayPush(&block->children, node);
         node = block;
     }
@@ -70,48 +37,355 @@ fun ASTNode* WrapInCompoundStatementIfNecessary(Binder* binder, ASTNode* node) {
 }
 
 // Turns {{{ a; {b c} d; e; }}} -> { a; {b c} d; e; }
-fun ASTNode* FlattenCompoundStatementIfNecessary(Binder* binder, ASTNode* node) {
-    if (node->kind == ASTNodeKind::CompoundStatement) {
-        if (node->children.count == 1 && node->children.nodes[0]->kind == ASTNodeKind::CompoundStatement) {
+fun ASTNode* _FlattenBlockStatementIfNecessary(Binder* binder, ASTNode* node) {
+    if (node->kind == ASTNodeKind::BlockStatement) {
+        if (node->children.count == 1 && node->children.nodes[0]->kind == ASTNodeKind::BlockStatement) {
             let ASTNode* result = node->children.nodes[0];
             result->symbolTable->parent = node->symbolTable->parent;
-            return FlattenCompoundStatementIfNecessary(binder, result);
+            return _FlattenBlockStatementIfNecessary(binder, result);
         }
     }
     return node;
 }
 
-fun ASTNode* BindFunctionCallExpression(Binder* binder, ASTNode* left) {
-    let SyntaxToken identifier = left->token;
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Types and specials
+
+fun Type BindType(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::TypeExpression);
+
+    let Type type = TypeCreateVoid();
+    let SyntaxToken primary = syntax->typeExpr.typeTokens.nodes[0]->token;
+    switch (primary.kind) {
+        case SyntaxKind::VoidKeyword:
+            type.kind = TypeKind::PrimitiveVoid;
+            break;
+        case SyntaxKind::CharKeyword:
+            type.kind = TypeKind::PrimitiveChar;
+            break;
+        case SyntaxKind::BoolKeyword:
+            type.kind = TypeKind::PrimitiveBool;
+            break;
+        case SyntaxKind::ByteKeyword:
+            type.kind = TypeKind::PrimitiveByte;
+            break;
+        case SyntaxKind::ShortKeyword:
+            type.kind = TypeKind::PrimitiveShort;
+            break;
+        case SyntaxKind::IntKeyword:
+            type.kind = TypeKind::PrimitiveInt;
+            break;
+        case SyntaxKind::LongKeyword:
+            type.kind = TypeKind::PrimitiveLong;
+            break;
+        case SyntaxKind::CStringKeyword:
+            type.kind = TypeKind::PrimitiveCString;
+            break;
+        case SyntaxKind::IdentifierToken: {
+                let String name = TokenGetText(primary);
+                let Symbol* symbol = GetSymbol(binder->symbolTable, name);
+                if (symbol != nullptr) {
+                    if (symbol->kind == SymbolKind::Struct) {
+                        type.kind = TypeKind::Struct;
+                        type.name = name;
+                        break;
+                    } else if (symbol->kind == SymbolKind::Union) {
+                        type.kind = TypeKind::Union;
+                        type.name = name;
+                        break;
+                    } else if (symbol->kind == SymbolKind::Enum) {
+                        type.kind = TypeKind::Enum;
+                        type.name = name;
+                        break;
+                    }
+                }
+            } // Fallthrough
+        default: 
+            ReportError(
+                TokenGetLocation(primary),
+                "SyntaxToken '%s' is not a type", 
+                TokenGetText(primary).cstr
+            );
+    }
+
+    for (let int index = 1; index < syntax->typeExpr.typeTokens.count; index += 1) {
+        let SyntaxToken token = *((as SyntaxToken*)syntax->typeExpr.typeTokens.nodes[index]);
+        assert(token.kind == SyntaxKind::StarToken);
+        type = GetPointerTypeForBaseType(type);
+    }
+
+    if (type.kind == TypeKind::Struct) {
+        let Symbol* symbol = GetSymbol(binder->symbolTable, type.name);
+        if (!symbol->alreadyDefined && type.baseIndirectionLevel == 0) {
+            ReportError(
+                TokenGetLocation(primary),
+                "Usage of undefined but forward declared type '%s' is only allowed as pointer", 
+                type.name.cstr
+            );
+        }
+    }
+
+    return type;
+}
+
+fun ASTNode* BindTypeExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::TypeExpression);
+
+    let Type type = BindType(binder, syntax);
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::TypeExpression, binder->symbolTable, syntax);
+    result->type = type;
+    return result;
+}
+
+fun ASTNode* BindTypeCastExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::TypeCastExpression);
+
+    let ASTNode* expression = BindExpression(binder, syntax->typeCastExpr.expression);
+    let Type targetType = BindType(binder, syntax->typeCastExpr.targetTypeExpression);
+    
+    let TypeConversionResult conversion = CanConvertTypeFromTo(expression->type, targetType);
+    if (conversion == TypeConversionResult::NonConvertible) {
+        ReportError(
+            TokenGetLocation(syntax->typeCastExpr.asKeyword),
+            "Cast from type '%s' to type '%s' is impossible",
+            TypeGetText(expression->type).cstr, TypeGetText(targetType).cstr
+        );
+    }
+
+    let ASTNode* result =  ASTNodeCreate2(ASTNodeKind::CastExpression, binder->symbolTable, syntax);
+    result->type = targetType;
+    result->left = expression;
+    return result;
+}
+
+fun ASTNode* BindSizeOfExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::SizeOfExpression);
+
+    let ASTNode* typeExpr = BindTypeExpression(binder, syntax->sizeofExpr.typeExpression);
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::SizeOfExpression, binder->symbolTable, syntax);
+    result->type = TypeCreatePrimitive(TypeKind::PrimitiveInt);
+    result->left = typeExpr;
+    result->isRValue = true;
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Literals
+
+fun ASTNode* BindNullLiteralExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::NullLiteralExpression);
+
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::NullLiteral, binder->symbolTable, syntax);
+    result->isRValue = true;
+    result->type = TypeCreate(TypeKind::PrimitiveNull, 1, StringCreateEmpty());
+    return result;
+}
+
+fun ASTNode* BindCharacterLiteralExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::CharacterLiteralExpression);
+
+    let SyntaxToken literal = syntax->characterLiteralExpr.characterLiteral;
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::CharacterLiteral, binder->symbolTable, syntax);
+    result->isRValue = true;
+    result->intvalue = literal.intvalue;
+    result->stringvalue = literal.stringValueWithoutQuotes;
+    result->type = TypeCreatePrimitive(TypeKind::PrimitiveChar);
+    return result;
+}
+
+fun ASTNode* BindStringLiteralExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::StringLiteralExpression);
+
+    let String stringValueWithoutQuotes = StringCreateEmpty();
+    for (let int index = 0; index < syntax->stringLiteralExpr.stringLiteralTokens.count; index += 1) {
+        let SyntaxToken next = syntax->stringLiteralExpr.stringLiteralTokens.nodes[index]->token;
+        stringValueWithoutQuotes = StringAppend(stringValueWithoutQuotes, next.stringValueWithoutQuotes);
+    }
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::StringLiteral, binder->symbolTable, syntax);
+    result->isRValue = true;
+    result->stringvalue = stringValueWithoutQuotes;
+    result->type = TypeCreate(TypeKind::PrimitiveChar, 1, StringCreateEmpty());
+    return result;
+}
+
+fun ASTNode* BindBoolLiteralExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::BoolLiteralExpression);
+
+    let SyntaxToken literal = syntax->boolLiteralExpr.boolLiteral;
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::BoolLiteral, binder->symbolTable, syntax);
+    result->isRValue = true;
+    result->intvalue = literal.kind == SyntaxKind::TrueKeyword ? 1 : 0;
+    result->type = TypeCreatePrimitive(TypeKind::PrimitiveBool);
+    return result;
+}
+
+fun ASTNode* BindIntegerLiteralExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::IntegerLiteralExpression);
+
+    let SyntaxToken literal = syntax->integerLiteralExpr.integerLiteral;
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::IntegerLiteral, binder->symbolTable, syntax);
+    result->isRValue = true;
+    result->intvalue = literal.intvalue;
+    if (CHAR_MIN <= literal.intvalue && literal.intvalue <= CHAR_MAX)
+        result->type = TypeCreatePrimitive(TypeKind::PrimitiveByte);
+    else if (SHRT_MIN <= literal.intvalue && literal.intvalue <= SHRT_MAX)
+        result->type = TypeCreatePrimitive(TypeKind::PrimitiveShort);
+    else if (INT_MIN <= literal.intvalue && literal.intvalue <= INT_MAX)
+        result->type = TypeCreatePrimitive(TypeKind::PrimitiveInt);
+    else
+        result->type = TypeCreatePrimitive(TypeKind::PrimitiveLong);
+    return result;
+}
+
+fun ASTNode* BindEnumValueLiteralExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::EnumValueLiteralExpression);
+
+    let SyntaxToken enumIdentifier = syntax->enumLiteralExpr.enumIdentifier;
+    let SyntaxToken valueIdentifier = syntax->enumLiteralExpr.valueIdentifier;
+
+    let String enumText = TokenGetText(enumIdentifier);
+    let Symbol* enumSymbol = GetSymbol(binder->symbolTable, enumText);
+    if (enumSymbol == nullptr) {
+        ReportError(
+            TokenGetLocation(enumIdentifier),
+            "Undeclared identifier '%s'", 
+            enumText.cstr
+        );
+    }
+    if (enumSymbol->kind != SymbolKind::Enum) {
+        ReportError(
+            TokenGetLocation(enumIdentifier),
+            "Identifier '%s' is not an enum", 
+            enumText.cstr
+        );
+    }
+
+    let String valueText = TokenGetText(valueIdentifier);
+    let Symbol* valueSymbol = GetSymbol(enumSymbol->membersSymbolTable, valueText);
+    if (valueSymbol == nullptr) {
+        ReportError(
+            TokenGetLocation(enumIdentifier),
+            "Identifier '%s' is not a member of enum '%s'", 
+            valueText.cstr, enumText.cstr
+        );
+    }
+    assert (valueSymbol->kind == SymbolKind::Enumvalue);
+
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::EnumValueLiteral, binder->symbolTable, syntax);
+    result->isRValue = true;
+    result->symbol = valueSymbol;
+    result->type = valueSymbol->type;
+    return result;
+}
+
+fun ASTNode* BindArrayLiteralExpression(Binder* binder, Symbol* arraySymbol, SyntaxNode* syntax) { 
+    assert(syntax->kind == SyntaxKind::ArrayLiteralExpression);
+    assert(arraySymbol->type.isArray);
+
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::ArrayLiteral, binder->symbolTable, syntax);
+    let Type arrayElemType = GetElementTypeForArrayType(arraySymbol->type);
+
+    for (let int index = 0; index < syntax->arrayLiteralExpr.elemsWithSeparators.count; index += 2) {
+        let SyntaxNode* expression = syntax->arrayLiteralExpr.elemsWithSeparators.nodes[index];
+        let ASTNode* boundExpression = BindExpression(binder, expression);
+        let TypeConversionResult conversion = CanConvertTypeFromTo(boundExpression->type, arrayElemType);
+        if (conversion == TypeConversionResult::NonConvertible 
+         || conversion == TypeConversionResult::ExplicitlyConvertible) {
+            ReportError(
+                TokenGetLocation(expression->token),
+                "Cannot convert type '%s' of element %d in array initializer to array type '%s'",
+                TypeGetText(boundExpression->type).cstr, index / 2 + 1, TypeGetText(arrayElemType).cstr
+            );
+        } 
+        ASTNodeArrayPush(&result->children, boundExpression);
+    }
+
+    let int elementCount = result->children.count;
+    let SyntaxToken leftBrace = syntax->arrayLiteralExpr.leftBrace;
+    if (arraySymbol->type.arrayElementCount == -1)
+        arraySymbol->type.arrayElementCount = elementCount;
+    if (elementCount == 0) {
+        ReportError(
+            TokenGetLocation(leftBrace),
+            "Element count cannot be zero in array initializer of array '%s'",
+            arraySymbol->name.cstr
+        );
+    }
+    if (arraySymbol->type.arrayElementCount != elementCount) {
+        ReportError(
+            TokenGetLocation(leftBrace),
+            "Element count %d of array initializer does not match element count %d of array '%s'",
+            elementCount, arraySymbol->type.arrayElementCount, arraySymbol->name.cstr
+        );
+    }
+    
+    result->isRValue = true;
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Expressions
+
+fun ASTNode* BindNameExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::NameExpression);
+
+    let SyntaxToken identifier = syntax->nameExpr.identifier;
     let String identifierText = TokenGetText(identifier);
-    let Symbol* funcSymbol = GetSymbol(binder->symbolTable, identifierText);
-    if (funcSymbol == nullptr) {
+    let Symbol* symbol = GetSymbol(binder->symbolTable, identifierText);
+    if (symbol == nullptr) {
         ReportError(
             TokenGetLocation(identifier),
-            "Undeclared function '%s'", 
+            "Undeclared identifier '%s'", 
             identifierText.cstr
+        );
+    }
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::NameExpression, binder->symbolTable, syntax);
+    result->symbol = symbol;
+    result->type = symbol->type;
+    return result;
+}
+
+fun ASTNode* BindParenthesizedExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::ParenthesizedExpression);
+
+    let ASTNode* inner = BindExpression(binder, syntax->parenthesizedExpr.expression);
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::ParenthesizedExpression, binder->symbolTable, syntax);
+    result->type = inner->type;
+    result->left = inner;
+    return result;
+}
+
+fun ASTNode* BindFunctionCallExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::FuncCallExpression);
+
+    let ASTNode* left = BindExpression(binder, syntax->funcCallExpr.func);
+    let SyntaxToken leftParen = syntax->funcCallExpr.leftParen;
+
+    let Symbol* funcSymbol = left->symbol;
+    if (funcSymbol == nullptr) {
+        // TODO: change this to a span that prints the whole left expression
+        ReportError(
+            TokenGetLocation(leftParen),
+            "Expression left of '%s' is not a known symbol", 
+            TokenGetText(leftParen)
         );
     }
     if (funcSymbol->kind != SymbolKind::Function) {
+        // TODO: change this to a span that prints the whole left expression
         ReportError(
-            TokenGetLocation(identifier),
+            TokenGetLocation(leftParen),
             "Identifier '%s' is not a callable function", 
-            identifierText.cstr
+            funcSymbol->name.cstr
         );
     }
 
-    let SyntaxToken leftParen = MatchAndAdvanceToken(binder, SyntaxKind::LeftParenToken);
     let ASTNodeArray argumentList = ASTNodeArrayCreate();
-    while (binder->tokenCur.kind != SyntaxKind::RightParenToken) {
-        let ASTNode* argument = BindExpression(binder);
-        ASTNodeArrayPush(&argumentList, argument);
-        if (binder->tokenCur.kind == SyntaxKind::CommaToken)
-            MatchAndAdvanceToken(binder, SyntaxKind::CommaToken);
-        else
-            break;
+    for (let int index = 0; index < syntax->funcCallExpr.argumentsWithSeparators.count; index += 2) {
+        let SyntaxNode* arg = syntax->funcCallExpr.argumentsWithSeparators.nodes[index];
+        let ASTNode* boundArg = BindExpression(binder, arg);
+        ASTNodeArrayPush(&argumentList, boundArg);
     }
-    let SyntaxToken rightParen = MatchAndAdvanceToken(binder, SyntaxKind::RightParenToken);
-
+    
     if (funcSymbol->isVariadric) {
         if (argumentList.count < funcSymbol->membersSymbolTable->count) {
             ReportError(
@@ -151,18 +425,19 @@ fun ASTNode* BindFunctionCallExpression(Binder* binder, ASTNode* left) {
         }
     }
 
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::FunccallExpression, binder->symbolTable, identifier);
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::FunccallExpression, binder->symbolTable, syntax);
     result->symbol = funcSymbol;
     result->type = funcSymbol->type;
     result->children = argumentList;
     return result;
 }
 
-fun ASTNode* BindArrayIndexingExpression(Binder* binder, ASTNode* left) {
-    let SyntaxToken leftBracket = MatchAndAdvanceToken(binder, SyntaxKind::LeftBracketToken);
-    let ASTNode* index = BindExpression(binder);
-    let SyntaxToken rightBracket = MatchAndAdvanceToken(binder, SyntaxKind::RightBracketToken);
+fun ASTNode* BindArrayIndexingExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::ArrayIndexExpression);
 
+    let SyntaxToken leftBracket = syntax->arrayIndexExpr.leftBracket;
+    let ASTNode* left = BindExpression(binder, syntax->arrayIndexExpr.arr);
+    let ASTNode* index = BindExpression(binder, syntax->arrayIndexExpr.indexExpression);
     if (!IsNumberType(index->type)) {
         ReportError(
             TokenGetLocation(leftBracket),
@@ -178,7 +453,7 @@ fun ASTNode* BindArrayIndexingExpression(Binder* binder, ASTNode* left) {
         );
     }
 
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::Arrayindexing, binder->symbolTable, left->token);
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::Arrayindexing, binder->symbolTable, syntax);
     result->type = left->symbol->type;
     if (result->type.isArray)
         result->type.isArray = false; // Because we index it
@@ -189,22 +464,20 @@ fun ASTNode* BindArrayIndexingExpression(Binder* binder, ASTNode* left) {
     return result;
 }
 
-fun ASTNode* BindMemberAccess(Binder* binder, ASTNode* left, bool isArrow) {
-    let SyntaxToken accessorToken;
-    if (isArrow) 
-        accessorToken = MatchAndAdvanceToken(binder, SyntaxKind::ArrowToken);
-    else
-        accessorToken = MatchAndAdvanceToken(binder, SyntaxKind::DotToken);
+fun ASTNode* BindMemberAccessExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::MemberAccessExpression);
 
-    if (left->type.kind != TypeKind::Struct && left->type.kind != TypeKind::Union) {
+    let ASTNode* container = BindExpression(binder, syntax->memberAccessExpr.container);
+    let SyntaxToken accessorToken = syntax->memberAccessExpr.accessToken;
+    if (container->type.kind != TypeKind::Struct && container->type.kind != TypeKind::Union) {
         ReportError(
             TokenGetLocation(accessorToken),
             "Attempt to access member of non union or struct identifier '%s'", 
-            left->symbol->name.cstr
+            container->symbol->name.cstr
         );
     }
 
-    let Symbol* containerSymbol = GetSymbol(binder->symbolTable, left->type.name);
+    let Symbol* containerSymbol = GetSymbol(binder->symbolTable, container->type.name);
     assert(containerSymbol != nullptr);
     if (containerSymbol->kind != SymbolKind::Struct && containerSymbol->kind != SymbolKind::Union) {
         ReportError(
@@ -220,14 +493,16 @@ fun ASTNode* BindMemberAccess(Binder* binder, ASTNode* left, bool isArrow) {
             containerSymbol->name.cstr
         );
     }
-    if (isArrow && TypeGetIndirectionLevel(left->type) == 0) {
+
+    let bool isArrow = accessorToken.kind == SyntaxKind::ArrowToken;
+    if (isArrow && TypeGetIndirectionLevel(container->type) == 0) {
         ReportError(
             TokenGetLocation(accessorToken),
             "Member access of '%s' with '->' is only allowed for pointer types", 
             containerSymbol->name.cstr
         );
     }
-    if (!isArrow && TypeGetIndirectionLevel(left->type) > 0) {
+    if (!isArrow && TypeGetIndirectionLevel(container->type) > 0) {
         ReportError(
             TokenGetLocation(accessorToken),
             "Member access of '%s' with '.' is only allowed for non-pointer types", 
@@ -235,7 +510,7 @@ fun ASTNode* BindMemberAccess(Binder* binder, ASTNode* left, bool isArrow) {
         );
     }
     
-    let SyntaxToken memberIdentifier = MatchAndAdvanceToken(binder, SyntaxKind::IdentifierToken);
+    let SyntaxToken memberIdentifier = syntax->memberAccessExpr.memberIdentifier;
     let String identifierText = TokenGetText(memberIdentifier);
     let Symbol* memberSymbol = GetSymbol(containerSymbol->membersSymbolTable, identifierText);
     if (memberSymbol == nullptr) {
@@ -247,725 +522,186 @@ fun ASTNode* BindMemberAccess(Binder* binder, ASTNode* left, bool isArrow) {
     }
     assert(memberSymbol->kind == SymbolKind::Member);
 
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::Memberaccess, binder->symbolTable, accessorToken);
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::Memberaccess, binder->symbolTable, syntax);
     result->symbol = memberSymbol;
     result->type = memberSymbol->type;
+    result->left = container;
+    return result;
+}
+
+
+fun ASTNode* BindUnaryExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::UnaryExpression);
+
+    let ASTNode* operand = BindExpression(binder, syntax->unaryExpr.operand);
+    let SyntaxToken operatorToken = syntax->unaryExpr.operatorToken;
+    let UnaryOperator op = GetUnaryOperationForToken(operatorToken, operand->type);
+    if (op.operandMustBeLValue && operand->isRValue) {
+        ReportError(
+            TokenGetLocation(operatorToken),
+            "Operand of operator '%s' must be an storage location", 
+            TokenKindToString(operatorToken.kind).cstr
+        );
+    }
+
+    let ASTNode* result = ASTNodeCreate2(op.operatorKind, binder->symbolTable, syntax);
+    result->isRValue = op.resultIsRValue;
+    result->type = op.resultType;
+    result->left = operand;
+    return result;
+}
+
+fun ASTNode* BindBinaryExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::BinaryExpression);
+
+    let ASTNode* left = BindExpression(binder, syntax->binaryExpr.left);
+    let ASTNode* right = BindExpression(binder, syntax->binaryExpr.right);
+    let SyntaxToken operatorToken = syntax->binaryExpr.operatorToken;
+
+    let BinaryOperator op = GetBinaryOperationForToken(operatorToken, left->type, right->type);
+    if (op.leftMustBeLValue && left->isRValue) {
+        ReportError(
+            TokenGetLocation(operatorToken),
+            "Left argument of operator '%s' must be an storage location", 
+            TokenKindToString(operatorToken.kind).cstr
+        );
+    }
+    if (op.rightMustBeLValue && right->isRValue) {
+        ReportError(
+            TokenGetLocation(operatorToken),
+            "Right argument of operator '%s' must be a storage location", 
+            TokenKindToString(operatorToken.kind).cstr
+        );
+    }
+
+    let ASTNode* result = ASTNodeCreate2(op.operatorKind, binder->symbolTable, syntax);
+    result->isRValue = op.resultIsRValue;
+    result->type = op.resultType;
     result->left = left;
+    result->right = right;
     return result;
 }
 
-fun ASTNode* BindEnumLiteralExpression(Binder* binder) {
-    let SyntaxToken enumIdentifier = MatchAndAdvanceToken(binder, SyntaxKind::IdentifierToken);
-    let SyntaxToken coloncolon = MatchAndAdvanceToken(binder, SyntaxKind::ColonColonToken);
-    let SyntaxToken valueIdentifier = MatchAndAdvanceToken(binder, SyntaxKind::IdentifierToken);
+fun ASTNode* BindTernaryConditionalExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::TernaryConditionalExpression);
 
-    let String enumText = TokenGetText(enumIdentifier);
-    let Symbol* enumSymbol = GetSymbol(binder->symbolTable, enumText);
-    if (enumSymbol == nullptr) {
+    let ASTNode* condition = BindExpression(binder, syntax->ternaryConditionalExpr.conditionExpression);
+    let ASTNode* thenExpression = BindExpression(binder, syntax->ternaryConditionalExpr.thenExpression);
+    let ASTNode* elseExpression = BindExpression(binder, syntax->ternaryConditionalExpr.elseExpression);
+    let Type type = GetTypeThatFitsBothTypes(thenExpression->type, elseExpression->type);
+    if (IsVoidType(type)) {
         ReportError(
-            TokenGetLocation(enumIdentifier),
-            "Undeclared identifier '%s'", 
-            enumText.cstr
-        );
-    }
-    if (enumSymbol->kind != SymbolKind::Enum) {
-        ReportError(
-            TokenGetLocation(enumIdentifier),
-            "Identifier '%s' is not an enum", 
-            enumText.cstr
+            TokenGetLocation(syntax->ternaryConditionalExpr.questionmark),
+            "Incompatible expression types in ternary operator - then branch: '%s', else branch: '%s'",
+            TypeGetText(thenExpression->type).cstr, TypeGetText(elseExpression->type).cstr
         );
     }
 
-    let String valueText = TokenGetText(valueIdentifier);
-    let Symbol* valueSymbol = GetSymbol(enumSymbol->membersSymbolTable, valueText);
-    if (valueSymbol == nullptr) {
-        ReportError(
-            TokenGetLocation(enumIdentifier),
-            "Identifier '%s' is not a member of enum '%s'", 
-            valueText.cstr, enumText.cstr
-        );
-    }
-    assert (valueSymbol->kind == SymbolKind::Enumvalue);
-
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::EnumValueLiteral, binder->symbolTable, valueIdentifier);
-    result->symbol = valueSymbol;
-    result->type = valueSymbol->type;
-    return result;
-}
-
-fun ASTNode* BindTypeExpression(Binder* binder) {
-    let SyntaxToken startToken = binder->tokenCur;
-    let Type type = BindType(binder);
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::TypeExpression, binder->symbolTable, startToken);
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::TernaryConditionalExpression, binder->symbolTable, syntax);
+    result->left = condition;
+    result->right = thenExpression;
+    result->extra1 = elseExpression;
     result->type = type;
+    result->isRValue = true;
     return result;
 }
 
-fun ASTNode* BindPrimaryExpression(Binder* binder) {
-    switch (binder->tokenCur.kind) {
-        case SyntaxKind::LeftParenToken: {
-            let SyntaxToken leftParen = MatchAndAdvanceToken(binder, SyntaxKind::LeftParenToken);
-            let ASTNode* inner = BindExpression(binder);
-            let SyntaxToken rightParen = MatchAndAdvanceToken(binder, SyntaxKind::RightParenToken);
-
-            let ASTNode* result = ASTNodeCreate(ASTNodeKind::ParenthesizedExpression, binder->symbolTable, leftParen);
-            result->type = inner->type;
-            result->left = inner;
-            return result;
-        }
-        case SyntaxKind::SizeOfKeyword: {
-            let SyntaxToken sizeofKeyword = MatchAndAdvanceToken(binder, SyntaxKind::SizeOfKeyword);
-            let SyntaxToken leftParen = MatchAndAdvanceToken(binder, SyntaxKind::LeftParenToken);
-            let ASTNode* typeExpr = BindTypeExpression(binder);
-            let SyntaxToken rightParen = MatchAndAdvanceToken(binder, SyntaxKind::RightParenToken);
-
-            let ASTNode* result = ASTNodeCreate(ASTNodeKind::SizeOfExpression, binder->symbolTable, sizeofKeyword);
-            result->type = TypeCreatePrimitive(TypeKind::PrimitiveInt);
-            result->left = typeExpr;
-            result->isRValue = true;
-            return result;
-        }
-        case SyntaxKind::IdentifierToken: {
-            if (binder->tokenNext.kind == SyntaxKind::ColonColonToken)
-                return BindEnumLiteralExpression(binder);
-
-            let SyntaxToken identifier = MatchAndAdvanceToken(binder, SyntaxKind::IdentifierToken);
-            let String identifierText = TokenGetText(identifier);
-            let Symbol* symbol = GetSymbol(binder->symbolTable, identifierText);
-            if (symbol == nullptr) {
-                ReportError(
-                    TokenGetLocation(identifier),
-                    "Undeclared identifier '%s'", 
-                    identifierText.cstr
-                );
-            }
-
-            let ASTNode* result = ASTNodeCreate(ASTNodeKind::Identifier, binder->symbolTable, identifier);
-            result->symbol = symbol;
-            result->type = symbol->type;
-            return result;
-        }
-        case SyntaxKind::StringLiteralToken: {
-            let SyntaxToken token = MatchAndAdvanceToken(binder, SyntaxKind::StringLiteralToken);
-
-            while (binder->tokenCur.kind == SyntaxKind::StringLiteralToken) {
-                let SyntaxToken next = MatchAndAdvanceToken(binder, SyntaxKind::StringLiteralToken);
-                token.location.end = next.location.end;
-                token.debugString = TokenGetText(token);
-                token.stringValueWithoutQuotes = StringAppend(token.stringValueWithoutQuotes, next.stringValueWithoutQuotes);
-            }
-
-            let ASTNode* result = ASTNodeCreate(ASTNodeKind::StringLiteral, binder->symbolTable, token);
-            result->isRValue = true;
-            result->stringvalue = token.stringValueWithoutQuotes;
-            result->type = TypeCreate(TypeKind::PrimitiveChar, 1, StringCreateEmpty());
-            return result;
-        }
-        case SyntaxKind::NullKeyword: {
-            let SyntaxToken token = MatchAndAdvanceToken(binder, SyntaxKind::NullKeyword);
-            let ASTNode* result = ASTNodeCreate(ASTNodeKind::NullLiteral, binder->symbolTable, token);
-            result->isRValue = true;
-            result->type = TypeCreate(TypeKind::PrimitiveNull, 1, StringCreateEmpty());
-            return result;
-        }
-        case SyntaxKind::CharacterLiteralToken: {
-            let SyntaxToken token = MatchAndAdvanceToken(binder, SyntaxKind::CharacterLiteralToken);
-            let ASTNode* result = ASTNodeCreate(ASTNodeKind::CharacterLiteral, binder->symbolTable, token);
-            result->isRValue = true;
-            result->intvalue = token.intvalue;
-            result->stringvalue = token.stringValueWithoutQuotes;
-            result->type = TypeCreatePrimitive(TypeKind::PrimitiveChar);
-            return result;
-        }
-        case SyntaxKind::TrueKeyword: {
-            let SyntaxToken token = MatchAndAdvanceToken(binder, SyntaxKind::TrueKeyword);
-            let ASTNode* result = ASTNodeCreate(ASTNodeKind::BoolLiteral, binder->symbolTable, token);
-            result->isRValue = true;
-            result->intvalue = 1;
-            result->type = TypeCreatePrimitive(TypeKind::PrimitiveBool);
-            return result;
-        }
-        case SyntaxKind::FalseKeyword: {
-            let SyntaxToken token = MatchAndAdvanceToken(binder, SyntaxKind::FalseKeyword);
-            let ASTNode* result = ASTNodeCreate(ASTNodeKind::BoolLiteral, binder->symbolTable, token);
-            result->isRValue = true;
-            result->intvalue = 0;
-            result->type = TypeCreatePrimitive(TypeKind::PrimitiveBool);
-            return result;
-        }
-        case SyntaxKind::IntegerLiteralToken:
-        default: {
-            let SyntaxToken token = MatchAndAdvanceToken(binder, SyntaxKind::IntegerLiteralToken);
-            let ASTNode* result = ASTNodeCreate(ASTNodeKind::IntegerLiteral, binder->symbolTable, token);
-            result->isRValue = true;
-            result->intvalue = token.intvalue;
-            if (CHAR_MIN <= token.intvalue && token.intvalue <= CHAR_MAX)
-                result->type = TypeCreatePrimitive(TypeKind::PrimitiveByte);
-            else if (SHRT_MIN <= token.intvalue && token.intvalue <= SHRT_MAX)
-                result->type = TypeCreatePrimitive(TypeKind::PrimitiveShort);
-            else if (INT_MIN <= token.intvalue && token.intvalue <= INT_MAX)
-                result->type = TypeCreatePrimitive(TypeKind::PrimitiveInt);
-            else
-                result->type = TypeCreatePrimitive(TypeKind::PrimitiveLong);
-            return result;
-        }
-    }
-}
-
-fun ASTNode* BindArrayLiteralExpression(Binder* binder, Symbol* arraySymbol) { 
-    assert(arraySymbol->type.isArray);
-
-    let SyntaxToken leftBrace = MatchAndAdvanceToken(binder, SyntaxKind::LeftBraceToken);
-
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::ArrayLiteral, binder->symbolTable, leftBrace);
-
-    let int elementCount = 0;
-    while (binder->tokenCur.kind != SyntaxKind::RightBraceToken) {
-        let ASTNode* expression = BindExpression(binder);
-        elementCount += 1;
-        let Type arrayElemType = GetElementTypeForArrayType(arraySymbol->type);
-        let TypeConversionResult conversion = CanConvertTypeFromTo(expression->type, arrayElemType);
-        if (conversion == TypeConversionResult::NonConvertible 
-         || conversion == TypeConversionResult::ExplicitlyConvertible) {
-            ReportError(
-                TokenGetLocation(expression->token),
-                "Cannot convert type '%s' of element %d in array initializer to array type '%s'",
-                TypeGetText(expression->type).cstr, elementCount, TypeGetText(arrayElemType).cstr
-            );
-        } 
-        ASTNodeArrayPush(&result->children, expression);
-        if (binder->tokenCur.kind == SyntaxKind::RightBraceToken)
+fun ASTNode* BindExpression(Binder* binder, SyntaxNode* syntax) {
+    let ASTNode* result = nullptr;
+    switch (syntax->kind) {
+        // Expressions
+        case SyntaxKind::UnaryExpression:
+            result = BindUnaryExpression(binder, syntax);
             break;
-        else
-            MatchAndAdvanceToken(binder, SyntaxKind::CommaToken);
-    }
-    let SyntaxToken rightBrace = MatchAndAdvanceToken(binder, SyntaxKind::RightBraceToken);
-
-    if (arraySymbol->type.arrayElementCount == -1)
-        arraySymbol->type.arrayElementCount = elementCount;
-    if (elementCount == 0) {
-        ReportError(
-            TokenGetLocation(leftBrace),
-            "Element count cannot be zero in array initializer of array '%s'",
-            arraySymbol->name.cstr
-        );
-    }
-    if (arraySymbol->type.arrayElementCount != elementCount) {
-        ReportError(
-            TokenGetLocation(leftBrace),
-            "Element count %d of array initializer does not match element count %d of array '%s'",
-            elementCount, arraySymbol->type.arrayElementCount, arraySymbol->name.cstr
-        );
-    }
-    
-    return result;
-}
-
-
-fun ASTNode* BindPostFixExpression(Binder* binder) {
-    let ASTNode* left = BindPrimaryExpression(binder);
-
-    let bool foundPostfix = false;
-    do {
-        foundPostfix = false;
-        if (binder->tokenCur.kind == SyntaxKind::LeftParenToken) {
-            foundPostfix = true;
-            left =  BindFunctionCallExpression(binder, left);
-        }
-        if (binder->tokenCur.kind == SyntaxKind::DotToken) {
-            foundPostfix = true;
-            left = BindMemberAccess(binder, left, false);
-        }
-        if (binder->tokenCur.kind == SyntaxKind::ArrowToken) {
-            foundPostfix = true;
-            left = BindMemberAccess(binder, left, true);
-        }
-        if (binder->tokenCur.kind == SyntaxKind::LeftBracketToken) {
-            foundPostfix = true;
-            left = BindArrayIndexingExpression(binder, left);
-        }
-    } while(foundPostfix);
-
-    if (left->type.isArray) {
-        left->isRValue = true; // Arrays cannot be assigned to without indexing
-    }
-
-    return left;
-}
-
-fun ASTNode* BindBinaryExpression(Binder* binder, int parentPrecedence);
-fun ASTNode* BindUnaryExpression(Binder* binder, int parentPrecedence);
-
-fun ASTNode* BindCastExpression(Binder* binder) {
-    if (binder->tokenCur.kind != SyntaxKind::LeftParenToken || binder->tokenNext.kind != SyntaxKind::AsKeyword)
-        return BindPostFixExpression(binder);
-    
-    let SyntaxToken leftParen = MatchAndAdvanceToken(binder, SyntaxKind::LeftParenToken);
-    let SyntaxToken asKeyword = MatchAndAdvanceToken(binder, SyntaxKind::AsKeyword);
-    let Type targetType = BindType(binder);
-    let SyntaxToken rightParen = MatchAndAdvanceToken(binder, SyntaxKind::RightParenToken);
-
-    let ASTNode* expression = BindUnaryExpression(binder, 0);
-
-    let TypeConversionResult conversion = CanConvertTypeFromTo(expression->type, targetType);
-    if (conversion == TypeConversionResult::NonConvertible) {
-        ReportError(
-            TokenGetLocation(asKeyword),
-            "Cast from type '%s' to type '%s' is impossible",
-            TypeGetText(expression->type).cstr, TypeGetText(targetType).cstr
-        );
-    }
-
-    let ASTNode* result =  ASTNodeCreate(ASTNodeKind::CastExpression, binder->symbolTable, asKeyword);
-    result->type = targetType;
-    result->left = expression;
-    return result;
-}
-
-fun ASTNode* BindUnaryExpression(Binder* binder, int parentPrecedence) {
-    let ASTNode* left = nullptr;
-    let int unaryOperatorPrecedence = GetUnaryOperatorPrecedence(binder->tokenCur.kind);
-    if ((unaryOperatorPrecedence != 0) && (unaryOperatorPrecedence >= parentPrecedence)) {
-        let SyntaxToken operatorToken = AdvanceToken(binder);
-        let ASTNode* operand = BindBinaryExpression(binder, unaryOperatorPrecedence);
-
-        let UnaryOperator op = GetUnaryOperationForToken(operatorToken, operand->type);
-        if (op.operandMustBeLValue && operand->isRValue) {
-            ReportError(
-                TokenGetLocation(operatorToken),
-                "Operand of operator '%s' must be an storage location", 
-                TokenKindToString(operatorToken.kind).cstr
-            );
-        }
-
-        let ASTNode* result = ASTNodeCreate(op.operatorKind, binder->symbolTable, operatorToken);
-        result->isRValue = op.resultIsRValue;
-        result->type = op.resultType;
-        result->left = operand;
-        left = result;
-    } else {
-      left = BindCastExpression(binder);
-    }
-    return left;
-}
-
-fun ASTNode* BindBinaryExpression(Binder* binder, int parentPrecedence) {
-    let ASTNode* left = BindUnaryExpression(binder, parentPrecedence);
-
-    while (true) {
-        let int precedence = GetBinaryOperatorPrecedence(binder->tokenCur.kind);
-        if (precedence == 0
-         || precedence < parentPrecedence 
-         || precedence == parentPrecedence && !IsBinaryOperatorRightAssociative(binder->tokenCur.kind))
+        case SyntaxKind::BinaryExpression:
+            result = BindBinaryExpression(binder, syntax);
+            break;
+        case SyntaxKind::FuncCallExpression:
+            result = BindFunctionCallExpression(binder, syntax);
+            break;
+        case SyntaxKind::ArrayIndexExpression:
+            result = BindArrayIndexingExpression(binder, syntax);
+            break;
+        case SyntaxKind::MemberAccessExpression:
+            result = BindMemberAccessExpression(binder, syntax);
+            break;
+        case SyntaxKind::TypeCastExpression:
+            result = BindTypeCastExpression(binder, syntax);
+            break;
+        case SyntaxKind::ParenthesizedExpression:
+            result = BindParenthesizedExpression(binder, syntax);
+            break;
+        case SyntaxKind::TernaryConditionalExpression:
+            result = BindTernaryConditionalExpression(binder, syntax);
+            break;
+        case SyntaxKind::SizeOfExpression:
+            result = BindSizeOfExpression(binder, syntax);
+            break;
+        case SyntaxKind::NameExpression:
+            result = BindNameExpression(binder, syntax);
+            break;
+        case SyntaxKind::TypeExpression:
+            result = BindTypeExpression(binder, syntax);
             break;
 
-        let SyntaxToken operatorToken = AdvanceToken(binder);
-        let ASTNode* right = BindBinaryExpression(binder, precedence);
-
-        let BinaryOperator op = GetBinaryOperationForToken(operatorToken, left->type, right->type);
-        if (op.leftMustBeLValue && left->isRValue) {
-            ReportError(
-                TokenGetLocation(operatorToken),
-                "Left argument of operator '%s' must be an storage location", 
-                TokenKindToString(operatorToken.kind).cstr
-            );
-        }
-        if (op.rightMustBeLValue && right->isRValue) {
-            ReportError(
-                TokenGetLocation(operatorToken),
-                "Right argument of operator '%s' must be a storage location", 
-                TokenKindToString(operatorToken.kind).cstr
-            );
-        }
-
-        let ASTNode* result = ASTNodeCreate(op.operatorKind, binder->symbolTable, operatorToken);
-        result->isRValue = op.resultIsRValue;
-        result->type = op.resultType;
-        result->left = left;
-        result->right = right;
-        left = result;
-    }
-    return left;
-}
-
-fun ASTNode* BindTernaryConditionExpression(Binder* binder) {
-    let ASTNode* condition = BindBinaryExpression(binder, 0);
-
-    if (binder->tokenCur.kind == SyntaxKind::QuestionmarkToken) {
-        // TODO: check truthyness of condition
-        let SyntaxToken questionmark = MatchAndAdvanceToken(binder, SyntaxKind::QuestionmarkToken);
-        let ASTNode* thenExpression = BindTernaryConditionExpression(binder);
-        let SyntaxToken colon = MatchAndAdvanceToken(binder, SyntaxKind::ColonToken);
-        let ASTNode* elseExpression = BindTernaryConditionExpression(binder);
-
-        let Type type = GetTypeThatFitsBothTypes(thenExpression->type, elseExpression->type);
-        if (IsVoidType(type)) {
-            ReportError(
-                TokenGetLocation(questionmark),
-                "Incompatible expression types in ternary operator - then branch: '%s', else branch: '%s'",
-                TypeGetText(thenExpression->type).cstr, TypeGetText(elseExpression->type).cstr
-            );
-        }
-
-        let ASTNode* ternary = ASTNodeCreate(ASTNodeKind::TernaryConditionalExpression, binder->symbolTable, questionmark);
-        ternary->left = condition;
-        ternary->right = thenExpression;
-        ternary->extra1 = elseExpression;
-        ternary->type = type;
-        ternary->isRValue = true;
-        condition = ternary;
-    }
-    return condition;
-}
-
-fun ASTNode* BindAssignmentExpression(Binder* binder) {
-    let ASTNode* left = BindTernaryConditionExpression(binder);
-
-    // NOTE: The following is basically a duplicate of what the BindBinaryExpression does.
-    // We need to do this here though to support ternary conditionals more easily.
-    // Note that we still keep the GetBinaryOperationForToken(..) call so that we later 
-    // can accept custom operator overloadings.
-    switch (binder->tokenCur.kind) {
-        case SyntaxKind::EqualsToken: 
-        case SyntaxKind::PlusEqualsToken: 
-        case SyntaxKind::MinusEqualsToken: 
-        case SyntaxKind::StarEqualsToken: 
-        case SyntaxKind::SlashEqualsToken:
-        case SyntaxKind::PercentEqualsToken:
-        case SyntaxKind::HatEqualsToken:
-        case SyntaxKind::AmpersandEqualsToken:
-        case SyntaxKind::PipeEqualsToken:
-        case SyntaxKind::LessLessEqualsToken:
-        case SyntaxKind::GreaterGreaterEqualsToken:
-        {
-            let SyntaxToken assignmentToken = AdvanceToken(binder);
-            let ASTNode* right = BindAssignmentExpression(binder);
-            let BinaryOperator op = GetBinaryOperationForToken(assignmentToken, left->type, right->type);
-            if (left->isRValue) {
-                ReportError(
-                    TokenGetLocation(assignmentToken),
-                    "Left argument of operator '%s' must be an storage location", 
-                    TokenKindToString(assignmentToken.kind).cstr
-                );
-            }
-
-            let ASTNode* assignment = ASTNodeCreate(op.operatorKind, binder->symbolTable, assignmentToken);
-            assignment->isRValue = op.resultIsRValue;
-            assignment->type = op.resultType;
-            assignment->left = left;
-            assignment->right = right;
-            left = assignment;
+        // Literals
+        case SyntaxKind::NullLiteralExpression:
+            result = BindNullLiteralExpression(binder, syntax);
             break;
-        } 
+        case SyntaxKind::IntegerLiteralExpression:
+            result = BindIntegerLiteralExpression(binder, syntax);
+            break;
+        case SyntaxKind::CharacterLiteralExpression:
+            result = BindCharacterLiteralExpression(binder, syntax);
+            break;
+        case SyntaxKind::BoolLiteralExpression:
+            result = BindBoolLiteralExpression(binder, syntax);
+            break;
+        case SyntaxKind::StringLiteralExpression:
+            result = BindStringLiteralExpression(binder, syntax);
+            break;
+        case SyntaxKind::EnumValueLiteralExpression:
+            result = BindEnumValueLiteralExpression(binder, syntax);
+            break;
+        
         default:
-            break;
+            assert(false && "Unexpected expression in binder");
     }
-    
-    return left;
-}
-
-fun ASTNode* BindExpression(Binder* binder) {
-    return BindAssignmentExpression(binder);
-}
-
-fun ASTNode* BindExpressionStatement(Binder* binder) {
-    let ASTNode* expression = BindExpression(binder);
-    let SyntaxToken semicolonToken = MatchAndAdvanceToken(binder, SyntaxKind::SemicolonToken);
-
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::ExpressionStatement, binder->symbolTable, expression->token);
-    result->left = expression;
+    if (result->type.isArray) {
+        // TODO: is this the appropriate place for this check?
+        result->isRValue = true; // Arrays cannot be assigned to without indexing
+    }
     return result;
 }
 
-fun ASTNode* BindIfStatement(Binder* binder) {
-    let SyntaxToken ifKeyword = MatchAndAdvanceToken(binder, SyntaxKind::IfKeyword);
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Statements
 
-    let SyntaxToken leftParen = MatchAndAdvanceToken(binder, SyntaxKind::LeftParenToken);
-    let ASTNode* condition = BindExpression(binder);
-    // TODO we should check that conditions is truthy
-    let SyntaxToken rightParen = MatchAndAdvanceToken(binder, SyntaxKind::RightParenToken);
+fun ASTNode* BindExpressionStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::ExpressionStatement);
 
-    let ASTNode* thenBranch = BindStatement(binder);
-    thenBranch = WrapInCompoundStatementIfNecessary(binder, thenBranch);
-
-    let ASTNode* elseBranch = nullptr;
-    if (binder->tokenCur.kind == SyntaxKind::ElseKeyword) {
-        let SyntaxToken elseKeyword = MatchAndAdvanceToken(binder, SyntaxKind::ElseKeyword);
-        elseBranch = BindStatement(binder);
-        elseBranch = WrapInCompoundStatementIfNecessary(binder, elseBranch);
-    }
-
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::IfStatement, binder->symbolTable, ifKeyword);
-    result->left = condition;
-    result->right = thenBranch;
-    result->extra1 = elseBranch;
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::ExpressionStatement, binder->symbolTable, syntax);
+    result->left = BindExpression(binder, syntax->expressionStmt.expression);
     return result;
 }
 
-fun ASTNode* BindWhileStatement(Binder* binder) {
-    let SyntaxToken whileKeyword = MatchAndAdvanceToken(binder, SyntaxKind::WhileKeyword);
+fun ASTNode* BindVariableDefinitionStatement(Binder* binder, SyntaxNode* syntax, SymbolScopeKind symbolScopeKind) {
+    assert(syntax->kind == SyntaxKind::VariableDeclarationStatement);
 
-    let SyntaxToken leftParen = MatchAndAdvanceToken(binder, SyntaxKind::LeftParenToken);
-    let ASTNode* condition = BindExpression(binder);
-    // TODO we should check that conditions is truthy
-    let SyntaxToken rightParen = MatchAndAdvanceToken(binder, SyntaxKind::RightParenToken);
-
-    binder->loopLevel += 1;
-    let ASTNode* body = BindStatement(binder);
-    body = WrapInCompoundStatementIfNecessary(binder, body);
-    binder->loopLevel -= 1;
-
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::WhileStatement, binder->symbolTable, whileKeyword);
-    result->left = condition;
-    result->right = body;
-    return result;
-}
-
-fun ASTNode* BindDoWhileStatement(Binder* binder) {
-    let SyntaxToken doKeyword = MatchAndAdvanceToken(binder, SyntaxKind::DoKeyword);
-    binder->loopLevel += 1;
-    let ASTNode* body = BindStatement(binder);
-    body = WrapInCompoundStatementIfNecessary(binder, body);
-    binder->loopLevel -= 1;
-
-    let SyntaxToken whileKeyword = MatchAndAdvanceToken(binder, SyntaxKind::WhileKeyword);
-
-    let SyntaxToken leftParen = MatchAndAdvanceToken(binder, SyntaxKind::LeftParenToken);
-    let ASTNode* condition = BindExpression(binder);
-    // TODO we should check that conditions is truthy
-    let SyntaxToken rightParen = MatchAndAdvanceToken(binder, SyntaxKind::RightParenToken);
-    let SyntaxToken semicolon = MatchAndAdvanceToken(binder, SyntaxKind::SemicolonToken);
-
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::DoWhileStatement, binder->symbolTable, whileKeyword);
-    result->left = condition;
-    result->right = body;
-    return result;
-}
-
-fun ASTNode* BindForStatement(Binder* binder) {
-    let SyntaxToken forKeyword = MatchAndAdvanceToken(binder, SyntaxKind::ForKeyword);
-
-    // Push symboltable scope to make the index local to the for statement
-    binder->symbolTable = SymbolTableCreate(binder->symbolTable);
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::ForStatement, binder->symbolTable, forKeyword);
-
-    let SyntaxToken leftParen = MatchAndAdvanceToken(binder, SyntaxKind::LeftParenToken);
-
-    let ASTNode* initializer = nullptr;
-    if (binder->tokenCur.kind == SyntaxKind::LetKeyword)
-        initializer = BindVariableDefinitionStatement(binder, false);
-    else 
-        initializer = BindExpressionStatement(binder);
-    let ASTNode* condition = BindExpressionStatement(binder);
-    // TODO we should check that conditions is truthy
-    let ASTNode* iterator = BindExpression(binder);
-
-    let SyntaxToken rightParen = MatchAndAdvanceToken(binder, SyntaxKind::RightParenToken);
-
-    binder->loopLevel += 1;
-    let ASTNode* body = BindStatement(binder);
-    body = WrapInCompoundStatementIfNecessary(binder, body);
-    binder->loopLevel -= 1;
-
-    // Pop symboltable
-    binder->symbolTable = binder->symbolTable->parent;
-
-    result->left = initializer;
-    result->right = condition;
-    result->extra1 = iterator;
-    result->extra2 = body;
-    return result;
-}
-
-fun ASTNode* BindReturnStatement(Binder* binder) {
-    let SyntaxToken returnKeyword = MatchAndAdvanceToken(binder, SyntaxKind::ReturnKeyword);
-    if (binder->currentFunctionSymbol == nullptr) {
-        ReportError(
-            TokenGetLocation(returnKeyword),
-            "Invalid 'return' statement found outside of function definition"
-        );
-    }
-
-    let Type functionReturnType = binder->currentFunctionSymbol->type;
-    if (IsVoidType(functionReturnType) && binder->tokenCur.kind != SyntaxKind::SemicolonToken) {
-        ReportError(
-            TokenGetLocation(returnKeyword),
-            "Invalid return expression in void function"
-        );
-    }
-    if (!IsVoidType(functionReturnType) && binder->tokenCur.kind == SyntaxKind::SemicolonToken) {
-        ReportError(
-            TokenGetLocation(returnKeyword),
-            "Must return expression in non-void function"
-        );
-    }
-
-    let ASTNode* expression = nullptr;
-    if (binder->tokenCur.kind != SyntaxKind::SemicolonToken) {
-        expression = BindExpression(binder);
-
-        let TypeConversionResult conversion = CanConvertTypeFromTo(expression->type, functionReturnType);
-        if (conversion == TypeConversionResult::NonConvertible) {
+    let SyntaxToken identifier = syntax->variableDeclarationStmt.identifier;
+    let bool isLocalPersist = syntax->variableDeclarationStmt.letKeyword.kind == SyntaxKind::LetLocalPersistKeyword;
+    if (isLocalPersist) {
+        if (symbolScopeKind != SymbolScopeKind::Local) {
             ReportError(
-                TokenGetLocation(returnKeyword),
-                "Incompatible types for return expression '%s'", 
-                TokenKindToString(returnKeyword.kind).cstr
+                TokenGetLocation(identifier),
+                "Cannot mark global variable '%s' as local persistent", 
+                TokenGetText(identifier).cstr
             );
         }
-        if (conversion == TypeConversionResult::ExplicitlyConvertible) {
-            ReportError(
-                TokenGetLocation(returnKeyword),
-                "Types cannot be implicitly converted for return expression '%s'", 
-                TokenKindToString(returnKeyword.kind).cstr
-            );
-        }
-    }
-    let SyntaxToken semicolonToken = MatchAndAdvanceToken(binder, SyntaxKind::SemicolonToken);
-
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::ReturnStatement, binder->symbolTable, returnKeyword);
-    result->left = expression;
-    return result;
-}
-
-fun ASTNode* BindBreakStatement(Binder* binder) {
-    let SyntaxToken breakKeyword = MatchAndAdvanceToken(binder, SyntaxKind::BreakKeyword);
-    if (binder->loopLevel == 0 && binder->switchCaseLevel == 0) {
-        ReportError(
-            TokenGetLocation(breakKeyword),
-            "Invalid 'break' statement found outside of loop or switch-case definition"
-        );
-    }
-    let SyntaxToken semicolonToken = MatchAndAdvanceToken(binder, SyntaxKind::SemicolonToken);
-
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::BreakStatement, binder->symbolTable, breakKeyword);
-    return result;
-}
-
-fun ASTNode* BindContinueStatement(Binder* binder) {
-    let SyntaxToken continueKeyword = MatchAndAdvanceToken(binder, SyntaxKind::ContinueKeyword);
-    if (binder->loopLevel == 0) {
-        ReportError(
-            TokenGetLocation(continueKeyword),
-            "Invalid 'continue' statement found outside of loop definition"
-        );
-    }
-    let SyntaxToken semicolonToken = MatchAndAdvanceToken(binder, SyntaxKind::SemicolonToken);
-
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::ContinueStatement, binder->symbolTable, continueKeyword);
-    return result;
-}
-
-
-fun Type BindType(Binder* binder) {
-    let Type type = TypeCreateVoid();
-    let SyntaxToken startToken = binder->tokenCur;
-    switch (binder->tokenCur.kind) {
-        case SyntaxKind::VoidKeyword:
-            type.kind = TypeKind::PrimitiveVoid;
-            break;
-        case SyntaxKind::CharKeyword:
-            type.kind = TypeKind::PrimitiveChar;
-            break;
-        case SyntaxKind::BoolKeyword:
-            type.kind = TypeKind::PrimitiveBool;
-            break;
-        case SyntaxKind::ByteKeyword:
-            type.kind = TypeKind::PrimitiveByte;
-            break;
-        case SyntaxKind::ShortKeyword:
-            type.kind = TypeKind::PrimitiveShort;
-            break;
-        case SyntaxKind::IntKeyword:
-            type.kind = TypeKind::PrimitiveInt;
-            break;
-        case SyntaxKind::LongKeyword:
-            type.kind = TypeKind::PrimitiveLong;
-            break;
-        case SyntaxKind::CStringKeyword:
-            type.kind = TypeKind::PrimitiveCString;
-            break;
-        case SyntaxKind::IdentifierToken: {
-                let String name = TokenGetText(binder->tokenCur);
-                let Symbol* symbol = GetSymbol(binder->symbolTable, name);
-                if (symbol != nullptr) {
-                    if (symbol->kind == SymbolKind::Struct) {
-                        type.kind = TypeKind::Struct;
-                        type.name = name;
-                        break;
-                    } else if (symbol->kind == SymbolKind::Union) {
-                        type.kind = TypeKind::Union;
-                        type.name = name;
-                        break;
-                    } else if (symbol->kind == SymbolKind::Enum) {
-                        type.kind = TypeKind::Enum;
-                        type.name = name;
-                        break;
-                    }
-                }
-            } // Fallthrough
-        default: 
-            ReportError(
-                TokenGetLocation(binder->tokenCur),
-                "SyntaxToken '%s' is not a type", 
-                TokenGetText(binder->tokenCur).cstr
-            );
-    }
-    AdvanceToken(binder);
-
-    while (binder->tokenCur.kind == SyntaxKind::StarToken) {
-        AdvanceToken(binder);
-        type = GetPointerTypeForBaseType(type);
+        symbolScopeKind = SymbolScopeKind::LocalPersist;
     }
 
-    if (type.kind == TypeKind::Struct) {
-        let Symbol* symbol = GetSymbol(binder->symbolTable, type.name);
-        if (!symbol->alreadyDefined && type.baseIndirectionLevel == 0) {
-            ReportError(
-                TokenGetLocation(startToken),
-                "Usage of undefined but forward declared type '%s' is only allowed as pointer", 
-                type.name.cstr
-            );
-        }
-    }
-
-    return type;
-}
-
-fun ASTNode* BindCompoundStatement(Binder* binder, bool inSwitch) {
-    let bool startsWithBrace = false;
-
-    let SyntaxToken leftBrace = binder->tokenCur;
-    if (binder->tokenCur.kind == SyntaxKind::LeftBraceToken || !inSwitch) {
-        leftBrace = MatchAndAdvanceToken(binder, SyntaxKind::LeftBraceToken);
-        startsWithBrace = true;
-    }
-
-    // Push symboltable scope
-    binder->symbolTable = SymbolTableCreate(binder->symbolTable);
-
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::CompoundStatement, binder->symbolTable, leftBrace);
-
-    while (binder->tokenCur.kind != SyntaxKind::RightBraceToken) {
-        if (inSwitch && binder->tokenCur.kind == SyntaxKind::CaseKeyword)
-            break;
-        if (inSwitch && binder->tokenCur.kind == SyntaxKind::DefaultKeyword)
-            break;
-        let ASTNode* statement = BindStatement(binder);
-        ASTNodeArrayPush(&result->children, statement);
-    }
-
-    // Pop symboltable
-    binder->symbolTable = binder->symbolTable->parent;
-
-    if (startsWithBrace) {
-        // Then it also must end with a brace
-        let SyntaxToken rightBrace = MatchAndAdvanceToken(binder, SyntaxKind::RightBraceToken);
-    }
-
-    return FlattenCompoundStatementIfNecessary(binder, result);
-}
-
-fun ASTNode* BindVariableDeclarationWithoutTerminator(Binder* binder, Type type, SyntaxToken identifier, SymbolScopeKind symbolScopeKind) {
+    let Type type = BindType(binder, syntax->variableDeclarationStmt.typeExpression);
     let Symbol* varSymbol = AddSymbol(binder->symbolTable, TokenGetText(identifier), SymbolKind::Variable, symbolScopeKind, type);
     if (varSymbol == nullptr) {
         ReportError(
@@ -983,53 +719,378 @@ fun ASTNode* BindVariableDeclarationWithoutTerminator(Binder* binder, Type type,
         );
     }
 
-    if (binder->tokenCur.kind == SyntaxKind::LeftBracketToken) {
+    if (syntax->variableDeclarationStmt.leftBracket.kind == SyntaxKind::LeftBracketToken) {
         // Array definition
         let longint arrayElementCount = -1;
-        let SyntaxToken leftBracket = MatchAndAdvanceToken(binder, SyntaxKind::LeftBracketToken);
-        if (binder->tokenCur.kind == SyntaxKind::IntegerLiteralToken) {
-            let SyntaxToken intLiteral = MatchAndAdvanceToken(binder, SyntaxKind::IntegerLiteralToken);
-            arrayElementCount = intLiteral.intvalue;
+        let bool arrayElementCountDefined = false;
+        if (syntax->variableDeclarationStmt.arraySizeLiteral.kind == SyntaxKind::IntegerLiteralToken) {
+            arrayElementCount = syntax->variableDeclarationStmt.arraySizeLiteral.intvalue;
+            arrayElementCountDefined = true;
         }
-        let SyntaxToken rightBracket = MatchAndAdvanceToken(binder, SyntaxKind::RightBracketToken);
-
-        if (arrayElementCount == 0) {
+        if (arrayElementCountDefined && arrayElementCount <= 0) {
             ReportError(
                 TokenGetLocation(identifier),
-                "Array size cannot be zero for '%s'", 
+                "Array size must be greater than zero for '%s'", 
                 TokenGetText(identifier).cstr
             );
         }
-
         varSymbol->type.isArray = true;
         varSymbol->type.arrayElementCount = arrayElementCount;
     }
 
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::VariableDeclarationStatement, binder->symbolTable, identifier);
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::VariableDeclarationStatement, binder->symbolTable, syntax);
     result->symbol = varSymbol;
+    if (syntax->variableDeclarationStmt.initializerExpression != nullptr) {
+        let ASTNode* boundInitializer = nullptr;
+        if (result->symbol->type.isArray)
+            boundInitializer = BindArrayLiteralExpression(binder, result->symbol, syntax->variableDeclarationStmt.initializerExpression);
+        else
+            boundInitializer = BindExpression(binder, syntax->variableDeclarationStmt.initializerExpression);
+        result->left = boundInitializer;
+    } 
     return result;
 }
 
-fun ASTNode* BindUnionOrStructDefinitionStatement(Binder* binder, bool isExternal) {
-    let SymbolScopeKind symbolScopeKind = isExternal ? SymbolScopeKind::Extern : SymbolScopeKind::Global;
+fun ASTNode* BindIfStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::IfStatement);
+    assert(binder->currentFunctionSymbol != nullptr);
 
-    let SyntaxToken structKeyword;
-    if (binder->tokenCur.kind == SyntaxKind::StructKeyword)
-        structKeyword = MatchAndAdvanceToken(binder, SyntaxKind::StructKeyword);
+    let ASTNode* boundCondition = BindExpression(binder, syntax->ifStmt.condition);
+    // TODO we should check that conditions is truthy
+
+    let ASTNode* boundThenBranch = BindStatement(binder, syntax->ifStmt.thenBlock);
+    boundThenBranch = _WrapInBlockStatementIfNecessary(binder, boundThenBranch);
+
+    let ASTNode* boundElseBranch = nullptr;
+    if (syntax->ifStmt.elseBlock != nullptr) {
+        boundElseBranch = BindStatement(binder, syntax->ifStmt.elseBlock);
+        boundElseBranch = _WrapInBlockStatementIfNecessary(binder, boundElseBranch);
+    }
+
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::IfStatement, binder->symbolTable, syntax);
+    result->left = boundCondition;
+    result->right = boundThenBranch;
+    result->extra1 = boundElseBranch;
+    return result;
+}
+
+fun ASTNode* BindWhileStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::WhileStatement);
+    assert(binder->currentFunctionSymbol != nullptr);
+
+    let ASTNode* boundCondition = BindExpression(binder, syntax->whileStmt.condition);
+    // TODO we should check that conditions is truthy
+
+    binder->loopLevel += 1;
+    let ASTNode* boundBody = BindStatement(binder, syntax->whileStmt.body);
+    boundBody = _WrapInBlockStatementIfNecessary(binder, boundBody);
+    binder->loopLevel -= 1;
+
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::WhileStatement, binder->symbolTable, syntax);
+    result->left = boundCondition;
+    result->right = boundBody;
+    return result;
+}
+
+fun ASTNode* BindDoWhileStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::DoWhileStatement);
+    assert(binder->currentFunctionSymbol != nullptr);
+
+    binder->loopLevel += 1;
+    let ASTNode* boundBody = BindStatement(binder, syntax->doWhileStmt.body);
+    boundBody = _WrapInBlockStatementIfNecessary(binder, boundBody);
+    binder->loopLevel -= 1;
+
+    let ASTNode* boundCondition = BindExpression(binder, syntax->doWhileStmt.condition);
+    // TODO we should check that conditions is truthy
+
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::DoWhileStatement, binder->symbolTable, syntax);
+    result->left = boundCondition;
+    result->right = boundBody;
+    return result;
+}
+
+fun ASTNode* BindForStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::ForStatement);
+    assert(binder->currentFunctionSymbol != nullptr);
+
+    // Push symboltable scope early to also make the index local to the for statement
+    binder->symbolTable = SymbolTableCreate(binder->symbolTable);
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::ForStatement, binder->symbolTable, syntax);
+
+    let ASTNode* boundInitializer = nullptr;
+    if (syntax->forStmt.initializerStatement->kind == SyntaxKind::VariableDeclarationStatement)
+        boundInitializer = BindVariableDefinitionStatement(binder, syntax->forStmt.initializerStatement, SymbolScopeKind::Local);
     else 
-        structKeyword = MatchAndAdvanceToken(binder, SyntaxKind::UnionKeyword);
-    let bool isUnion = structKeyword.kind == SyntaxKind::UnionKeyword;
+        boundInitializer = BindExpressionStatement(binder, syntax->forStmt.initializerStatement);
+    let ASTNode* boundCondition = BindExpressionStatement(binder, syntax->forStmt.conditionStatement);
+    // TODO we should check that conditions is truthy
+    let ASTNode* boundIncrementExpr = BindExpression(binder, syntax->forStmt.incrementExpression);
 
-    let SyntaxToken identifier = MatchAndAdvanceToken(binder, SyntaxKind::IdentifierToken);
-    let String name = TokenGetText(identifier);
+    binder->loopLevel += 1;
+    let ASTNode* boundBody = BindStatement(binder, syntax->forStmt.body);
+    boundBody = _WrapInBlockStatementIfNecessary(binder, boundBody);
+    binder->loopLevel -= 1;
 
-    if (binder->currentFunctionSymbol != nullptr) {
+    // Pop symboltable
+    binder->symbolTable = binder->symbolTable->parent;
+
+    result->left = boundInitializer;
+    result->right = boundCondition;
+    result->extra1 = boundIncrementExpr;
+    result->extra2 = boundBody;
+    return result;
+}
+
+fun ASTNode* BindReturnStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::ReturnStatement);
+    assert(binder->currentFunctionSymbol != nullptr);
+
+    if (binder->currentFunctionSymbol == nullptr) {
         ReportError(
-            TokenGetLocation(identifier),
-            "Unexpected struct or union declaration of '%s' while already parsing function", 
-            name.cstr
+            TokenGetLocation(syntax->returnStmt.returnKeyword),
+            "Invalid 'return' statement found outside of function definition"
         );
     }
+
+    let Type functionReturnType = binder->currentFunctionSymbol->type;
+    if (IsVoidType(functionReturnType) && syntax->returnStmt.returnExpression != nullptr) {
+        ReportError(
+            TokenGetLocation(syntax->returnStmt.returnKeyword),
+            "Invalid return expression in void function"
+        );
+    }
+    if (!IsVoidType(functionReturnType) && syntax->returnStmt.returnExpression == nullptr) {
+        ReportError(
+            TokenGetLocation(syntax->returnStmt.returnKeyword),
+            "Must return expression in non-void function"
+        );
+    }
+
+    let ASTNode* boundExpression = nullptr;
+    if (syntax->returnStmt.returnExpression != nullptr) {
+        boundExpression = BindExpression(binder, syntax->returnStmt.returnExpression);
+
+        let TypeConversionResult conversion = CanConvertTypeFromTo(boundExpression->type, functionReturnType);
+        if (conversion == TypeConversionResult::NonConvertible) {
+            ReportError(
+                TokenGetLocation(syntax->returnStmt.returnKeyword),
+                "Incompatible types for return expression '%s'", 
+                TokenKindToString(syntax->returnStmt.returnKeyword.kind).cstr
+            );
+        }
+        if (conversion == TypeConversionResult::ExplicitlyConvertible) {
+            ReportError(
+                TokenGetLocation(syntax->returnStmt.returnKeyword),
+                "Types cannot be implicitly converted for return expression '%s'", 
+                TokenKindToString(syntax->returnStmt.returnKeyword.kind).cstr
+            );
+        }
+    }
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::ReturnStatement, binder->symbolTable, syntax);
+    result->left = boundExpression;
+    return result;
+}
+
+fun ASTNode* BindBreakStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::BreakStatement);
+    assert(binder->currentFunctionSymbol != nullptr);
+
+    if (binder->loopLevel == 0 && binder->switchCaseLevel == 0) {
+        ReportError(
+            TokenGetLocation(syntax->breakStmt.breakKeyword),
+            "Invalid 'break' statement found outside of loop or switch-case definition"
+        );
+    }
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::BreakStatement, binder->symbolTable, syntax);
+    return result;
+}
+
+fun ASTNode* BindContinueStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::ContinueStatement);
+    assert(binder->currentFunctionSymbol != nullptr);
+
+    if (binder->loopLevel == 0) {
+        ReportError(
+            TokenGetLocation(syntax->continueStmt.continueKeyword),
+            "Invalid 'continue' statement found outside of loop definition"
+        );
+    }
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::ContinueStatement, binder->symbolTable, syntax);
+    return result;
+}
+
+fun ASTNode* BindBlockStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::BlockStatement);
+    assert(binder->currentFunctionSymbol != nullptr);
+
+    // Push symboltable scope
+    binder->symbolTable = SymbolTableCreate(binder->symbolTable);
+
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::BlockStatement, binder->symbolTable, syntax);
+    for (let int index = 0; index < syntax->blockStmt.statements.count; index += 1) {
+        let SyntaxNode* statement = syntax->blockStmt.statements.nodes[index];
+        let ASTNode* boundStatement = BindStatement(binder, statement);
+        ASTNodeArrayPush(&result->children, boundStatement);
+    }
+
+    // Pop symboltable
+    binder->symbolTable = binder->symbolTable->parent;
+    return _FlattenBlockStatementIfNecessary(binder, result);
+}
+
+fun ASTNode* BindCaseStatement(Binder* binder, ASTNode* switchExpression, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::CaseStatement || syntax->kind == SyntaxKind::DefaultStatement);
+    assert(binder->currentFunctionSymbol != nullptr);
+    assert(binder->switchCaseLevel != 0);
+
+    let bool isDefault = syntax->kind == SyntaxKind::DefaultStatement;
+
+    let ASTNode* caseExpression = nullptr;
+    if (syntax->kind == SyntaxKind::CaseStatement) {
+        caseExpression = BindExpression(binder, syntax->caseStmt.literalExpression);
+        if (caseExpression->kind != ASTNodeKind::IntegerLiteral 
+        && caseExpression->kind != ASTNodeKind::StringLiteral 
+        && caseExpression->kind != ASTNodeKind::CharacterLiteral 
+        && caseExpression->kind != ASTNodeKind::EnumValueLiteral) {
+            ReportError(
+                TokenGetLocation(caseExpression->token), 
+                "Expected literal in case label but got '%s'",
+                TokenKindToString(caseExpression->token.kind).cstr
+            );
+        }
+        let TypeConversionResult conversion = CanConvertTypeFromTo(caseExpression->type, switchExpression->type);
+        if (conversion != TypeConversionResult::Identical && conversion != TypeConversionResult::ImplictlyConvertible) {
+            ReportError(
+                TokenGetLocation(caseExpression->token), 
+                "Cannot convert type '%s' of case label literal '%s' to its switch expression type '%s'",
+                TypeGetText(caseExpression->type).cstr, TokenGetText(caseExpression->token).cstr, TypeGetText(switchExpression->type).cstr
+            );
+        }
+    } 
+
+    let ASTNode* body = BindBlockStatement(binder, isDefault 
+        ? syntax->defaultStmt.body 
+        : syntax->caseStmt.body);
+    if (body->children.count == 0)
+        body = nullptr;
+
+    let ASTNode* result = ASTNodeCreate2( isDefault 
+        ? ASTNodeKind::DefaultStatement 
+        : ASTNodeKind::CaseStatement, binder->symbolTable, syntax);
+    result->left = body;
+    result->right = caseExpression;
+    return result;
+}
+
+fun ASTNode* BindSwitchStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind::SwitchStatement);
+    assert(binder->currentFunctionSymbol != nullptr);
+
+    let ASTNode* switchExpression = BindExpression(binder, syntax->switchStmt.switchExpression);
+
+    binder->switchCaseLevel += 1;
+
+    let int defaultStatementEncountered = false;
+    let ASTNodeArray caseStatements = ASTNodeArrayCreate();
+    for (let int index = 0; index < syntax->switchStmt.caseStatements.count; index += 1) {
+        let SyntaxNode* caseStatement = syntax->switchStmt.caseStatements.nodes[index];
+        let ASTNode* boundCaseStatement = BindCaseStatement(binder, switchExpression, caseStatement);
+        if (defaultStatementEncountered) {
+            ReportError(
+                TokenGetLocation(caseStatement->caseStmt.caseKeyword),
+                "Unexpected case statement after default statement was already defined"
+            );
+        }
+        if (caseStatement->kind == SyntaxKind::DefaultStatement)
+            defaultStatementEncountered = true;
+        ASTNodeArrayPush(&caseStatements, boundCaseStatement);
+    }
+
+    binder->switchCaseLevel -= 1;
+
+    if (caseStatements.count == 0) {
+        ReportError(
+            TokenGetLocation(syntax->switchStmt.switchKeyword),
+            "Empty switch statements are not allowed"
+        );
+    }
+
+    // Check that we don't have any duplicate case labels
+    for (let int index = 0; index < caseStatements.count; index += 1) {
+        let ASTNode* a = caseStatements.nodes[index];
+        for (let int inner = index + 1; inner < caseStatements.count; inner += 1) {
+            let ASTNode* b = caseStatements.nodes[inner];
+            if (a->right && b->right && AreLiteralsEqual(a->right, b->right)) {
+                ReportError(
+                    TokenGetLocation(b->token),
+                    "Duplicate switch case literal '%s'",
+                    TokenGetText(b->right->token).cstr
+                );
+            }
+        }
+    }
+
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::SwitchStatement, binder->symbolTable, syntax);
+    result->left = switchExpression;
+    result->children = caseStatements;
+    return result;
+}
+
+fun ASTNode* BindStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(binder->currentFunctionSymbol != nullptr);
+    switch (syntax->kind) {
+        case SyntaxKind::BlockStatement:
+            return BindBlockStatement(binder, syntax);
+        case SyntaxKind::IfStatement:
+            return BindIfStatement(binder, syntax);
+        case SyntaxKind::DoWhileStatement:
+            return BindDoWhileStatement(binder, syntax);
+        case SyntaxKind::WhileStatement:
+            return BindWhileStatement(binder, syntax);
+        case SyntaxKind::ForStatement:
+            return BindForStatement(binder, syntax);
+        case SyntaxKind::ReturnStatement:
+            return BindReturnStatement(binder, syntax);
+        case SyntaxKind::BreakStatement:
+            return BindBreakStatement(binder, syntax);
+        case SyntaxKind::ContinueStatement:
+            return BindContinueStatement(binder, syntax);
+        case SyntaxKind::SwitchStatement:
+            return BindSwitchStatement(binder, syntax);
+        case SyntaxKind::VariableDeclarationStatement:
+            return BindVariableDefinitionStatement(binder, syntax, SymbolScopeKind::Local);
+        case SyntaxKind::ExpressionStatement:
+            return BindExpressionStatement(binder, syntax);
+        default:
+            assert(false && "Unexpected statement in binder");
+    }
+    exit(1);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Module
+
+fun ASTNode* BindGlobalVariableDefinitionStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(binder->currentFunctionSymbol == nullptr);
+    assert(syntax->kind == SyntaxKind::GlobalVariableDeclarationStatement);
+
+    let bool isExternal = syntax->globalVariableStmt.externKeyword.kind == SyntaxKind::ExternKeyword;
+    let SymbolScopeKind symbolScopeKind = isExternal ? SymbolScopeKind::Extern : SymbolScopeKind::Global;
+    return BindVariableDefinitionStatement(binder, syntax->globalVariableStmt.variableDeclarationStatement, symbolScopeKind);
+}
+
+fun ASTNode* BindStructOrUnionDefinitionStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(binder->currentFunctionSymbol == nullptr);
+    assert(syntax->kind == SyntaxKind::StructOrUnionDeclarationStatement || syntax->kind == SyntaxKind::StructOrUniontDefinitionStatement);
+
+    let bool isExternal = syntax->structOrUnionDeclarationStmt.externKeyword.kind == SyntaxKind::ExternKeyword;
+    let SymbolScopeKind symbolScopeKind = isExternal ? SymbolScopeKind::Extern : SymbolScopeKind::Global;
+
+    let bool isUnion = syntax->structOrUnionDeclarationStmt.structOrUnionKeyword.kind == SyntaxKind::UnionKeyword;
+
+    let SyntaxToken identifier = syntax->structOrUnionDeclarationStmt.identifier;
+    let String name = TokenGetText(identifier);
 
     let Symbol* structSymbol = GetSymbol(binder->symbolTable, name);
     if (structSymbol != nullptr) {
@@ -1060,10 +1121,10 @@ fun ASTNode* BindUnionOrStructDefinitionStatement(Binder* binder, bool isExterna
         structSymbol = AddSymbol(binder->symbolTable, name, isUnion ? SymbolKind::Union : SymbolKind::Struct, symbolScopeKind, type);
     }
 
-    if (binder->tokenCur.kind == SyntaxKind::SemicolonToken) {
-        MatchAndAdvanceToken(binder, SyntaxKind::SemicolonToken);
-        let ASTNode* result = ASTNodeCreate(
-            isUnion ? ASTNodeKind::UnionDeclarationStatement : ASTNodeKind::StructDeclarationStatement, binder->symbolTable, identifier);
+    if (syntax->kind == SyntaxKind::StructOrUnionDeclarationStatement) {
+        let ASTNode* result = ASTNodeCreate2(isUnion 
+            ? ASTNodeKind::UnionDeclarationStatement 
+            : ASTNodeKind::StructDeclarationStatement, binder->symbolTable, syntax);
         result->symbol = structSymbol;
         return result;
     } else {
@@ -1072,15 +1133,11 @@ fun ASTNode* BindUnionOrStructDefinitionStatement(Binder* binder, bool isExterna
         // Push union/struct member symboltable scope to parse variable declarations as members
         binder->symbolTable = structSymbol->membersSymbolTable;
 
-        let SyntaxToken leftBrace = MatchAndAdvanceToken(binder, SyntaxKind::LeftBraceToken);
-        while (binder->tokenCur.kind != SyntaxKind::RightBraceToken) {
-            let Type memberType = BindType(binder);
-            let SyntaxToken memberIdent = MatchAndAdvanceToken(binder, SyntaxKind::IdentifierToken);
-            let ASTNode* memberNode = BindVariableDeclarationWithoutTerminator(binder, memberType, memberIdent, SymbolScopeKind::Local);
+        for (let int index = 0; index < syntax->structOrUnionDefinitionStmt.memberDeclarationStatements.count; index += 1) {
+            let SyntaxNode* memberDeclaration = syntax->structOrUnionDefinitionStmt.memberDeclarationStatements.nodes[index];
+            let ASTNode* memberNode = BindVariableDefinitionStatement(binder, memberDeclaration, SymbolScopeKind::Local);
             memberNode->symbol->kind = SymbolKind::Member;
-            MatchAndAdvanceToken(binder, SyntaxKind::SemicolonToken);
         }
-        let SyntaxToken rightBrace = MatchAndAdvanceToken(binder, SyntaxKind::RightBraceToken);
 
         // Pop symboltable
         binder->symbolTable = binder->symbolTable->parent;
@@ -1092,9 +1149,6 @@ fun ASTNode* BindUnionOrStructDefinitionStatement(Binder* binder, bool isExterna
                 name.cstr
             );
         }
-
-        MatchAndAdvanceToken(binder, SyntaxKind::SemicolonToken);
-
         if (structSymbol->alreadyDefined) {
             ReportError(
                 TokenGetLocation(identifier),
@@ -1104,19 +1158,22 @@ fun ASTNode* BindUnionOrStructDefinitionStatement(Binder* binder, bool isExterna
         }
         structSymbol->alreadyDefined = true;
 
-        let ASTNode* result = ASTNodeCreate(
-            isUnion ? ASTNodeKind::UnionDefinitionStatement : ASTNodeKind::StructDefinitionStatement, binder->symbolTable, identifier);
+        let ASTNode* result = ASTNodeCreate2(isUnion 
+            ? ASTNodeKind::UnionDefinitionStatement 
+            : ASTNodeKind::StructDefinitionStatement, binder->symbolTable, syntax);
         result->symbol = structSymbol;
         return result;
     }
 }
 
-fun ASTNode* BindEnumDefinitionStatement(Binder* binder, bool isExternal) {
+fun ASTNode* BindEnumDefinitionStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(binder->currentFunctionSymbol == nullptr);
+    assert(syntax->kind == SyntaxKind::EnumDeclarationStatement || syntax->kind == SyntaxKind::EnumDefinitionStatement);
+
+    let bool isExternal = syntax->enumDeclarationStmt.externKeyword.kind == SyntaxKind::ExternKeyword;
     let SymbolScopeKind symbolScopeKind = isExternal ? SymbolScopeKind::Extern : SymbolScopeKind::Global;
 
-    let SyntaxToken enumKeyword = MatchAndAdvanceToken(binder, SyntaxKind::EnumKeyword);
-    let SyntaxToken classKeyword = MatchAndAdvanceToken(binder, SyntaxKind::ClassKeyword);
-    let SyntaxToken identifier = MatchAndAdvanceToken(binder, SyntaxKind::IdentifierToken);
+    let SyntaxToken identifier = syntax->enumDeclarationStmt.identifier;
     let String name = TokenGetText(identifier);
 
     if (binder->currentFunctionSymbol != nullptr) {
@@ -1149,9 +1206,8 @@ fun ASTNode* BindEnumDefinitionStatement(Binder* binder, bool isExternal) {
         enumSymbol = AddSymbol(binder->symbolTable, name, SymbolKind::Enum, symbolScopeKind, type);
     }
 
-    if (binder->tokenCur.kind == SyntaxKind::SemicolonToken) {
-        MatchAndAdvanceToken(binder, SyntaxKind::SemicolonToken);
-        let ASTNode* result = ASTNodeCreate(ASTNodeKind::EnumDeclarationStatement, binder->symbolTable, identifier);
+    if (syntax->kind == SyntaxKind::EnumDeclarationStatement) {
+        let ASTNode* result = ASTNodeCreate2(ASTNodeKind::EnumDeclarationStatement, binder->symbolTable, syntax);
         result->symbol = enumSymbol;
         return result;
     } else {
@@ -1161,32 +1217,36 @@ fun ASTNode* BindEnumDefinitionStatement(Binder* binder, bool isExternal) {
         binder->symbolTable = enumSymbol->membersSymbolTable;
 
         let longint valueCounter = 0;
-        let SyntaxToken leftBrace = MatchAndAdvanceToken(binder, SyntaxKind::LeftBraceToken);
-        while (binder->tokenCur.kind != SyntaxKind::RightBraceToken) {
-            let Type memberType = TypeCreate(TypeKind::Enum, 0, enumSymbol->name);
-            let SyntaxToken memberIdent = MatchAndAdvanceToken(binder, SyntaxKind::IdentifierToken);
-            let ASTNode* memberNode = BindVariableDeclarationWithoutTerminator(binder, memberType, memberIdent, SymbolScopeKind::Local);
-            if (binder->tokenCur.kind == SyntaxKind::EqualsToken) {
-                let SyntaxToken equalsToken = MatchAndAdvanceToken(binder, SyntaxKind::EqualsToken);
-                let SyntaxToken valueToken = MatchAndAdvanceToken(binder, SyntaxKind::IntegerLiteralToken);
+        let Type memberType = TypeCreate(TypeKind::Enum, 0, enumSymbol->name);
+        for (let int index = 0; index < syntax->enumDefinitionStmt.memberClauses.count; index += 1) {
+            let SyntaxNode* memberClause = syntax->enumDefinitionStmt.memberClauses.nodes[index];
+
+            let String valueName = TokenGetText(memberClause->enumMember.identifier);
+            let Symbol* valueSymbol = AddSymbol(binder->symbolTable, valueName, SymbolKind::Enumvalue, SymbolScopeKind::Global, memberType);
+            if (valueSymbol == nullptr) {
+                ReportError(
+                    TokenGetLocation(identifier),
+                    "Symbol was '%s' already declared in current scope", 
+                    TokenGetText(identifier).cstr
+                );
+            }
+
+            if (memberClause->enumMember.integerLiteral.kind == SyntaxKind::IntegerLiteralToken) {
+                let SyntaxToken valueToken = memberClause->enumMember.integerLiteral;
                 if (valueToken.intvalue < valueCounter)
                 {
                     ReportError(
-                        TokenGetLocation(identifier),
+                        TokenGetLocation(valueToken),
                         "Assigned value of enum value literal '%s' must chosen such that all enum values of '%s' are unique - chosen value '%lld' would lead to duplicates", 
-                        TokenGetText(memberIdent).cstr, enumSymbol->name.cstr, valueToken.intvalue
+                        TokenGetText(memberClause->enumMember.identifier).cstr, enumSymbol->name.cstr, valueToken.intvalue
                     );
                 }
                 valueCounter = valueToken.intvalue;
             }
-            memberNode->symbol->kind = SymbolKind::Enumvalue;
-            memberNode->symbol->enumValue = valueCounter;
-            if (binder->tokenCur.kind == SyntaxKind::RightBraceToken)
-                break;
-            MatchAndAdvanceToken(binder, SyntaxKind::CommaToken);
+            valueSymbol->kind = SymbolKind::Enumvalue;
+            valueSymbol->enumValue = valueCounter;
             valueCounter += 1;
         }
-        let SyntaxToken rightBrace = MatchAndAdvanceToken(binder, SyntaxKind::RightBraceToken);
 
         // Pop symboltable
         binder->symbolTable = binder->symbolTable->parent;
@@ -1199,8 +1259,6 @@ fun ASTNode* BindEnumDefinitionStatement(Binder* binder, bool isExternal) {
             );
         }
 
-        MatchAndAdvanceToken(binder, SyntaxKind::SemicolonToken);
-
         if (enumSymbol->alreadyDefined) {
             ReportError(
                 TokenGetLocation(identifier),
@@ -1210,21 +1268,20 @@ fun ASTNode* BindEnumDefinitionStatement(Binder* binder, bool isExternal) {
         }
         enumSymbol->alreadyDefined = true;
 
-        let ASTNode* result = ASTNodeCreate(ASTNodeKind::EnumDefinitionStatement, binder->symbolTable, identifier);
+        let ASTNode* result = ASTNodeCreate2(ASTNodeKind::EnumDefinitionStatement, binder->symbolTable, syntax);
         result->symbol = enumSymbol;
         return result;
     }
 }
 
-fun Symbol* BindFunctionDeclarationStatementWithoutTerminator(Binder* binder, Type returnType, SyntaxToken identifier, bool isExternal) {
-    if (binder->currentFunctionSymbol != nullptr) {
-        ReportError(
-            TokenGetLocation(identifier),
-            "Unexpected function declaration of '%s' while already parsing function", 
-            TokenGetText(identifier).cstr
-        );
-    }
+fun ASTNode* BindFunctionDefinitionStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(binder->currentFunctionSymbol == nullptr);
+    assert(syntax->kind == SyntaxKind::FunctionDeclarationStatement || syntax->kind == SyntaxKind::FunctionDefinitionStatement);
 
+    let Type returnType = BindType(binder, syntax->functionDeclarationStmt.returnType);
+    let SyntaxToken identifier = syntax->functionDeclarationStmt.identifier;
+
+    let bool isExternal = syntax->functionDeclarationStmt.externKeyword.kind == SyntaxKind::ExternKeyword;
     let SymbolScopeKind symbolScopeKind = isExternal ? SymbolScopeKind::Extern : SymbolScopeKind::Global;
 
     let Symbol* functionSymbol = GetSymbol(binder->symbolTable, TokenGetText(identifier));
@@ -1254,23 +1311,22 @@ fun Symbol* BindFunctionDeclarationStatementWithoutTerminator(Binder* binder, Ty
     binder->symbolTable = functionParamsSymbolTable;
 
     let bool isVariadric = false;
-    let SyntaxToken leftParen = MatchAndAdvanceToken(binder, SyntaxKind::LeftParenToken);
-    while (binder->tokenCur.kind != SyntaxKind::RightParenToken) {
-        if (binder->tokenCur.kind == SyntaxKind::DotDotDotToken) {
-            MatchAndAdvanceToken(binder, SyntaxKind::DotDotDotToken);
+    for (let int index = 0; index < syntax->functionDeclarationStmt.params.count; index += 1) {
+        let SyntaxNode* param = syntax->functionDeclarationStmt.params.nodes[index];
+        if (param->kind == SyntaxKind::DotDotDotToken) {
             isVariadric = true;
+            assert(index == syntax->functionDeclarationStmt.params.count - 1 && "'...' must be last param");
             break;
         }
-        let Type paramType = BindType(binder);
-        let SyntaxToken paramIdent = MatchAndAdvanceToken(binder, SyntaxKind::IdentifierToken);
-        let ASTNode* paramNode = BindVariableDeclarationWithoutTerminator(binder, paramType, paramIdent, SymbolScopeKind::Local);
+
+        let ASTNode* paramNode = BindVariableDefinitionStatement(binder, param, SymbolScopeKind::Local);
         paramNode->symbol->kind = SymbolKind::Parameter;
-        if (binder->tokenCur.kind == SyntaxKind::CommaToken)
-            MatchAndAdvanceToken(binder, SyntaxKind::CommaToken);
-        else
+
+        if (param->variableDeclarationStmt.terminatorToken.kind != SyntaxKind::CommaToken) {
+            assert(index == syntax->functionDeclarationStmt.params.count - 1 && "param omitting ',' must be last param");
             break;
+        }
     }
-    let SyntaxToken rightParen = MatchAndAdvanceToken(binder, SyntaxKind::RightParenToken);
 
     // Pop symboltable
     binder->symbolTable = binder->symbolTable->parent;
@@ -1296,7 +1352,7 @@ fun Symbol* BindFunctionDeclarationStatementWithoutTerminator(Binder* binder, Ty
 
         if (functionParamsSymbolTable->count != functionSymbol->membersSymbolTable->count) {
             ReportError(
-                TokenGetLocation(leftParen),
+                TokenGetLocation(syntax->functionDeclarationStmt.leftParen),
                 "Function '%s' was previously declared with %d parameters wheras new declaration has %d parameters", 
                 functionSymbol->name.cstr, functionSymbol->membersSymbolTable->count, functionParamsSymbolTable->count
             );
@@ -1308,7 +1364,7 @@ fun Symbol* BindFunctionDeclarationStatementWithoutTerminator(Binder* binder, Ty
 
             if (!TypesIdentical(paramType, previosType)) {
                 ReportError(
-                    TokenGetLocation(leftParen),
+                    TokenGetLocation(syntax->functionDeclarationStmt.leftParen),
                     "Previous function '%s' parameter %d declared type differs from current declared type", 
                     functionSymbol->name.cstr, paramIndex + 1
                 );
@@ -1318,20 +1374,8 @@ fun Symbol* BindFunctionDeclarationStatementWithoutTerminator(Binder* binder, Ty
     functionSymbol->membersSymbolTable = functionParamsSymbolTable;
     functionSymbol->isVariadric = isVariadric;
 
-    return functionSymbol;
-}
-
-fun ASTNode* BindFunctionDefinitionStatement(Binder* binder, bool isExternal) {
-    let SyntaxToken funKeyword = MatchAndAdvanceToken(binder, SyntaxKind::FunKeyword);
-    let Type type = BindType(binder);
-    let SyntaxToken identifier = MatchAndAdvanceToken(binder, SyntaxKind::IdentifierToken);
-    let Symbol* functionSymbol = BindFunctionDeclarationStatementWithoutTerminator(binder, type, identifier, isExternal);
-
     let ASTNode* body = nullptr;
-    if (binder->tokenCur.kind == SyntaxKind::SemicolonToken) {
-        // Just a forward declaration
-        MatchAndAdvanceToken(binder, SyntaxKind::SemicolonToken);
-    } else {
+    if (syntax->kind == SyntaxKind::FunctionDefinitionStatement) {
         if (isExternal) {
             ReportError(
                 TokenGetLocation(identifier),
@@ -1349,251 +1393,52 @@ fun ASTNode* BindFunctionDefinitionStatement(Binder* binder, bool isExternal) {
         // Bind function body
         binder->symbolTable = functionSymbol->membersSymbolTable;
         binder->currentFunctionSymbol = functionSymbol;
-        body = BindCompoundStatement(binder, false);
+        body = BindBlockStatement(binder, syntax->functionDefinitionStmt.body);
         // TODO: make sure function returns something if its return type is not void
         functionSymbol->alreadyDefined = true;
         binder->currentFunctionSymbol = nullptr;
         binder->symbolTable = binder->symbolTable->parent;
     }
 
-    let ASTNode* result = ASTNodeCreate(
-        body == nullptr ? ASTNodeKind::FunctionDeclarationStatement : ASTNodeKind::FunctionDefinitionStatement, 
-        binder->symbolTable, identifier);
+    let ASTNode* result = ASTNodeCreate2(syntax->kind == SyntaxKind::FunctionDeclarationStatement
+        ? ASTNodeKind::FunctionDeclarationStatement 
+        : ASTNodeKind::FunctionDefinitionStatement, 
+        binder->symbolTable, syntax);
     result->symbol = functionSymbol;
     result->left = body;
     return result;
 }
 
-fun ASTNode* BindVariableDefinitionStatement(Binder* binder, bool isExternal) {
-    let SyntaxToken letKeyword = MatchAndAdvanceToken(binder, SyntaxKind::LetKeyword);
-
-    let bool isLocalPersist = false;
-    if (binder->tokenCur.kind == SyntaxKind::LocalPersistKeyword) {
-        let SyntaxToken localPersist = MatchAndAdvanceToken(binder, SyntaxKind::LocalPersistKeyword);
-        isLocalPersist = true;
-    }
-
-    let Type type = BindType(binder);
-    let SyntaxToken identifier = MatchAndAdvanceToken(binder, SyntaxKind::IdentifierToken);
-
-    let SymbolScopeKind symbolScopeKind = binder->currentFunctionSymbol == nullptr
-        ? SymbolScopeKind::Global 
-        : SymbolScopeKind::Local;
-    
-    if (isLocalPersist) {
-        if (symbolScopeKind != SymbolScopeKind::Local) {
-            ReportError(
-                TokenGetLocation(identifier),
-                "Cannot mark global variable as localpersist '%s'", 
-                TokenGetText(identifier).cstr
-            );
-        }
-        symbolScopeKind = SymbolScopeKind::LocalPersist;
-    }
-    if (isExternal) {
-        if (symbolScopeKind != SymbolScopeKind::Global) {
-            ReportError(
-                TokenGetLocation(identifier),
-                "Cannot mark local variable as external '%s'", 
-                TokenGetText(identifier).cstr
-            );
-        }
-        symbolScopeKind = SymbolScopeKind::Extern;
-    }
-
-    let ASTNode* result = BindVariableDeclarationWithoutTerminator(binder, type, identifier, symbolScopeKind);
-
-    if (binder->tokenCur.kind == SyntaxKind::EqualsToken) {
-        let SyntaxToken equalsToken = MatchAndAdvanceToken(binder, SyntaxKind::EqualsToken);
-        let ASTNode* initializer = nullptr;
-        if (result->symbol->type.isArray)
-            initializer = BindArrayLiteralExpression(binder, result->symbol);
-        else
-            initializer = BindExpression(binder);
-        result->left = initializer;
-    } 
-    let SyntaxToken semicolonToken = MatchAndAdvanceToken(binder, SyntaxKind::SemicolonToken);
-    return result;
-}
-
-fun ASTNode* BindDefinitionStatement(Binder* binder) {
-    let bool isExternal = false;
-    if (binder->tokenCur.kind == SyntaxKind::ExternKeyword) {
-        isExternal = true;
-        AdvanceToken(binder);
-    }
-
-    if (binder->tokenCur.kind == SyntaxKind::EnumKeyword)
-        return BindEnumDefinitionStatement(binder, isExternal);
-    else if (binder->tokenCur.kind == SyntaxKind::StructKeyword || binder->tokenCur.kind == SyntaxKind::UnionKeyword)
-        return BindUnionOrStructDefinitionStatement(binder, isExternal);
-    else if (binder->tokenCur.kind == SyntaxKind::FunKeyword)
-        return BindFunctionDefinitionStatement(binder, isExternal);
-    else 
-        return BindVariableDefinitionStatement(binder, isExternal);
-}
-
-fun ASTNode* BindCaseStatement(Binder* binder, ASTNode* switchExpression) {
-    let SyntaxToken caseLabel = SyntaxTokenCreateEmpty(binder->source);
-    let ASTNode* caseExpression = nullptr;
-
-    if (binder->tokenCur.kind == SyntaxKind::CaseKeyword) {
-        caseLabel = MatchAndAdvanceToken(binder, SyntaxKind::CaseKeyword);
-        if (binder->switchCaseLevel == 0) {
-            ReportError(
-                TokenGetLocation(caseLabel), 
-                "Unexpected case label outside of switch statement"
-            );
-        }
-
-        caseExpression = BindExpression(binder);
-        if (caseExpression->kind != ASTNodeKind::IntegerLiteral 
-        && caseExpression->kind != ASTNodeKind::StringLiteral 
-        && caseExpression->kind != ASTNodeKind::CharacterLiteral 
-        && caseExpression->kind != ASTNodeKind::EnumValueLiteral) {
-            ReportError(
-                TokenGetLocation(caseExpression->token), 
-                "Expected literal in case label but got '%s'",
-                TokenKindToString(caseExpression->token.kind).cstr
-            );
-        }
-        let TypeConversionResult conversion = CanConvertTypeFromTo(caseExpression->type, switchExpression->type);
-        if (conversion != TypeConversionResult::Identical && conversion != TypeConversionResult::ImplictlyConvertible) {
-            ReportError(
-                TokenGetLocation(caseExpression->token), 
-                "Cannot convert type '%s' of case label literal '%s' to its switch expression type '%s'",
-                TypeGetText(caseExpression->type).cstr, TokenGetText(caseExpression->token).cstr, TypeGetText(switchExpression->type).cstr
-            );
-        }
-    } else {
-        caseLabel = MatchAndAdvanceToken(binder, SyntaxKind::DefaultKeyword);
-        if (binder->switchCaseLevel == 0) {
-            ReportError(
-                TokenGetLocation(caseLabel), 
-                "Unexpected default case label outside of switch statement"
-            );
-        }
-    }
-    let SyntaxToken colonToken = MatchAndAdvanceToken(binder, SyntaxKind::ColonToken);
-
-    let ASTNode* body = BindCompoundStatement(binder, true);
-    if (body->children.count == 0)
-        body = nullptr;
-
-    let ASTNode* result = ASTNodeCreate(
-        caseLabel.kind == SyntaxKind::CaseKeyword
-        ? ASTNodeKind::CaseStatement 
-        : ASTNodeKind::DefaultStatement, 
-        binder->symbolTable, caseLabel);
-    result->left = body;
-    result->right = caseExpression;
-    return result;
-}
-
-fun ASTNode* BindSwitchStatement(Binder* binder) {
-    let SyntaxToken switchKeyword = MatchAndAdvanceToken(binder, SyntaxKind::SwitchKeyword);
-
-    let SyntaxToken leftParen = MatchAndAdvanceToken(binder, SyntaxKind::LeftParenToken);
-    let ASTNode* switchExpression = BindExpression(binder);
-    let SyntaxToken rightParen = MatchAndAdvanceToken(binder, SyntaxKind::RightParenToken);
-
-    binder->switchCaseLevel += 1;
-    let SyntaxToken leftBrace = MatchAndAdvanceToken(binder, SyntaxKind::LeftBraceToken);
-
-    let int defaultTokenEncountered = false;
-    let ASTNodeArray caseStatements = ASTNodeArrayCreate();
-    while (binder->tokenCur.kind != SyntaxKind::EndOfFileToken) {
-        if (binder->tokenCur.kind == SyntaxKind::RightBraceToken)
-            break;
-        let ASTNode* caseStatement = BindCaseStatement(binder, switchExpression);
-        if (defaultTokenEncountered) {
-            ReportError(
-                TokenGetLocation(caseStatement->token),
-                "Unexpected case statement after default statement was already defined"
-            );
-        }
-        if (caseStatement->kind == ASTNodeKind::DefaultStatement)
-            defaultTokenEncountered = true;
-        ASTNodeArrayPush(&caseStatements, caseStatement);
-    }
-
-    let SyntaxToken rightBrace = MatchAndAdvanceToken(binder, SyntaxKind::RightBraceToken);
-    binder->switchCaseLevel -= 1;
-
-    if (caseStatements.count == 0) {
-        ReportError(
-            TokenGetLocation(switchKeyword),
-            "Empty switch statements are not allowed"
-        );
-    }
-
-    // Check that we don't have any duplicate case labels
-    for (let int index = 0; index < caseStatements.count; index += 1) {
-        let ASTNode* a = caseStatements.nodes[index];
-        for (let int inner = index + 1; inner < caseStatements.count; inner += 1) {
-            let ASTNode* b = caseStatements.nodes[inner];
-            if (a->right && b->right && AreLiteralsEqual(a->right, b->right)) {
-                ReportError(
-                    TokenGetLocation(b->token),
-                    "Duplicate switch case literal '%s'",
-                    TokenGetText(b->right->token).cstr
-                );
-            }
-        }
-    }
-
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::SwitchStatement, binder->symbolTable, switchKeyword);
-    result->left = switchExpression;
-    result->children = caseStatements;
-    return result;
-}
-
-
-fun ASTNode* BindStatement(Binder* binder) {
-    switch (binder->tokenCur.kind) {
-        case SyntaxKind::LeftBraceToken:
-            return BindCompoundStatement(binder, false);
-        case SyntaxKind::IfKeyword:
-            return BindIfStatement(binder);
-        case SyntaxKind::DoKeyword:
-            return BindDoWhileStatement(binder);
-        case SyntaxKind::WhileKeyword:
-            return BindWhileStatement(binder);
-        case SyntaxKind::ForKeyword:
-            return BindForStatement(binder);
-        case SyntaxKind::ReturnKeyword:
-            return BindReturnStatement(binder);
-        case SyntaxKind::BreakKeyword:
-            return BindBreakStatement(binder);
-        case SyntaxKind::ContinueKeyword:
-            return BindContinueStatement(binder);
-        case SyntaxKind::SwitchKeyword:
-            return BindSwitchStatement(binder);
-        case SyntaxKind::ExternKeyword:
-        case SyntaxKind::StructKeyword:
-        case SyntaxKind::UnionKeyword:
-        case SyntaxKind::EnumKeyword:
-        case SyntaxKind::FunKeyword:
-        case SyntaxKind::LetKeyword:
-            return BindDefinitionStatement(binder);
-        default:
-            return BindExpressionStatement(binder);
-    }
-}
-
 fun ASTNode* BindModuleStatement(Binder* binder, SyntaxNode* syntax) {
-    // TODO
+    switch (syntax->kind) {
+        case SyntaxKind::ImportDeclarationStatement:
+            return nullptr; // We ignore these as they are only relevant for the parser
+        case SyntaxKind::GlobalVariableDeclarationStatement:
+            return BindGlobalVariableDefinitionStatement(binder, syntax);
+        case SyntaxKind::EnumDeclarationStatement:
+        case SyntaxKind::EnumDefinitionStatement:
+            return BindEnumDefinitionStatement(binder, syntax);
+        case SyntaxKind::StructOrUnionDeclarationStatement:
+        case SyntaxKind::StructOrUniontDefinitionStatement:
+            return BindStructOrUnionDefinitionStatement(binder, syntax);
+        case SyntaxKind::FunctionDeclarationStatement:
+        case SyntaxKind::FunctionDefinitionStatement:
+            return BindFunctionDefinitionStatement(binder, syntax);
+        default:
+            assert(false && "Unexpected module statement in binder");
+    }
     return nullptr;
 }
 
 fun ASTNode* BindModule(Binder* binder, ModuleStatementSyntax* syntax) {
     assert(syntax->info.kind == SyntaxKind::Module);
 
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::Root, binder->symbolTable, (as SyntaxNode*)syntax);
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::Module, binder->symbolTable, (as SyntaxNode*)syntax);
     for (let int index = 0; index < syntax->globalStatements.count; index += 1) {
         let SyntaxNode* statement = syntax->globalStatements.nodes[index];
         let ASTNode* boundStatement = BindModuleStatement(binder, statement);
-        ASTNodeArrayPush(&result->children, boundStatement);
+        if (boundStatement != nullptr)
+            ASTNodeArrayPush(&result->children, boundStatement);
     }
     return result;
 }

@@ -376,27 +376,27 @@ enum SyntaxKind; typedef enum SyntaxKind SyntaxKind; enum SyntaxKind {
     SyntaxKind_BoolKeyword = 64,
     SyntaxKind_TrueKeyword = 65,
     SyntaxKind_FalseKeyword = 66,
-    SyntaxKind_FunKeyword = 67,
-    SyntaxKind_LetKeyword = 68,
-    SyntaxKind_StructKeyword = 69,
-    SyntaxKind_UnionKeyword = 70,
-    SyntaxKind_EnumKeyword = 71,
-    SyntaxKind_ClassKeyword = 72,
-    SyntaxKind_ImportKeyword = 73,
-    SyntaxKind_IfKeyword = 74,
-    SyntaxKind_ElseKeyword = 75,
-    SyntaxKind_DoKeyword = 76,
-    SyntaxKind_WhileKeyword = 77,
-    SyntaxKind_ForKeyword = 78,
-    SyntaxKind_ReturnKeyword = 79,
-    SyntaxKind_BreakKeyword = 80,
-    SyntaxKind_ContinueKeyword = 81,
-    SyntaxKind_SwitchKeyword = 82,
-    SyntaxKind_CaseKeyword = 83,
-    SyntaxKind_DefaultKeyword = 84,
-    SyntaxKind_AsKeyword = 85,
-    SyntaxKind_SizeOfKeyword = 86,
-    SyntaxKind_LocalPersistKeyword = 87,
+    SyntaxKind_LetKeyword = 67,
+    SyntaxKind_LetLocalPersistKeyword = 68,
+    SyntaxKind_FunKeyword = 69,
+    SyntaxKind_StructKeyword = 70,
+    SyntaxKind_UnionKeyword = 71,
+    SyntaxKind_EnumKeyword = 72,
+    SyntaxKind_ClassKeyword = 73,
+    SyntaxKind_ImportKeyword = 74,
+    SyntaxKind_IfKeyword = 75,
+    SyntaxKind_ElseKeyword = 76,
+    SyntaxKind_DoKeyword = 77,
+    SyntaxKind_WhileKeyword = 78,
+    SyntaxKind_ForKeyword = 79,
+    SyntaxKind_ReturnKeyword = 80,
+    SyntaxKind_BreakKeyword = 81,
+    SyntaxKind_ContinueKeyword = 82,
+    SyntaxKind_SwitchKeyword = 83,
+    SyntaxKind_CaseKeyword = 84,
+    SyntaxKind_DefaultKeyword = 85,
+    SyntaxKind_AsKeyword = 86,
+    SyntaxKind_SizeOfKeyword = 87,
     SyntaxKind_ExternKeyword = 88,
     SyntaxKind_IncludeDirectiveKeyword = 89,
     SyntaxKind_DefineDirectiveKeyword = 90,
@@ -406,14 +406,14 @@ enum SyntaxKind; typedef enum SyntaxKind SyntaxKind; enum SyntaxKind {
     SyntaxKind_TypedefKeyword = 94,
     SyntaxKind_UnaryExpression = 95,
     SyntaxKind_BinaryExpression = 96,
-    SyntaxKind_FunccallExpression = 97,
+    SyntaxKind_FuncCallExpression = 97,
     SyntaxKind_ArrayIndexExpression = 98,
     SyntaxKind_MemberAccessExpression = 99,
     SyntaxKind_TypeCastExpression = 100,
     SyntaxKind_ParenthesizedExpression = 101,
     SyntaxKind_TernaryConditionalExpression = 102,
-    SyntaxKind_AssignmentExpression = 103,
-    SyntaxKind_SizeOfExpression = 104,
+    SyntaxKind_SizeOfExpression = 103,
+    SyntaxKind_NameExpression = 104,
     SyntaxKind_TypeExpression = 105,
     SyntaxKind_NullLiteralExpression = 106,
     SyntaxKind_IntegerLiteralExpression = 107,
@@ -422,7 +422,7 @@ enum SyntaxKind; typedef enum SyntaxKind SyntaxKind; enum SyntaxKind {
     SyntaxKind_StringLiteralExpression = 110,
     SyntaxKind_EnumValueLiteralExpression = 111,
     SyntaxKind_ArrayLiteralExpression = 112,
-    SyntaxKind_NameExpression = 113,
+    SyntaxKind_EnumMemberClauseSyntax = 113,
     SyntaxKind_BlockStatement = 114,
     SyntaxKind_ExpressionStatement = 115,
     SyntaxKind_IfStatement = 116,
@@ -436,23 +436,29 @@ enum SyntaxKind; typedef enum SyntaxKind SyntaxKind; enum SyntaxKind {
     SyntaxKind_CaseStatement = 124,
     SyntaxKind_DefaultStatement = 125,
     SyntaxKind_VariableDeclarationStatement = 126,
-    SyntaxKind_ArrayDeclarationStatement = 127,
-    SyntaxKind_Module = 128,
-    SyntaxKind_ImportDeclarationStatement = 129,
-    SyntaxKind_GlobalVariableDeclarationStatement = 130,
-    SyntaxKind_EnumDeclarationStatement = 131,
-    SyntaxKind_EnumDefinitionStatement = 132,
-    SyntaxKind_StructOrUnionDeclarationStatement = 133,
-    SyntaxKind_StructOrUniontDefinitionStatement = 134,
-    SyntaxKind_FunctionDeclarationStatement = 135,
-    SyntaxKind_FunctionDefinitionStatement = 136,
+    SyntaxKind_Module = 127,
+    SyntaxKind_ImportDeclarationStatement = 128,
+    SyntaxKind_GlobalVariableDeclarationStatement = 129,
+    SyntaxKind_EnumDeclarationStatement = 130,
+    SyntaxKind_EnumDefinitionStatement = 131,
+    SyntaxKind_StructOrUnionDeclarationStatement = 132,
+    SyntaxKind_StructOrUniontDefinitionStatement = 133,
+    SyntaxKind_FunctionDeclarationStatement = 134,
+    SyntaxKind_FunctionDefinitionStatement = 135,
 };
 
 union SyntaxNode; typedef union SyntaxNode SyntaxNode;
 
+struct ModuleStatementSyntax; typedef struct ModuleStatementSyntax ModuleStatementSyntax;
+
+struct SyntaxTree; typedef struct SyntaxTree SyntaxTree; struct SyntaxTree {
+    Source source;
+    ModuleStatementSyntax* moduleRoot;
+};
+
 struct SyntaxInfo; typedef struct SyntaxInfo SyntaxInfo; struct SyntaxInfo {
     SyntaxKind kind;
-    SyntaxNode* parent;
+    SyntaxTree* tree;
 };
 
 struct SyntaxNodeArray; typedef struct SyntaxNodeArray SyntaxNodeArray; struct SyntaxNodeArray {
@@ -529,7 +535,7 @@ static int32 SyntaxTriviaArrayPush(SyntaxTriviaArray* array, SyntaxTrivia node) 
 
 struct SyntaxToken; typedef struct SyntaxToken SyntaxToken; struct SyntaxToken {
     SyntaxKind kind;
-    SyntaxNode* parent;
+    SyntaxTree* tree;
     SourceLocation2 location;
     SyntaxTriviaArray leadingTrivia;
     SyntaxTriviaArray trailingTrivia;
@@ -539,11 +545,11 @@ struct SyntaxToken; typedef struct SyntaxToken SyntaxToken; struct SyntaxToken {
     String debugString;
 };
 
-static SyntaxToken SyntaxTokenCreateEmpty(Source source) {
+static SyntaxToken SyntaxTokenCreateEmpty(SyntaxTree* tree) {
     SyntaxToken result;
     result.kind = SyntaxKind_BadToken;
-    result.parent = NULL;
-    result.location.source = source;
+    result.tree = tree;
+    result.location.source = tree->source;
     result.location.start = 0;
     result.location.end = 0;
     result.leadingTrivia = SyntaxTriviaArrayCreate();
@@ -779,6 +785,9 @@ static String TokenKindToString(SyntaxKind kind) {
         case SyntaxKind_LetKeyword: {
             return StringCreateFromCStr("let");
         }
+        case SyntaxKind_LetLocalPersistKeyword: {
+            return StringCreateFromCStr("letpersist");
+        }
         case SyntaxKind_FunKeyword: {
             return StringCreateFromCStr("fun");
         }
@@ -796,9 +805,6 @@ static String TokenKindToString(SyntaxKind kind) {
         }
         case SyntaxKind_ImportKeyword: {
             return StringCreateFromCStr("import");
-        }
-        case SyntaxKind_LocalPersistKeyword: {
-            return StringCreateFromCStr("localpersist");
         }
         case SyntaxKind_ExternKeyword: {
             return StringCreateFromCStr("extern");
@@ -910,6 +916,9 @@ static SyntaxKind GetKeywordForIdentifier(String identifier) {
     if (StringEquals(identifier, TokenKindToString(SyntaxKind_LetKeyword))) {
         return SyntaxKind_LetKeyword;
     }
+    if (StringEquals(identifier, TokenKindToString(SyntaxKind_LetLocalPersistKeyword))) {
+        return SyntaxKind_LetLocalPersistKeyword;
+    }
     if (StringEquals(identifier, TokenKindToString(SyntaxKind_StructKeyword))) {
         return SyntaxKind_StructKeyword;
     }
@@ -924,9 +933,6 @@ static SyntaxKind GetKeywordForIdentifier(String identifier) {
     }
     if (StringEquals(identifier, TokenKindToString(SyntaxKind_ImportKeyword))) {
         return SyntaxKind_ImportKeyword;
-    }
-    if (StringEquals(identifier, TokenKindToString(SyntaxKind_LocalPersistKeyword))) {
-        return SyntaxKind_LocalPersistKeyword;
     }
     if (StringEquals(identifier, TokenKindToString(SyntaxKind_ExternKeyword))) {
         return SyntaxKind_ExternKeyword;
@@ -1065,18 +1071,11 @@ struct TernaryConditionalExpressionSyntax; typedef struct TernaryConditionalExpr
     SyntaxNode* elseExpression;
 };
 
-struct AssignmentExpressionSyntax; typedef struct AssignmentExpressionSyntax AssignmentExpressionSyntax; struct AssignmentExpressionSyntax {
-    SyntaxInfo info;
-    SyntaxNode* left;
-    SyntaxToken assignmentOperator;
-    SyntaxNode* right;
-};
-
 struct SizeofExpressionSyntax; typedef struct SizeofExpressionSyntax SizeofExpressionSyntax; struct SizeofExpressionSyntax {
     SyntaxInfo info;
     SyntaxToken sizeofKeyword;
     SyntaxToken leftParen;
-    SyntaxNode* typeExpreesion;
+    SyntaxNode* typeExpression;
     SyntaxToken rightParen;
 };
 
@@ -1188,18 +1187,6 @@ struct DefaultStatementSyntax; typedef struct DefaultStatementSyntax DefaultStat
 struct VariableDeclarationStatementSyntax; typedef struct VariableDeclarationStatementSyntax VariableDeclarationStatementSyntax; struct VariableDeclarationStatementSyntax {
     SyntaxInfo info;
     SyntaxToken letKeyword;
-    SyntaxToken localpersistKeyword;
-    SyntaxNode* typeExpression;
-    SyntaxToken identifier;
-    SyntaxToken equalsToken;
-    SyntaxNode* initializerExpression;
-    SyntaxToken semicolon;
-};
-
-struct ArrayVariableDeclarationStatementSyntax; typedef struct ArrayVariableDeclarationStatementSyntax ArrayVariableDeclarationStatementSyntax; struct ArrayVariableDeclarationStatementSyntax {
-    SyntaxInfo info;
-    SyntaxToken letKeyword;
-    SyntaxToken localpersistKeyword;
     SyntaxNode* typeExpression;
     SyntaxToken identifier;
     SyntaxToken leftBracket;
@@ -1207,7 +1194,7 @@ struct ArrayVariableDeclarationStatementSyntax; typedef struct ArrayVariableDecl
     SyntaxToken rightBracket;
     SyntaxToken equalsToken;
     SyntaxNode* initializerExpression;
-    SyntaxToken semicolon;
+    SyntaxToken terminatorToken;
 };
 
 struct ModuleStatementSyntax; typedef struct ModuleStatementSyntax ModuleStatementSyntax; struct ModuleStatementSyntax {
@@ -1227,6 +1214,14 @@ struct GlobalVariableStatementSyntax; typedef struct GlobalVariableStatementSynt
     SyntaxNode* variableDeclarationStatement;
 };
 
+struct EnumMemberClauseSyntax; typedef struct EnumMemberClauseSyntax EnumMemberClauseSyntax; struct EnumMemberClauseSyntax {
+    SyntaxInfo info;
+    SyntaxToken identifier;
+    SyntaxToken equals;
+    SyntaxToken integerLiteral;
+    SyntaxToken comma;
+};
+
 struct EnumDeclarationStatementSyntax; typedef struct EnumDeclarationStatementSyntax EnumDeclarationStatementSyntax; struct EnumDeclarationStatementSyntax {
     SyntaxInfo info;
     SyntaxToken externKeyword;
@@ -1243,7 +1238,7 @@ struct EnumDefinitionStatementSyntax; typedef struct EnumDefinitionStatementSynt
     SyntaxToken classKeyword;
     SyntaxToken identifier;
     SyntaxToken leftBrace;
-    SyntaxNodeArray membersAndValuesWithSeparators;
+    SyntaxNodeArray memberClauses;
     SyntaxToken rightBrace;
     SyntaxToken semicolon;
 };
@@ -1267,6 +1262,14 @@ struct StructOrUnionDefinitionStatementSyntax; typedef struct StructOrUnionDefin
     SyntaxToken semicolon;
 };
 
+struct FunctionParameterClauseSyntax; typedef struct FunctionParameterClauseSyntax FunctionParameterClauseSyntax; struct FunctionParameterClauseSyntax {
+    SyntaxInfo info;
+    SyntaxNode* typeExpression;
+    SyntaxToken identifier;
+    SyntaxToken comma;
+    SyntaxToken dotdot;
+};
+
 struct FunctionDeclarationStatementSyntax; typedef struct FunctionDeclarationStatementSyntax FunctionDeclarationStatementSyntax; struct FunctionDeclarationStatementSyntax {
     SyntaxInfo info;
     SyntaxToken externKeyword;
@@ -1274,7 +1277,7 @@ struct FunctionDeclarationStatementSyntax; typedef struct FunctionDeclarationSta
     SyntaxNode* returnType;
     SyntaxToken identifier;
     SyntaxToken leftParen;
-    SyntaxNodeArray parameterDeclarationsWithSeparators;
+    SyntaxNodeArray params;
     SyntaxToken rightParen;
     SyntaxToken semicolon;
 };
@@ -1286,7 +1289,7 @@ struct FunctionDefinitionStatementSyntax; typedef struct FunctionDefinitionState
     SyntaxNode* returnType;
     SyntaxToken identifier;
     SyntaxToken leftParen;
-    SyntaxNodeArray parameterDeclarationsWithSeparators;
+    SyntaxNodeArray params;
     SyntaxToken rightParen;
     SyntaxNode* body;
 };
@@ -1311,7 +1314,6 @@ union SyntaxNode; typedef union SyntaxNode SyntaxNode; union SyntaxNode{
     MemberAccessExpressionSyntax memberAccessExpr;
     TypeCastExpressionSyntax typeCastExpr;
     TernaryConditionalExpressionSyntax ternaryConditionalExpr;
-    AssignmentExpressionSyntax assignmentExpr;
     SizeofExpressionSyntax sizeofExpr;
     TypeExpressionSyntax typeExpr;
     BlockStatementSyntax blockStmt;
@@ -1327,7 +1329,7 @@ union SyntaxNode; typedef union SyntaxNode SyntaxNode; union SyntaxNode{
     CaseStatementSyntax caseStmt;
     DefaultStatementSyntax defaultStmt;
     VariableDeclarationStatementSyntax variableDeclarationStmt;
-    ArrayVariableDeclarationStatementSyntax arrayVariableDeclarationStmt;
+    EnumMemberClauseSyntax enumMember;
     ModuleStatementSyntax moduleStmt;
     ImportDeclarationStatementSyntax importStmt;
     GlobalVariableStatementSyntax globalVariableStmt;
@@ -1339,11 +1341,11 @@ union SyntaxNode; typedef union SyntaxNode SyntaxNode; union SyntaxNode{
     FunctionDefinitionStatementSyntax functionDefinitionStmt;
 };
 
-static SyntaxNode* SyntaxNodeCreate(SyntaxKind kind) {
+static SyntaxNode* SyntaxNodeCreate(SyntaxKind kind, SyntaxTree* tree) {
     SyntaxNode* node = (SyntaxNode*)malloc(sizeof(SyntaxNode));
     assert(node != NULL);
     node->info.kind = kind;
-    node->info.parent = NULL;
+    node->info.tree = tree;
     return node;
 }
 
@@ -1676,23 +1678,23 @@ enum ASTNodeKind; typedef enum ASTNodeKind ASTNodeKind; enum ASTNodeKind {
     ASTNodeKind_LessEquals = 37,
     ASTNodeKind_Greater = 38,
     ASTNodeKind_GreaterEquals = 39,
-    ASTNodeKind_FunccallExpression = 40,
-    ASTNodeKind_Arrayindexing = 41,
-    ASTNodeKind_Memberaccess = 42,
-    ASTNodeKind_CastExpression = 43,
-    ASTNodeKind_ParenthesizedExpression = 44,
-    ASTNodeKind_TernaryConditionalExpression = 45,
-    ASTNodeKind_SizeOfExpression = 46,
-    ASTNodeKind_TypeExpression = 47,
-    ASTNodeKind_NullLiteral = 48,
-    ASTNodeKind_IntegerLiteral = 49,
-    ASTNodeKind_CharacterLiteral = 50,
-    ASTNodeKind_BoolLiteral = 51,
-    ASTNodeKind_StringLiteral = 52,
-    ASTNodeKind_EnumValueLiteral = 53,
-    ASTNodeKind_ArrayLiteral = 54,
-    ASTNodeKind_Identifier = 55,
-    ASTNodeKind_CompoundStatement = 56,
+    ASTNodeKind_NameExpression = 40,
+    ASTNodeKind_FunccallExpression = 41,
+    ASTNodeKind_Arrayindexing = 42,
+    ASTNodeKind_Memberaccess = 43,
+    ASTNodeKind_CastExpression = 44,
+    ASTNodeKind_ParenthesizedExpression = 45,
+    ASTNodeKind_TernaryConditionalExpression = 46,
+    ASTNodeKind_SizeOfExpression = 47,
+    ASTNodeKind_TypeExpression = 48,
+    ASTNodeKind_NullLiteral = 49,
+    ASTNodeKind_IntegerLiteral = 50,
+    ASTNodeKind_CharacterLiteral = 51,
+    ASTNodeKind_BoolLiteral = 52,
+    ASTNodeKind_StringLiteral = 53,
+    ASTNodeKind_EnumValueLiteral = 54,
+    ASTNodeKind_ArrayLiteral = 55,
+    ASTNodeKind_BlockStatement = 56,
     ASTNodeKind_ExpressionStatement = 57,
     ASTNodeKind_IfStatement = 58,
     ASTNodeKind_DoWhileStatement = 59,
@@ -1714,7 +1716,7 @@ enum ASTNodeKind; typedef enum ASTNodeKind ASTNodeKind; enum ASTNodeKind {
     ASTNodeKind_FunctionDefinitionStatement = 75,
     ASTNodeKind_VariableDeclarationStatement = 76,
     ASTNodeKind_ArrayDeclarationStatement = 77,
-    ASTNodeKind_Root = 78,
+    ASTNodeKind_Module = 78,
 };
 
 struct ASTNode; typedef struct ASTNode ASTNode;
@@ -2394,6 +2396,7 @@ static bool IsAlpha(char ch) {
 }
 
 struct Scanner; typedef struct Scanner Scanner; struct Scanner {
+    SyntaxTree* tree;
     Source source;
     int32 start;
     int32 pos;
@@ -2404,12 +2407,13 @@ struct Scanner; typedef struct Scanner Scanner; struct Scanner {
     char debugCharNextNext;
 };
 
-static Scanner ScannerCreate(Source source) {
+static Scanner ScannerCreate(SyntaxTree* tree) {
     Scanner result;
-    result.source = source;
+    result.tree = tree;
+    result.source = tree->source;
     result.start = 0;
     result.pos = 0;
-    result.token = SyntaxTokenCreateEmpty(source);
+    result.token = SyntaxTokenCreateEmpty(tree);
     result.debugCharPrev = '\0';
     result.debugCharCur = '\0';
     result.debugCharNext = '\0';
@@ -2520,7 +2524,7 @@ static SyntaxTriviaArray ReadTrivia(Scanner* scanner, bool isLeading) {
     bool done = false;
     while (!done) {
         scanner->start = scanner->pos;
-        scanner->token = SyntaxTokenCreateEmpty(scanner->source);
+        scanner->token = SyntaxTokenCreateEmpty(scanner->tree);
         switch (CurrentChar(scanner)) {
             case '\0': {
                 done = true;
@@ -2735,7 +2739,7 @@ static void ReadIdentifierOrKeyword(Scanner* scanner) {
 
 static SyntaxToken ReadToken(Scanner* scanner) {
     scanner->start = scanner->pos;
-    scanner->token = SyntaxTokenCreateEmpty(scanner->source);
+    scanner->token = SyntaxTokenCreateEmpty(scanner->tree);
     char ch = CurrentChar(scanner);
     switch (ch) {
         case '\0': {
@@ -3051,6 +3055,7 @@ static SyntaxToken NextToken(Scanner* scanner) {
 
 struct Parser; typedef struct Parser Parser; struct Parser {
     SymbolTable* symbolTable;
+    SyntaxTree* tree;
     Source source;
     Scanner scanner;
     SyntaxToken tokenPrev;
@@ -3063,11 +3068,15 @@ struct Parser; typedef struct Parser Parser; struct Parser {
 };
 
 static Parser ParserCreate(Source source, SymbolTable* symbolTable) {
+    SyntaxTree* tree = (SyntaxTree*)malloc(sizeof(SyntaxTree));
+    tree->source = source;
+    tree->moduleRoot = NULL;
     Parser result;
     result.symbolTable = symbolTable;
+    result.tree = tree;
     result.source = source;
-    result.scanner = ScannerCreate(source);
-    result.tokenPrev = SyntaxTokenCreateEmpty(source);
+    result.scanner = ScannerCreate(tree);
+    result.tokenPrev = SyntaxTokenCreateEmpty(tree);
     result.tokenCur = NextToken(&result.scanner);
     result.tokenNext = NextToken(&result.scanner);
     result.tokenNextAfter = NextToken(&result.scanner);
@@ -3102,21 +3111,21 @@ ASTNode* ParseVariableDefinitionStatement(Parser* parser, bool isExternal);
 
 Type ParseType(Parser* parser);
 
-static ASTNode* WrapInCompoundStatementIfNecessary(Parser* parser, ASTNode* node) {
-    if (node->kind != ASTNodeKind_CompoundStatement) {
-        ASTNode* block = ASTNodeCreate(ASTNodeKind_CompoundStatement, parser->symbolTable, node->token);
+static ASTNode* WrapInBlockStatementIfNecessary(Parser* parser, ASTNode* node) {
+    if (node->kind != ASTNodeKind_BlockStatement) {
+        ASTNode* block = ASTNodeCreate(ASTNodeKind_BlockStatement, parser->symbolTable, node->token);
         ASTNodeArrayPush(&block->children, node);
         node = block;
     }
     return node;
 }
 
-static ASTNode* FlattenCompoundStatementIfNecessary(Parser* parser, ASTNode* node) {
-    if (node->kind == ASTNodeKind_CompoundStatement) {
-        if (node->children.count == 1 && node->children.nodes[0]->kind == ASTNodeKind_CompoundStatement) {
+static ASTNode* FlattenBlockStatementIfNecessary(Parser* parser, ASTNode* node) {
+    if (node->kind == ASTNodeKind_BlockStatement) {
+        if (node->children.count == 1 && node->children.nodes[0]->kind == ASTNodeKind_BlockStatement) {
             ASTNode* result = node->children.nodes[0];
             result->symbolTable->parent = node->symbolTable->parent;
-            return FlattenCompoundStatementIfNecessary(parser, result);
+            return FlattenBlockStatementIfNecessary(parser, result);
         }
     }
     return node;
@@ -3295,7 +3304,7 @@ static ASTNode* ParsePrimaryExpression(Parser* parser) {
             if (symbol == NULL) {
                 ReportError(TokenGetLocation(identifier), "Undeclared identifier '%s'", identifierText.cstr);
             }
-            ASTNode* result = ASTNodeCreate(ASTNodeKind_Identifier, parser->symbolTable, identifier);
+            ASTNode* result = ASTNodeCreate(ASTNodeKind_NameExpression, parser->symbolTable, identifier);
             result->symbol = symbol;
             result->type = symbol->type;
             return result;
@@ -3576,12 +3585,12 @@ static ASTNode* ParseIfStatement(Parser* parser) {
     ASTNode* condition = ParseExpression(parser);
     SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
     ASTNode* thenBranch = ParseStatement(parser);
-    thenBranch = WrapInCompoundStatementIfNecessary(parser, thenBranch);
+    thenBranch = WrapInBlockStatementIfNecessary(parser, thenBranch);
     ASTNode* elseBranch = NULL;
     if (parser->tokenCur.kind == SyntaxKind_ElseKeyword) {
         SyntaxToken elseKeyword = MatchAndAdvanceToken(parser, SyntaxKind_ElseKeyword);
         elseBranch = ParseStatement(parser);
-        elseBranch = WrapInCompoundStatementIfNecessary(parser, elseBranch);
+        elseBranch = WrapInBlockStatementIfNecessary(parser, elseBranch);
     }
     ASTNode* result = ASTNodeCreate(ASTNodeKind_IfStatement, parser->symbolTable, ifKeyword);
     result->left = condition;
@@ -3597,7 +3606,7 @@ static ASTNode* ParseWhileStatement(Parser* parser) {
     SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
     parser->loopLevel += 1;
     ASTNode* body = ParseStatement(parser);
-    body = WrapInCompoundStatementIfNecessary(parser, body);
+    body = WrapInBlockStatementIfNecessary(parser, body);
     parser->loopLevel -= 1;
     ASTNode* result = ASTNodeCreate(ASTNodeKind_WhileStatement, parser->symbolTable, whileKeyword);
     result->left = condition;
@@ -3609,7 +3618,7 @@ static ASTNode* ParseDoWhileStatement(Parser* parser) {
     SyntaxToken doKeyword = MatchAndAdvanceToken(parser, SyntaxKind_DoKeyword);
     parser->loopLevel += 1;
     ASTNode* body = ParseStatement(parser);
-    body = WrapInCompoundStatementIfNecessary(parser, body);
+    body = WrapInBlockStatementIfNecessary(parser, body);
     parser->loopLevel -= 1;
     SyntaxToken whileKeyword = MatchAndAdvanceToken(parser, SyntaxKind_WhileKeyword);
     SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
@@ -3638,7 +3647,7 @@ static ASTNode* ParseForStatement(Parser* parser) {
     SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
     parser->loopLevel += 1;
     ASTNode* body = ParseStatement(parser);
-    body = WrapInCompoundStatementIfNecessary(parser, body);
+    body = WrapInBlockStatementIfNecessary(parser, body);
     parser->loopLevel -= 1;
     parser->symbolTable = parser->symbolTable->parent;
     result->left = initializer;
@@ -3774,7 +3783,7 @@ static Type ParseType(Parser* parser) {
     return type;
 }
 
-static ASTNode* ParseCompoundStatement(Parser* parser, bool inSwitch) {
+static ASTNode* ParseBlockStatement(Parser* parser, bool inSwitch) {
     bool startsWithBrace = false;
     SyntaxToken leftBrace = parser->tokenCur;
     if (parser->tokenCur.kind == SyntaxKind_LeftBraceToken || !inSwitch) {
@@ -3782,7 +3791,7 @@ static ASTNode* ParseCompoundStatement(Parser* parser, bool inSwitch) {
         startsWithBrace = true;
     }
     parser->symbolTable = SymbolTableCreate(parser->symbolTable);
-    ASTNode* result = ASTNodeCreate(ASTNodeKind_CompoundStatement, parser->symbolTable, leftBrace);
+    ASTNode* result = ASTNodeCreate(ASTNodeKind_BlockStatement, parser->symbolTable, leftBrace);
     while (parser->tokenCur.kind != SyntaxKind_RightBraceToken) {
         if (inSwitch && parser->tokenCur.kind == SyntaxKind_CaseKeyword) {
             break;
@@ -3797,7 +3806,7 @@ static ASTNode* ParseCompoundStatement(Parser* parser, bool inSwitch) {
     if (startsWithBrace) {
         SyntaxToken rightBrace = MatchAndAdvanceToken(parser, SyntaxKind_RightBraceToken);
     }
-    return FlattenCompoundStatementIfNecessary(parser, result);
+    return FlattenBlockStatementIfNecessary(parser, result);
 }
 
 static ASTNode* ParseVariableDeclarationWithoutTerminator(Parser* parser, Type type, SyntaxToken identifier, SymbolScopeKind symbolScopeKind) {
@@ -4036,7 +4045,7 @@ static ASTNode* ParseFunctionDefinitionStatement(Parser* parser, bool isExternal
         }
         parser->symbolTable = functionSymbol->membersSymbolTable;
         parser->currentFunctionSymbol = functionSymbol;
-        body = ParseCompoundStatement(parser, false);
+        body = ParseBlockStatement(parser, false);
         functionSymbol->alreadyDefined = true;
         parser->currentFunctionSymbol = NULL;
         parser->symbolTable = parser->symbolTable->parent;
@@ -4048,11 +4057,13 @@ static ASTNode* ParseFunctionDefinitionStatement(Parser* parser, bool isExternal
 }
 
 static ASTNode* ParseVariableDefinitionStatement(Parser* parser, bool isExternal) {
-    SyntaxToken letKeyword = MatchAndAdvanceToken(parser, SyntaxKind_LetKeyword);
+    SyntaxToken letKeyword;
     bool isLocalPersist = false;
-    if (parser->tokenCur.kind == SyntaxKind_LocalPersistKeyword) {
-        SyntaxToken localPersist = MatchAndAdvanceToken(parser, SyntaxKind_LocalPersistKeyword);
+    if (parser->tokenCur.kind == SyntaxKind_LetLocalPersistKeyword) {
+        letKeyword = MatchAndAdvanceToken(parser, SyntaxKind_LetLocalPersistKeyword);
         isLocalPersist = true;
+    } else {
+        letKeyword = MatchAndAdvanceToken(parser, SyntaxKind_LetKeyword);
     }
     Type type = ParseType(parser);
     SyntaxToken identifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
@@ -4106,7 +4117,7 @@ static ASTNode* ParseDefinitionStatement(Parser* parser) {
 }
 
 static ASTNode* ParseCaseStatement(Parser* parser, ASTNode* switchExpression) {
-    SyntaxToken caseLabel = SyntaxTokenCreateEmpty(parser->source);
+    SyntaxToken caseLabel = SyntaxTokenCreateEmpty(parser->tree);
     ASTNode* caseExpression = NULL;
     if (parser->tokenCur.kind == SyntaxKind_CaseKeyword) {
         caseLabel = MatchAndAdvanceToken(parser, SyntaxKind_CaseKeyword);
@@ -4128,7 +4139,7 @@ static ASTNode* ParseCaseStatement(Parser* parser, ASTNode* switchExpression) {
         }
     }
     SyntaxToken colonToken = MatchAndAdvanceToken(parser, SyntaxKind_ColonToken);
-    ASTNode* body = ParseCompoundStatement(parser, true);
+    ASTNode* body = ParseBlockStatement(parser, true);
     if (body->children.count == 0) {
         body = NULL;
     }
@@ -4183,7 +4194,7 @@ static ASTNode* ParseSwitchStatement(Parser* parser) {
 static ASTNode* ParseStatement(Parser* parser) {
     switch (parser->tokenCur.kind) {
         case SyntaxKind_LeftBraceToken: {
-            return ParseCompoundStatement(parser, false);
+            return ParseBlockStatement(parser, false);
         }
         case SyntaxKind_IfKeyword: {
             return ParseIfStatement(parser);
@@ -4214,7 +4225,8 @@ static ASTNode* ParseStatement(Parser* parser) {
         case SyntaxKind_UnionKeyword: // Fallthrough
         case SyntaxKind_EnumKeyword: // Fallthrough
         case SyntaxKind_FunKeyword: // Fallthrough
-        case SyntaxKind_LetKeyword: {
+        case SyntaxKind_LetKeyword: // Fallthrough
+        case SyntaxKind_LetLocalPersistKeyword: {
             return ParseDefinitionStatement(parser);
         }
         default: {
@@ -4224,8 +4236,8 @@ static ASTNode* ParseStatement(Parser* parser) {
 }
 
 static ASTNode* ParseGlobalStatements(Parser* parser) {
-    SyntaxToken root = SyntaxTokenCreateEmpty(parser->source);
-    ASTNode* result = ASTNodeCreate(ASTNodeKind_Root, parser->symbolTable, root);
+    SyntaxToken root = SyntaxTokenCreateEmpty(parser->tree);
+    ASTNode* result = ASTNodeCreate(ASTNodeKind_Module, parser->symbolTable, root);
     while (parser->tokenCur.kind != SyntaxKind_EndOfFileToken) {
         bool foundDirectives = true;
         while (foundDirectives) {
@@ -4277,8 +4289,8 @@ static ASTNode* ParseGlobalStatements(Parser* parser) {
                             MatchAndAdvanceToken(parser, SyntaxKind_ByteKeyword);
                             MatchAndAdvanceToken(parser, SyntaxKind_CharKeyword);
                         } else {
-                            if (parser->tokenCur.kind == SyntaxKind_LocalPersistKeyword) {
-                                MatchAndAdvanceToken(parser, SyntaxKind_LocalPersistKeyword);
+                            if (parser->tokenCur.kind == SyntaxKind_LetLocalPersistKeyword) {
+                                MatchAndAdvanceToken(parser, SyntaxKind_LetLocalPersistKeyword);
                                 MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
                             } else {
                                 MatchAndAdvanceToken(parser, SyntaxKind_FunKeyword);
@@ -4296,8 +4308,8 @@ static ASTNode* ParseGlobalStatements(Parser* parser) {
 }
 
 struct Parser2; typedef struct Parser2 Parser2; struct Parser2 {
-    Source source;
     Scanner scanner;
+    SyntaxTree* tree;
     SyntaxToken tokenPrev;
     SyntaxToken tokenCur;
     SyntaxToken tokenNext;
@@ -4307,11 +4319,14 @@ struct Parser2; typedef struct Parser2 Parser2; struct Parser2 {
     int32 functionLevel;
 };
 
-static Parser2 Parser2Create(Source source, SymbolTable* symbolTable) {
+static Parser2 Parser2Create(Source source) {
+    SyntaxTree* tree = (SyntaxTree*)malloc(sizeof(SyntaxTree));
+    tree->source = source;
+    tree->moduleRoot = NULL;
     Parser2 result;
-    result.source = source;
-    result.scanner = ScannerCreate(source);
-    result.tokenPrev = SyntaxTokenCreateEmpty(source);
+    result.tree = tree;
+    result.scanner = ScannerCreate(tree);
+    result.tokenPrev = SyntaxTokenCreateEmpty(tree);
     result.tokenCur = NextToken(&result.scanner);
     result.tokenNext = NextToken(&result.scanner);
     result.tokenNextAfter = NextToken(&result.scanner);
@@ -4336,6 +4351,12 @@ static SyntaxToken _MatchAndAdvanceToken(Parser2* parser, SyntaxKind kind) {
     }
     ReportError(TokenGetLocation(parser->tokenCur), "Expected token '%s' but got token '%s'", TokenKindToString(kind).cstr, TokenKindToString(parser->tokenCur.kind).cstr);
     exit(1);
+}
+
+static SyntaxNode* WrapTokenInNode(Parser2* parser, SyntaxToken token) {
+    SyntaxNode* wrapper = SyntaxNodeCreate(token.kind, parser->tree);
+    wrapper->token = token;
+    return wrapper;
 }
 
 SyntaxNode* _ParseStatement(Parser2* parser);
@@ -4363,21 +4384,21 @@ static SyntaxNode* _ParseTypeExpression(Parser2* parser) {
             ReportError(TokenGetLocation(parser->tokenCur), "Expected primitive type or identifier token - got token '%s'", TokenGetText(parser->tokenCur).cstr);
         }
     }
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_TypeExpression);
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_TypeExpression, parser->tree);
     result->typeExpr.typeTokens = SyntaxNodeArrayCreate();
     SyntaxToken identifier = _AdvanceToken(parser);
-    SyntaxNode* identifierWrapper = SyntaxNodeCreate(identifier.kind);
+    SyntaxNode* identifierWrapper = WrapTokenInNode(parser, identifier);
     SyntaxNodeArrayPush(&result->typeExpr.typeTokens, identifierWrapper);
     while (parser->tokenCur.kind == SyntaxKind_StarToken) {
         SyntaxToken star = _AdvanceToken(parser);
-        SyntaxNode* starWrapper = SyntaxNodeCreate(star.kind);
+        SyntaxNode* starWrapper = WrapTokenInNode(parser, star);
         SyntaxNodeArrayPush(&result->typeExpr.typeTokens, starWrapper);
     }
     return result;
 }
 
 static SyntaxNode* _ParseFunctionCallExpression(Parser2* parser, SyntaxNode* func) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_FunccallExpression);
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_FuncCallExpression, parser->tree);
     result->funcCallExpr.func = func;
     result->funcCallExpr.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
     result->funcCallExpr.argumentsWithSeparators = SyntaxNodeArrayCreate();
@@ -4386,8 +4407,7 @@ static SyntaxNode* _ParseFunctionCallExpression(Parser2* parser, SyntaxNode* fun
         SyntaxNodeArrayPush(&result->funcCallExpr.argumentsWithSeparators, argument);
         if (parser->tokenCur.kind == SyntaxKind_CommaToken) {
             SyntaxToken comma = _MatchAndAdvanceToken(parser, SyntaxKind_CommaToken);
-            SyntaxNode* commaWrapper = SyntaxNodeCreate(comma.kind);
-            commaWrapper->token = comma;
+            SyntaxNode* commaWrapper = WrapTokenInNode(parser, comma);
             SyntaxNodeArrayPush(&result->funcCallExpr.argumentsWithSeparators, commaWrapper);
         } else {
             break;
@@ -4398,7 +4418,7 @@ static SyntaxNode* _ParseFunctionCallExpression(Parser2* parser, SyntaxNode* fun
 }
 
 static SyntaxNode* _ParseArrayIndexingExpression(Parser2* parser, SyntaxNode* arr) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ArrayIndexExpression);
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ArrayIndexExpression, parser->tree);
     result->arrayIndexExpr.arr = arr;
     result->arrayIndexExpr.leftBracket = _MatchAndAdvanceToken(parser, SyntaxKind_LeftBracketToken);
     result->arrayIndexExpr.indexExpression = _ParseExpression(parser);
@@ -4407,7 +4427,7 @@ static SyntaxNode* _ParseArrayIndexingExpression(Parser2* parser, SyntaxNode* ar
 }
 
 static SyntaxNode* _ParseMemberAccess(Parser2* parser, SyntaxNode* container) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_MemberAccessExpression);
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_MemberAccessExpression, parser->tree);
     result->memberAccessExpr.container = container;
     if (parser->tokenCur.kind == SyntaxKind_ArrowToken) {
         result->memberAccessExpr.accessToken = _MatchAndAdvanceToken(parser, SyntaxKind_ArrowToken);
@@ -4419,7 +4439,7 @@ static SyntaxNode* _ParseMemberAccess(Parser2* parser, SyntaxNode* container) {
 }
 
 static SyntaxNode* _ParseEnumLiteralExpression(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_EnumValueLiteralExpression);
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_EnumValueLiteralExpression, parser->tree);
     result->enumLiteralExpr.enumIdentifier = _MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
     result->enumLiteralExpr.coloncolon = _MatchAndAdvanceToken(parser, SyntaxKind_ColonColonToken);
     result->enumLiteralExpr.valueIdentifier = _MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
@@ -4429,17 +4449,17 @@ static SyntaxNode* _ParseEnumLiteralExpression(Parser2* parser) {
 static SyntaxNode* _ParsePrimaryExpression(Parser2* parser) {
     switch (parser->tokenCur.kind) {
         case SyntaxKind_LeftParenToken: {
-            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ParenthesizedExpression);
+            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ParenthesizedExpression, parser->tree);
             result->parenthesizedExpr.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
             result->parenthesizedExpr.expression = _ParseExpression(parser);
             result->parenthesizedExpr.rightParen = _MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
             return result;
         }
         case SyntaxKind_SizeOfKeyword: {
-            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_SizeOfExpression);
+            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_SizeOfExpression, parser->tree);
             result->sizeofExpr.sizeofKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_SizeOfKeyword);
             result->sizeofExpr.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
-            result->sizeofExpr.typeExpreesion = _ParseTypeExpression(parser);
+            result->sizeofExpr.typeExpression = _ParseTypeExpression(parser);
             result->sizeofExpr.rightParen = _MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
             return result;
         }
@@ -4447,40 +4467,39 @@ static SyntaxNode* _ParsePrimaryExpression(Parser2* parser) {
             if (parser->tokenNext.kind == SyntaxKind_ColonColonToken) {
                 return _ParseEnumLiteralExpression(parser);
             }
-            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_NameExpression);
+            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_NameExpression, parser->tree);
             result->nameExpr.identifier = _MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
             return result;
         }
         case SyntaxKind_StringLiteralToken: {
-            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_StringLiteralExpression);
+            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_StringLiteralExpression, parser->tree);
             result->stringLiteralExpr.stringLiteralTokens = SyntaxNodeArrayCreate();
             while (parser->tokenCur.kind == SyntaxKind_StringLiteralToken) {
                 SyntaxToken literal = _MatchAndAdvanceToken(parser, SyntaxKind_StringLiteralToken);
-                SyntaxNode* literalWrapper = SyntaxNodeCreate(literal.kind);
-                literalWrapper->token = literal;
+                SyntaxNode* literalWrapper = WrapTokenInNode(parser, literal);
                 SyntaxNodeArrayPush(&result->stringLiteralExpr.stringLiteralTokens, literalWrapper);
             }
             return result;
         }
         case SyntaxKind_NullKeyword: {
-            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_NullLiteralExpression);
+            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_NullLiteralExpression, parser->tree);
             result->nullLiteralExpr.nullLiteral = _MatchAndAdvanceToken(parser, SyntaxKind_NullKeyword);
             return result;
         }
         case SyntaxKind_CharacterLiteralToken: {
-            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_CharacterLiteralExpression);
+            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_CharacterLiteralExpression, parser->tree);
             result->characterLiteralExpr.characterLiteral = _MatchAndAdvanceToken(parser, SyntaxKind_CharacterLiteralToken);
             return result;
         }
         case SyntaxKind_FalseKeyword: // Fallthrough
         case SyntaxKind_TrueKeyword: {
-            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_BoolLiteralExpression);
+            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_BoolLiteralExpression, parser->tree);
             result->boolLiteralExpr.boolLiteral = _AdvanceToken(parser);
             return result;
         }
         case SyntaxKind_IntegerLiteralToken: // Fallthrough
         default: {
-            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_IntegerLiteralExpression);
+            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_IntegerLiteralExpression, parser->tree);
             result->integerLiteralExpr.integerLiteral = _MatchAndAdvanceToken(parser, SyntaxKind_IntegerLiteralToken);
             return result;
         }
@@ -4488,7 +4507,7 @@ static SyntaxNode* _ParsePrimaryExpression(Parser2* parser) {
 }
 
 static SyntaxNode* _ParseArrayLiteralExpression(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ArrayLiteralExpression);
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ArrayLiteralExpression, parser->tree);
     result->arrayLiteralExpr.leftBrace = _MatchAndAdvanceToken(parser, SyntaxKind_LeftBraceToken);
     result->arrayLiteralExpr.elemsWithSeparators = SyntaxNodeArrayCreate();
     while (parser->tokenCur.kind != SyntaxKind_RightBraceToken) {
@@ -4496,8 +4515,7 @@ static SyntaxNode* _ParseArrayLiteralExpression(Parser2* parser) {
         SyntaxNodeArrayPush(&result->arrayLiteralExpr.elemsWithSeparators, expression);
         if (parser->tokenCur.kind == SyntaxKind_CommaToken) {
             SyntaxToken comma = _MatchAndAdvanceToken(parser, SyntaxKind_CommaToken);
-            SyntaxNode* commaWrapper = SyntaxNodeCreate(comma.kind);
-            commaWrapper->token = comma;
+            SyntaxNode* commaWrapper = WrapTokenInNode(parser, comma);
             SyntaxNodeArrayPush(&result->arrayLiteralExpr.elemsWithSeparators, commaWrapper);
         } else {
             break;
@@ -4532,7 +4550,7 @@ static SyntaxNode* _ParseCastExpression(Parser2* parser) {
     if (parser->tokenCur.kind != SyntaxKind_LeftParenToken || parser->tokenNext.kind != SyntaxKind_AsKeyword) {
         return _ParsePostFixExpression(parser);
     }
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_TypeCastExpression);
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_TypeCastExpression, parser->tree);
     result->typeCastExpr.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
     result->typeCastExpr.asKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_AsKeyword);
     result->typeCastExpr.targetTypeExpression = _ParseTypeExpression(parser);
@@ -4545,7 +4563,7 @@ static SyntaxNode* _ParseUnaryExpression(Parser2* parser, int32 parentPrecedence
     SyntaxNode* left = NULL;
     int32 unaryOperatorPrecedence = GetUnaryOperatorPrecedence(parser->tokenCur.kind);
     if ((unaryOperatorPrecedence != 0) && (unaryOperatorPrecedence >= parentPrecedence)) {
-        SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_UnaryExpression);
+        SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_UnaryExpression, parser->tree);
         result->unaryExpr.operatorToken = _AdvanceToken(parser);
         result->unaryExpr.operand = _ParseBinaryExpression(parser, unaryOperatorPrecedence);
         left = result;
@@ -4562,7 +4580,7 @@ static SyntaxNode* _ParseBinaryExpression(Parser2* parser, int32 parentPrecedenc
         if (precedence == 0 || precedence < parentPrecedence || precedence == parentPrecedence && !IsBinaryOperatorRightAssociative(parser->tokenCur.kind)) {
             break;
         }
-        SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_BinaryExpression);
+        SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_BinaryExpression, parser->tree);
         result->binaryExpr.left = left;
         result->binaryExpr.operatorToken = _AdvanceToken(parser);
         result->binaryExpr.right = _ParseBinaryExpression(parser, precedence);
@@ -4574,7 +4592,7 @@ static SyntaxNode* _ParseBinaryExpression(Parser2* parser, int32 parentPrecedenc
 static SyntaxNode* _ParseTernaryConditionExpression(Parser2* parser) {
     SyntaxNode* left = _ParseBinaryExpression(parser, 0);
     if (parser->tokenCur.kind == SyntaxKind_QuestionmarkToken) {
-        SyntaxNode* ternary = SyntaxNodeCreate(SyntaxKind_TernaryConditionalExpression);
+        SyntaxNode* ternary = SyntaxNodeCreate(SyntaxKind_TernaryConditionalExpression, parser->tree);
         ternary->ternaryConditionalExpr.conditionExpression = left;
         ternary->ternaryConditionalExpr.questionmark = _MatchAndAdvanceToken(parser, SyntaxKind_QuestionmarkToken);
         ternary->ternaryConditionalExpr.thenExpression = _ParseTernaryConditionExpression(parser);
@@ -4599,10 +4617,10 @@ static SyntaxNode* _ParseAssignmentExpression(Parser2* parser) {
         case SyntaxKind_PipeEqualsToken: // Fallthrough
         case SyntaxKind_LessLessEqualsToken: // Fallthrough
         case SyntaxKind_GreaterGreaterEqualsToken: {
-            SyntaxNode* assignment = SyntaxNodeCreate(SyntaxKind_AssignmentExpression);
-            assignment->assignmentExpr.left = left;
-            assignment->assignmentExpr.assignmentOperator = _AdvanceToken(parser);
-            assignment->assignmentExpr.right = _ParseAssignmentExpression(parser);
+            SyntaxNode* assignment = SyntaxNodeCreate(SyntaxKind_BinaryExpression, parser->tree);
+            assignment->binaryExpr.left = left;
+            assignment->binaryExpr.operatorToken = _AdvanceToken(parser);
+            assignment->binaryExpr.right = _ParseAssignmentExpression(parser);
             return assignment;
         }
     }
@@ -4614,61 +4632,67 @@ static SyntaxNode* _ParseExpression(Parser2* parser) {
 }
 
 static SyntaxNode* _ParseExpressionStatement(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ExpressionStatement);
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ExpressionStatement, parser->tree);
     result->expressionStmt.expression = _ParseExpression(parser);
     result->expressionStmt.semicolon = _MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
     return result;
 }
 
-static SyntaxNode* _ParseVariableDefinitionStatement(Parser2* parser, bool skipLet) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_VariableDeclarationStatement);
+static SyntaxNode* _ParseVariableDefinitionStatement(Parser2* parser, bool skipLet, bool allowInitializer, SyntaxKind terminator) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_VariableDeclarationStatement, parser->tree);
     if (skipLet) {
-        result->variableDeclarationStmt.letKeyword = SyntaxTokenCreateEmpty(parser->source);
+        result->variableDeclarationStmt.letKeyword = SyntaxTokenCreateEmpty(parser->tree);
     } else {
-        result->variableDeclarationStmt.letKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_LetKeyword);
-    }
-    if (parser->tokenCur.kind == SyntaxKind_LocalPersistKeyword) {
-        result->variableDeclarationStmt.localpersistKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_LocalPersistKeyword);
-    } else {
-        result->variableDeclarationStmt.localpersistKeyword = SyntaxTokenCreateEmpty(parser->source);
+        if (parser->tokenCur.kind == SyntaxKind_LetLocalPersistKeyword) {
+            result->variableDeclarationStmt.letKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_LetLocalPersistKeyword);
+        } else {
+            result->variableDeclarationStmt.letKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_LetKeyword);
+        }
     }
     result->variableDeclarationStmt.typeExpression = _ParseTypeExpression(parser);
     result->variableDeclarationStmt.identifier = _MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
     if (parser->tokenCur.kind == SyntaxKind_LeftBracketToken) {
-        result->kind = SyntaxKind_ArrayDeclarationStatement;
-        int64 arrayElementCount = -1;
-        result->arrayVariableDeclarationStmt.leftBracket = _MatchAndAdvanceToken(parser, SyntaxKind_LeftBracketToken);
+        result->variableDeclarationStmt.leftBracket = _MatchAndAdvanceToken(parser, SyntaxKind_LeftBracketToken);
         if (parser->tokenCur.kind == SyntaxKind_IntegerLiteralToken) {
-            result->arrayVariableDeclarationStmt.arraySizeLiteral = _MatchAndAdvanceToken(parser, SyntaxKind_IntegerLiteralToken);
-        } else {
-            result->arrayVariableDeclarationStmt.arraySizeLiteral = SyntaxTokenCreateEmpty(parser->source);
+            result->variableDeclarationStmt.arraySizeLiteral = _MatchAndAdvanceToken(parser, SyntaxKind_IntegerLiteralToken);
         }
-        result->arrayVariableDeclarationStmt.rightBracket = _MatchAndAdvanceToken(parser, SyntaxKind_RightBracketToken);
-        if (parser->tokenCur.kind == SyntaxKind_EqualsToken) {
+        result->variableDeclarationStmt.rightBracket = _MatchAndAdvanceToken(parser, SyntaxKind_RightBracketToken);
+        if (parser->tokenCur.kind == SyntaxKind_EqualsToken && allowInitializer) {
             result->variableDeclarationStmt.equalsToken = _MatchAndAdvanceToken(parser, SyntaxKind_EqualsToken);
-            result->arrayVariableDeclarationStmt.initializerExpression = _ParseArrayLiteralExpression(parser);
+            result->variableDeclarationStmt.initializerExpression = _ParseArrayLiteralExpression(parser);
+        } else {
+            result->variableDeclarationStmt.equalsToken = SyntaxTokenCreateEmpty(parser->tree);
+            result->variableDeclarationStmt.initializerExpression = NULL;
         }
-        result->arrayVariableDeclarationStmt.semicolon = _MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
-        return result;
     } else {
-        if (parser->tokenCur.kind == SyntaxKind_EqualsToken) {
+        result->variableDeclarationStmt.leftBracket = SyntaxTokenCreateEmpty(parser->tree);
+        result->variableDeclarationStmt.arraySizeLiteral = SyntaxTokenCreateEmpty(parser->tree);
+        result->variableDeclarationStmt.rightBracket = SyntaxTokenCreateEmpty(parser->tree);
+        if (parser->tokenCur.kind == SyntaxKind_EqualsToken && allowInitializer) {
             result->variableDeclarationStmt.equalsToken = _MatchAndAdvanceToken(parser, SyntaxKind_EqualsToken);
             result->variableDeclarationStmt.initializerExpression = _ParseExpression(parser);
+        } else {
+            result->variableDeclarationStmt.equalsToken = SyntaxTokenCreateEmpty(parser->tree);
+            result->variableDeclarationStmt.initializerExpression = NULL;
         }
-        result->variableDeclarationStmt.semicolon = _MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
-        return result;
     }
+    if (terminator == SyntaxKind_BadToken) {
+        result->variableDeclarationStmt.terminatorToken = SyntaxTokenCreateEmpty(parser->tree);
+    } else {
+        result->variableDeclarationStmt.terminatorToken = _MatchAndAdvanceToken(parser, terminator);
+    }
+    return result;
 }
 
 static SyntaxNode* _ParseIfStatement(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_IfStatement);
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_IfStatement, parser->tree);
     result->ifStmt.ifKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_IfKeyword);
     result->ifStmt.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
     result->ifStmt.condition = _ParseExpression(parser);
     result->ifStmt.rightParen = _MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
     result->ifStmt.thenBlock = _ParseStatement(parser);
     result->ifStmt.elseBlock = NULL;
-    result->ifStmt.elseKeyword = SyntaxTokenCreateEmpty(parser->source);
+    result->ifStmt.elseKeyword = SyntaxTokenCreateEmpty(parser->tree);
     if (parser->tokenCur.kind == SyntaxKind_ElseKeyword) {
         result->ifStmt.elseKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_ElseKeyword);
         result->ifStmt.elseBlock = _ParseStatement(parser);
@@ -4677,7 +4701,7 @@ static SyntaxNode* _ParseIfStatement(Parser2* parser) {
 }
 
 static SyntaxNode* _ParseWhileStatement(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_WhileStatement);
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_WhileStatement, parser->tree);
     result->whileStmt.whileKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_WhileKeyword);
     result->whileStmt.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
     result->whileStmt.condition = _ParseExpression(parser);
@@ -4689,7 +4713,7 @@ static SyntaxNode* _ParseWhileStatement(Parser2* parser) {
 }
 
 static SyntaxNode* _ParseDoWhileStatement(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_DoWhileStatement);
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_DoWhileStatement, parser->tree);
     result->doWhileStmt.doKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_DoKeyword);
     parser->loopLevel += 1;
     result->doWhileStmt.body = _ParseStatement(parser);
@@ -4703,11 +4727,11 @@ static SyntaxNode* _ParseDoWhileStatement(Parser2* parser) {
 }
 
 static SyntaxNode* _ParseForStatement(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ForStatement);
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ForStatement, parser->tree);
     result->forStmt.forKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_ForKeyword);
     result->forStmt.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
     if (parser->tokenCur.kind == SyntaxKind_LetKeyword) {
-        result->forStmt.initializerStatement = _ParseVariableDefinitionStatement(parser, false);
+        result->forStmt.initializerStatement = _ParseVariableDefinitionStatement(parser, false, true, SyntaxKind_SemicolonToken);
     } else {
         result->forStmt.initializerStatement = _ParseExpressionStatement(parser);
     }
@@ -4721,7 +4745,7 @@ static SyntaxNode* _ParseForStatement(Parser2* parser) {
 }
 
 static SyntaxNode* _ParseReturnStatement(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ReturnStatement);
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ReturnStatement, parser->tree);
     result->returnStmt.returnKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_ReturnKeyword);
     if (parser->functionLevel == 0) {
         ReportError(TokenGetLocation(result->returnStmt.returnKeyword), "Invalid 'return' keyword found outside of function definition");
@@ -4736,7 +4760,7 @@ static SyntaxNode* _ParseReturnStatement(Parser2* parser) {
 }
 
 static SyntaxNode* _ParseBreakStatement(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_BreakStatement);
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_BreakStatement, parser->tree);
     result->breakStmt.breakKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_BreakKeyword);
     if (parser->loopLevel == 0 && parser->switchCaseLevel == 0) {
         ReportError(TokenGetLocation(result->breakStmt.breakKeyword), "Invalid 'break' keyword found outside of loop or switch-case definition");
@@ -4746,7 +4770,7 @@ static SyntaxNode* _ParseBreakStatement(Parser2* parser) {
 }
 
 static SyntaxNode* _ParseContinueStatement(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ContinueKeyword);
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ContinueStatement, parser->tree);
     result->continueStmt.continueKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_ContinueKeyword);
     if (parser->loopLevel == 0) {
         ReportError(TokenGetLocation(result->continueStmt.continueKeyword), "Invalid 'continue' keyword found outside of loop definition");
@@ -4756,11 +4780,11 @@ static SyntaxNode* _ParseContinueStatement(Parser2* parser) {
 }
 
 static SyntaxNode* _ParseBlockStatement(Parser2* parser, bool inSwitch) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_BlockStatement);
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_BlockStatement, parser->tree);
     if (parser->tokenCur.kind == SyntaxKind_LeftBraceToken || !inSwitch) {
         result->blockStmt.leftBrace = _MatchAndAdvanceToken(parser, SyntaxKind_LeftBraceToken);
     } else {
-        result->blockStmt.leftBrace = SyntaxTokenCreateEmpty(parser->source);
+        result->blockStmt.leftBrace = SyntaxTokenCreateEmpty(parser->tree);
     }
     result->blockStmt.statements = SyntaxNodeArrayCreate();
     while (parser->tokenCur.kind != SyntaxKind_RightBraceToken) {
@@ -4780,7 +4804,7 @@ static SyntaxNode* _ParseBlockStatement(Parser2* parser, bool inSwitch) {
 }
 
 static SyntaxNode* _ParseCaseStatement(Parser2* parser, SyntaxNode* switchExpression) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_CaseStatement);
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_CaseStatement, parser->tree);
     result->caseStmt.caseKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_CaseKeyword);
     if (parser->switchCaseLevel == 0) {
         ReportError(TokenGetLocation(result->caseStmt.caseKeyword), "Unexpected 'case' label keyword outside of switch statement");
@@ -4803,7 +4827,7 @@ static SyntaxNode* _ParseCaseStatement(Parser2* parser, SyntaxNode* switchExpres
 }
 
 static SyntaxNode* _ParseDefaultStatement(Parser2* parser, SyntaxNode* switchExpression) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_DefaultStatement);
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_DefaultStatement, parser->tree);
     result->defaultStmt.defaultKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_DefaultKeyword);
     if (parser->switchCaseLevel == 0) {
         ReportError(TokenGetLocation(result->defaultStmt.defaultKeyword), "Unexpected 'default' case label keyword outside of switch statement");
@@ -4814,7 +4838,7 @@ static SyntaxNode* _ParseDefaultStatement(Parser2* parser, SyntaxNode* switchExp
 }
 
 static SyntaxNode* _ParseSwitchStatement(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_SwitchStatement);
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_SwitchStatement, parser->tree);
     result->switchStmt.switchKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_SwitchKeyword);
     result->switchStmt.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
     result->switchStmt.switchExpression = _ParseExpression(parser);
@@ -4869,8 +4893,9 @@ static SyntaxNode* _ParseStatement(Parser2* parser) {
         case SyntaxKind_SwitchKeyword: {
             return _ParseSwitchStatement(parser);
         }
-        case SyntaxKind_LetKeyword: {
-            return _ParseVariableDefinitionStatement(parser, false);
+        case SyntaxKind_LetKeyword: // Fallthrough
+        case SyntaxKind_LetLocalPersistKeyword: {
+            return _ParseVariableDefinitionStatement(parser, false, true, SyntaxKind_SemicolonToken);
         }
         default: {
             return _ParseExpressionStatement(parser);
@@ -4878,8 +4903,9 @@ static SyntaxNode* _ParseStatement(Parser2* parser) {
     }
 }
 
-static SyntaxNode* _ParseStructOrUnionDefinitionStatement(Parser2* parser, SyntaxToken externalKeyword) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_StructOrUnionDeclarationStatement);
+static SyntaxNode* _ParseStructOrUnionDefinitionStatement(Parser2* parser, SyntaxToken externKeyword) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_StructOrUnionDeclarationStatement, parser->tree);
+    result->structOrUnionDeclarationStmt.externKeyword = externKeyword;
     if (parser->tokenCur.kind == SyntaxKind_StructKeyword) {
         result->structOrUnionDeclarationStmt.structOrUnionKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_StructKeyword);
     } else {
@@ -4894,7 +4920,7 @@ static SyntaxNode* _ParseStructOrUnionDefinitionStatement(Parser2* parser, Synta
         result->structOrUnionDefinitionStmt.memberDeclarationStatements = SyntaxNodeArrayCreate();
         result->structOrUnionDefinitionStmt.leftBrace = _MatchAndAdvanceToken(parser, SyntaxKind_LeftBraceToken);
         while (parser->tokenCur.kind != SyntaxKind_RightBraceToken) {
-            SyntaxNode* memberDeclaration = _ParseVariableDefinitionStatement(parser, true);
+            SyntaxNode* memberDeclaration = _ParseVariableDefinitionStatement(parser, true, false, SyntaxKind_SemicolonToken);
             SyntaxNodeArrayPush(&result->structOrUnionDefinitionStmt.memberDeclarationStatements, memberDeclaration);
         }
         result->structOrUnionDefinitionStmt.rightBrace = _MatchAndAdvanceToken(parser, SyntaxKind_RightBraceToken);
@@ -4903,8 +4929,27 @@ static SyntaxNode* _ParseStructOrUnionDefinitionStatement(Parser2* parser, Synta
     }
 }
 
-static SyntaxNode* _ParseEnumDefinitionStatement(Parser2* parser, SyntaxToken externalKeyword) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_EnumDeclarationStatement);
+static SyntaxNode* _ParseEnumMemberClause(Parser2* parser) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_EnumMemberClauseSyntax, parser->tree);
+    result->enumMember.identifier = _MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
+    if (parser->tokenCur.kind == SyntaxKind_EqualsToken) {
+        result->enumMember.equals = _MatchAndAdvanceToken(parser, SyntaxKind_EqualsToken);
+        result->enumMember.integerLiteral = _MatchAndAdvanceToken(parser, SyntaxKind_IntegerLiteralToken);
+    } else {
+        result->enumMember.equals = SyntaxTokenCreateEmpty(parser->tree);
+        result->enumMember.integerLiteral = SyntaxTokenCreateEmpty(parser->tree);
+    }
+    if (parser->tokenCur.kind == SyntaxKind_CommaToken) {
+        result->enumMember.comma = _MatchAndAdvanceToken(parser, SyntaxKind_CommaToken);
+    } else {
+        result->enumMember.comma = SyntaxTokenCreateEmpty(parser->tree);
+    }
+    return result;
+}
+
+static SyntaxNode* _ParseEnumDefinitionStatement(Parser2* parser, SyntaxToken externKeyword) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_EnumDeclarationStatement, parser->tree);
+    result->enumDeclarationStmt.externKeyword = externKeyword;
     result->enumDeclarationStmt.enumKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_EnumKeyword);
     result->enumDeclarationStmt.classKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_ClassKeyword);
     result->enumDeclarationStmt.identifier = _MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
@@ -4913,25 +4958,12 @@ static SyntaxNode* _ParseEnumDefinitionStatement(Parser2* parser, SyntaxToken ex
         return result;
     } else {
         result->kind = SyntaxKind_EnumDefinitionStatement;
-        result->enumDefinitionStmt.membersAndValuesWithSeparators = SyntaxNodeArrayCreate();
+        result->enumDefinitionStmt.memberClauses = SyntaxNodeArrayCreate();
         result->enumDefinitionStmt.leftBrace = _MatchAndAdvanceToken(parser, SyntaxKind_LeftBraceToken);
         while (parser->tokenCur.kind != SyntaxKind_RightBraceToken) {
-            SyntaxToken memberIdent = _MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
-            SyntaxNode* memberIdentWrapper = SyntaxNodeCreate(memberIdent.kind);
-            SyntaxNodeArrayPush(&result->enumDefinitionStmt.membersAndValuesWithSeparators, memberIdentWrapper);
-            if (parser->tokenCur.kind == SyntaxKind_EqualsToken) {
-                SyntaxToken equals = _MatchAndAdvanceToken(parser, SyntaxKind_EqualsToken);
-                SyntaxNode* equalsWrapper = SyntaxNodeCreate(equals.kind);
-                SyntaxNodeArrayPush(&result->enumDefinitionStmt.membersAndValuesWithSeparators, equalsWrapper);
-                SyntaxToken value = _MatchAndAdvanceToken(parser, SyntaxKind_IntegerLiteralToken);
-                SyntaxNode* valueWrapper = SyntaxNodeCreate(value.kind);
-                SyntaxNodeArrayPush(&result->enumDefinitionStmt.membersAndValuesWithSeparators, valueWrapper);
-            }
-            if (parser->tokenCur.kind == SyntaxKind_CommaToken) {
-                SyntaxToken comma = _MatchAndAdvanceToken(parser, SyntaxKind_CommaToken);
-                SyntaxNode* commaWrapper = SyntaxNodeCreate(comma.kind);
-                SyntaxNodeArrayPush(&result->enumDefinitionStmt.membersAndValuesWithSeparators, commaWrapper);
-            } else {
+            SyntaxNode* memberClause = _ParseEnumMemberClause(parser);
+            SyntaxNodeArrayPush(&result->enumDefinitionStmt.memberClauses, memberClause);
+            if (memberClause->enumMember.comma.kind != SyntaxKind_CommaToken) {
                 break;
             }
         }
@@ -4941,29 +4973,25 @@ static SyntaxNode* _ParseEnumDefinitionStatement(Parser2* parser, SyntaxToken ex
     }
 }
 
-static SyntaxNode* _ParseFunctionDefinitionStatement(Parser2* parser, SyntaxToken externalKeyword) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_FunctionDeclarationStatement);
-    result->functionDeclarationStmt.parameterDeclarationsWithSeparators = SyntaxNodeArrayCreate();
+static SyntaxNode* _ParseFunctionDefinitionStatement(Parser2* parser, SyntaxToken externKeyword) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_FunctionDeclarationStatement, parser->tree);
+    result->functionDeclarationStmt.externKeyword = externKeyword;
     result->functionDeclarationStmt.funKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_FunKeyword);
     result->functionDeclarationStmt.returnType = _ParseTypeExpression(parser);
     result->functionDeclarationStmt.identifier = _MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
     result->functionDeclarationStmt.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
+    result->functionDeclarationStmt.params = SyntaxNodeArrayCreate();
     while (parser->tokenCur.kind != SyntaxKind_RightParenToken) {
         if (parser->tokenCur.kind == SyntaxKind_DotDotDotToken) {
             SyntaxToken dotdot = _MatchAndAdvanceToken(parser, SyntaxKind_DotDotDotToken);
-            SyntaxNode* dotdotWrapper = SyntaxNodeCreate(dotdot.kind);
-            SyntaxNodeArrayPush(&result->functionDeclarationStmt.parameterDeclarationsWithSeparators, dotdotWrapper);
+            SyntaxNode* dotdotWrapper = WrapTokenInNode(parser, dotdot);
+            SyntaxNodeArrayPush(&result->functionDeclarationStmt.params, dotdotWrapper);
             break;
         }
-        SyntaxNode* paramType = _ParseTypeExpression(parser);
-        SyntaxNodeArrayPush(&result->functionDeclarationStmt.parameterDeclarationsWithSeparators, paramType);
-        SyntaxToken paramIdent = _MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
-        SyntaxNode* paramIdentWrapper = SyntaxNodeCreate(paramIdent.kind);
-        SyntaxNodeArrayPush(&result->functionDeclarationStmt.parameterDeclarationsWithSeparators, paramIdentWrapper);
+        SyntaxNode* parameter = _ParseVariableDefinitionStatement(parser, true, false, SyntaxKind_BadToken);
+        SyntaxNodeArrayPush(&result->functionDeclarationStmt.params, parameter);
         if (parser->tokenCur.kind == SyntaxKind_CommaToken) {
-            SyntaxToken comma = _MatchAndAdvanceToken(parser, SyntaxKind_CommaToken);
-            SyntaxNode* commaWrapper = SyntaxNodeCreate(comma.kind);
-            SyntaxNodeArrayPush(&result->functionDeclarationStmt.parameterDeclarationsWithSeparators, commaWrapper);
+            parameter->variableDeclarationStmt.terminatorToken = _MatchAndAdvanceToken(parser, SyntaxKind_CommaToken);
         } else {
             break;
         }
@@ -4981,36 +5009,38 @@ static SyntaxNode* _ParseFunctionDefinitionStatement(Parser2* parser, SyntaxToke
     }
 }
 
-static SyntaxNode* _ParseGlobalVariableDefinitionStatement(Parser2* parser, SyntaxToken externalKeyword) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_GlobalVariableDeclarationStatement);
-    result->globalVariableStmt.externKeyword = externalKeyword;
-    result->globalVariableStmt.variableDeclarationStatement = _ParseVariableDefinitionStatement(parser, false);
+static SyntaxNode* _ParseGlobalVariableDefinitionStatement(Parser2* parser, SyntaxToken externKeyword) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_GlobalVariableDeclarationStatement, parser->tree);
+    result->globalVariableStmt.externKeyword = externKeyword;
+    result->globalVariableStmt.variableDeclarationStatement = _ParseVariableDefinitionStatement(parser, false, true, SyntaxKind_SemicolonToken);
     return result;
 }
 
 static SyntaxNode* _ParseGlobalDefinitionStatement(Parser2* parser) {
     assert(parser->functionLevel == 0);
-    SyntaxToken externalKeyword = SyntaxTokenCreateEmpty(parser->source);
+    SyntaxToken externKeyword = SyntaxTokenCreateEmpty(parser->tree);
     if (parser->tokenCur.kind == SyntaxKind_ExternKeyword) {
-        externalKeyword = _AdvanceToken(parser);
+        externKeyword = _AdvanceToken(parser);
     }
-    if (parser->tokenCur.kind == SyntaxKind_EnumKeyword) {
-        return _ParseEnumDefinitionStatement(parser, externalKeyword);
-    } else {
-        if (parser->tokenCur.kind == SyntaxKind_StructKeyword || parser->tokenCur.kind == SyntaxKind_UnionKeyword) {
-            return _ParseStructOrUnionDefinitionStatement(parser, externalKeyword);
-        } else {
-            if (parser->tokenCur.kind == SyntaxKind_FunKeyword) {
-                return _ParseFunctionDefinitionStatement(parser, externalKeyword);
-            } else {
-                return _ParseGlobalVariableDefinitionStatement(parser, externalKeyword);
-            }
+    switch (parser->tokenCur.kind) {
+        case SyntaxKind_EnumKeyword: {
+            return _ParseEnumDefinitionStatement(parser, externKeyword);
+        }
+        case SyntaxKind_StructKeyword: // Fallthrough
+        case SyntaxKind_UnionKeyword: {
+            return _ParseStructOrUnionDefinitionStatement(parser, externKeyword);
+        }
+        case SyntaxKind_FunKeyword: {
+            return _ParseFunctionDefinitionStatement(parser, externKeyword);
+        }
+        default: {
+            return _ParseGlobalVariableDefinitionStatement(parser, externKeyword);
         }
     }
 }
 
 static SyntaxNode* _ParseImportDeclarationStatement(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ImportDeclarationStatement);
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ImportDeclarationStatement, parser->tree);
     result->importStmt.importKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_ImportKeyword);
     result->importStmt.modulenameLiteral = _MatchAndAdvanceToken(parser, SyntaxKind_StringLiteralToken);
     return result;
@@ -5030,18 +5060,19 @@ static SyntaxNode* _ParseModuleStatement(Parser2* parser) {
             return _ParseImportDeclarationStatement(parser);
         }
         default: {
-            ReportError(TokenGetLocation(parser->tokenCur), "Expected global module definition got unexpected token '%s' instead", TokenGetText(parser->tokenCur));
+            ReportError(TokenGetLocation(parser->tokenCur), "Expected global module definition got unexpected token '%s' instead", TokenGetText(parser->tokenCur).cstr);
             exit(1);
         }
     }
 }
 
-static SyntaxNode* _ParseModule(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_Module);
+static SyntaxTree* _ParseModule(Parser2* parser) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_Module, parser->tree);
+    parser->tree->moduleRoot = (ModuleStatementSyntax*)result;
     result->moduleStmt.globalStatements = SyntaxNodeArrayCreate();
     while (parser->tokenCur.kind != SyntaxKind_EndOfFileToken) {
-        bool foundDirectives = true;
-        while (foundDirectives) {
+        bool foundDirectives = false;
+        do {
             foundDirectives = false;
             if (parser->tokenCur.kind == SyntaxKind_TypedefKeyword) {
                 _MatchAndAdvanceToken(parser, SyntaxKind_TypedefKeyword);
@@ -5090,8 +5121,8 @@ static SyntaxNode* _ParseModule(Parser2* parser) {
                             _MatchAndAdvanceToken(parser, SyntaxKind_ByteKeyword);
                             _MatchAndAdvanceToken(parser, SyntaxKind_CharKeyword);
                         } else {
-                            if (parser->tokenCur.kind == SyntaxKind_LocalPersistKeyword) {
-                                _MatchAndAdvanceToken(parser, SyntaxKind_LocalPersistKeyword);
+                            if (parser->tokenCur.kind == SyntaxKind_LetLocalPersistKeyword) {
+                                _MatchAndAdvanceToken(parser, SyntaxKind_LetLocalPersistKeyword);
                                 _MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
                             } else {
                                 _MatchAndAdvanceToken(parser, SyntaxKind_FunKeyword);
@@ -5101,11 +5132,14 @@ static SyntaxNode* _ParseModule(Parser2* parser) {
                 }
                 foundDirectives = true;
             }
-        }
+        } while (foundDirectives);
         SyntaxNode* statement = _ParseModuleStatement(parser);
         SyntaxNodeArrayPush(&result->moduleStmt.globalStatements, statement);
     }
-    return result;
+    if (parser->tokenCur.kind != SyntaxKind_EndOfFileToken) {
+        ReportError(TokenGetLocation(parser->tokenCur), "Expected EOF token after parsing file, instead got '%s'", TokenKindToString(parser->tokenCur.kind).cstr);
+    }
+    return parser->tree;
 }
 
 struct Emitter; typedef struct Emitter Emitter; struct Emitter {
@@ -5269,7 +5303,7 @@ static void EmitNullLiteral(Emitter* emitter, ASTNode* node) {
     fprintf(emitter->outFile, "NULL");
 }
 
-static void EmitIdentifier(Emitter* emitter, ASTNode* node) {
+static void EmitNameExpression(Emitter* emitter, ASTNode* node) {
     String name = node->symbol->name;
     fprintf(emitter->outFile, "%s", name.cstr);
 }
@@ -5368,8 +5402,8 @@ static void EmitExpression(Emitter* emitter, ASTNode* node) {
             EmitTernaryConditionalExpression(emitter, node);
             break;
         }
-        case ASTNodeKind_Identifier: {
-            EmitIdentifier(emitter, node);
+        case ASTNodeKind_NameExpression: {
+            EmitNameExpression(emitter, node);
             break;
         }
         case ASTNodeKind_BoolLiteral: {
@@ -5594,7 +5628,7 @@ static void EmitVariableDeclarationStatement(Emitter* emitter, ASTNode* node) {
     fprintf(emitter->outFile, ";");
 }
 
-static void EmitCompoundStatement(Emitter* emitter, ASTNode* node) {
+static void EmitBlockStatement(Emitter* emitter, ASTNode* node) {
     if (node->children.count == 0) {
         fprintf(emitter->outFile, "{}");
     } else {
@@ -5704,7 +5738,7 @@ static void EmitFunctionDefinitionStatement(Emitter* emitter, ASTNode* node) {
     fprintf(emitter->outFile, "static ");
     EmitFunctionDeclarationWithoutTerminator(emitter, node);
     fprintf(emitter->outFile, " ");
-    EmitCompoundStatement(emitter, node->left);
+    EmitBlockStatement(emitter, node->left);
 }
 
 static void EmitPreamble(Emitter* emitter) {
@@ -5816,8 +5850,8 @@ static void EmitStatement(Emitter* emitter, ASTNode* node) {
             EmitExpressionStatement(emitter, node);
             break;
         }
-        case ASTNodeKind_CompoundStatement: {
-            EmitCompoundStatement(emitter, node);
+        case ASTNodeKind_BlockStatement: {
+            EmitBlockStatement(emitter, node);
             break;
         }
         default: {
@@ -5828,7 +5862,7 @@ static void EmitStatement(Emitter* emitter, ASTNode* node) {
 }
 
 static void EmitRoot(Emitter* emitter, ASTNode* node) {
-    assert(node->kind == ASTNodeKind_Root);
+    assert(node->kind == ASTNodeKind_Module);
     EmitPreamble(emitter);
     for (int32 index = 0; index < node->children.count; index += 1) {
         EmitStatement(emitter, node->children.nodes[index]);
@@ -5891,7 +5925,10 @@ static void PreprocessorPreprocessFile(Preprocessor* preprocessor, String filepa
     Source dummy = SourceCreateEmpty();
     SourceFileArrayPush(&dummy.files, sourceFile);
     dummy.content = sourceFile.content;
-    Scanner scanner = ScannerCreate(dummy);
+    SyntaxTree tree;
+    tree.moduleRoot = NULL;
+    tree.source = dummy;
+    Scanner scanner = ScannerCreate(&tree);
     String result = StringCreateEmpty();
     while (true) {
         SyntaxToken token = NextToken(&scanner);
@@ -5927,6 +5964,1072 @@ static Source PreprocessFile(String filepath) {
     return preprocessor.source;
 }
 
+struct Binder; typedef struct Binder Binder; struct Binder {
+    SymbolTable* symbolTable;
+    Source source;
+    ModuleStatementSyntax* tree;
+    int32 loopLevel;
+    int32 switchCaseLevel;
+    Symbol* currentFunctionSymbol;
+};
+
+static Binder BinderCreate(Source source, SymbolTable* symbolTable) {
+    Binder result;
+    result.symbolTable = symbolTable;
+    result.source = source;
+    result.loopLevel = 0;
+    result.switchCaseLevel = 0;
+    result.currentFunctionSymbol = NULL;
+    return result;
+}
+
+ASTNode* BindStatement(Binder* binder, SyntaxNode* syntax);
+
+ASTNode* BindExpression(Binder* binder, SyntaxNode* syntax);
+
+ASTNode* BindVariableDefinitionStatement(Binder* binder, SyntaxNode* syntax, SymbolScopeKind symbolScopeKind);
+
+static ASTNode* _WrapInBlockStatementIfNecessary(Binder* binder, ASTNode* node) {
+    if (node->kind != ASTNodeKind_BlockStatement) {
+        ASTNode* block = ASTNodeCreate2(ASTNodeKind_BlockStatement, binder->symbolTable, NULL);
+        ASTNodeArrayPush(&block->children, node);
+        node = block;
+    }
+    return node;
+}
+
+static ASTNode* _FlattenBlockStatementIfNecessary(Binder* binder, ASTNode* node) {
+    if (node->kind == ASTNodeKind_BlockStatement) {
+        if (node->children.count == 1 && node->children.nodes[0]->kind == ASTNodeKind_BlockStatement) {
+            ASTNode* result = node->children.nodes[0];
+            result->symbolTable->parent = node->symbolTable->parent;
+            return _FlattenBlockStatementIfNecessary(binder, result);
+        }
+    }
+    return node;
+}
+
+static Type BindType(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_TypeExpression);
+    Type type = TypeCreateVoid();
+    SyntaxToken primary = syntax->typeExpr.typeTokens.nodes[0]->token;
+    switch (primary.kind) {
+        case SyntaxKind_VoidKeyword: {
+            type.kind = TypeKind_PrimitiveVoid;
+            break;
+        }
+        case SyntaxKind_CharKeyword: {
+            type.kind = TypeKind_PrimitiveChar;
+            break;
+        }
+        case SyntaxKind_BoolKeyword: {
+            type.kind = TypeKind_PrimitiveBool;
+            break;
+        }
+        case SyntaxKind_ByteKeyword: {
+            type.kind = TypeKind_PrimitiveByte;
+            break;
+        }
+        case SyntaxKind_ShortKeyword: {
+            type.kind = TypeKind_PrimitiveShort;
+            break;
+        }
+        case SyntaxKind_IntKeyword: {
+            type.kind = TypeKind_PrimitiveInt;
+            break;
+        }
+        case SyntaxKind_LongKeyword: {
+            type.kind = TypeKind_PrimitiveLong;
+            break;
+        }
+        case SyntaxKind_CStringKeyword: {
+            type.kind = TypeKind_PrimitiveCString;
+            break;
+        }
+        case SyntaxKind_IdentifierToken: {
+            String name = TokenGetText(primary);
+            Symbol* symbol = GetSymbol(binder->symbolTable, name);
+            if (symbol != NULL) {
+                if (symbol->kind == SymbolKind_Struct) {
+                    type.kind = TypeKind_Struct;
+                    type.name = name;
+                    break;
+                } else {
+                    if (symbol->kind == SymbolKind_Union) {
+                        type.kind = TypeKind_Union;
+                        type.name = name;
+                        break;
+                    } else {
+                        if (symbol->kind == SymbolKind_Enum) {
+                            type.kind = TypeKind_Enum;
+                            type.name = name;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        default: {
+            ReportError(TokenGetLocation(primary), "SyntaxToken '%s' is not a type", TokenGetText(primary).cstr);
+        }
+    }
+    for (int32 index = 1; index < syntax->typeExpr.typeTokens.count; index += 1) {
+        SyntaxToken token = *((SyntaxToken*)syntax->typeExpr.typeTokens.nodes[index]);
+        assert(token.kind == SyntaxKind_StarToken);
+        type = GetPointerTypeForBaseType(type);
+    }
+    if (type.kind == TypeKind_Struct) {
+        Symbol* symbol = GetSymbol(binder->symbolTable, type.name);
+        if (!symbol->alreadyDefined && type.baseIndirectionLevel == 0) {
+            ReportError(TokenGetLocation(primary), "Usage of undefined but forward declared type '%s' is only allowed as pointer", type.name.cstr);
+        }
+    }
+    return type;
+}
+
+static ASTNode* BindTypeExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_TypeExpression);
+    Type type = BindType(binder, syntax);
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_TypeExpression, binder->symbolTable, syntax);
+    result->type = type;
+    return result;
+}
+
+static ASTNode* BindTypeCastExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_TypeCastExpression);
+    ASTNode* expression = BindExpression(binder, syntax->typeCastExpr.expression);
+    Type targetType = BindType(binder, syntax->typeCastExpr.targetTypeExpression);
+    TypeConversionResult conversion = CanConvertTypeFromTo(expression->type, targetType);
+    if (conversion == TypeConversionResult_NonConvertible) {
+        ReportError(TokenGetLocation(syntax->typeCastExpr.asKeyword), "Cast from type '%s' to type '%s' is impossible", TypeGetText(expression->type).cstr, TypeGetText(targetType).cstr);
+    }
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_CastExpression, binder->symbolTable, syntax);
+    result->type = targetType;
+    result->left = expression;
+    return result;
+}
+
+static ASTNode* BindSizeOfExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_SizeOfExpression);
+    ASTNode* typeExpr = BindTypeExpression(binder, syntax->sizeofExpr.typeExpression);
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_SizeOfExpression, binder->symbolTable, syntax);
+    result->type = TypeCreatePrimitive(TypeKind_PrimitiveInt);
+    result->left = typeExpr;
+    result->isRValue = true;
+    return result;
+}
+
+static ASTNode* BindNullLiteralExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_NullLiteralExpression);
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_NullLiteral, binder->symbolTable, syntax);
+    result->isRValue = true;
+    result->type = TypeCreate(TypeKind_PrimitiveNull, 1, StringCreateEmpty());
+    return result;
+}
+
+static ASTNode* BindCharacterLiteralExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_CharacterLiteralExpression);
+    SyntaxToken literal = syntax->characterLiteralExpr.characterLiteral;
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_CharacterLiteral, binder->symbolTable, syntax);
+    result->isRValue = true;
+    result->intvalue = literal.intvalue;
+    result->stringvalue = literal.stringValueWithoutQuotes;
+    result->type = TypeCreatePrimitive(TypeKind_PrimitiveChar);
+    return result;
+}
+
+static ASTNode* BindStringLiteralExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_StringLiteralExpression);
+    String stringValueWithoutQuotes = StringCreateEmpty();
+    for (int32 index = 0; index < syntax->stringLiteralExpr.stringLiteralTokens.count; index += 1) {
+        SyntaxToken next = syntax->stringLiteralExpr.stringLiteralTokens.nodes[index]->token;
+        stringValueWithoutQuotes = StringAppend(stringValueWithoutQuotes, next.stringValueWithoutQuotes);
+    }
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_StringLiteral, binder->symbolTable, syntax);
+    result->isRValue = true;
+    result->stringvalue = stringValueWithoutQuotes;
+    result->type = TypeCreate(TypeKind_PrimitiveChar, 1, StringCreateEmpty());
+    return result;
+}
+
+static ASTNode* BindBoolLiteralExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_BoolLiteralExpression);
+    SyntaxToken literal = syntax->boolLiteralExpr.boolLiteral;
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_BoolLiteral, binder->symbolTable, syntax);
+    result->isRValue = true;
+    result->intvalue = literal.kind == SyntaxKind_TrueKeyword ? 1 : 0;
+    result->type = TypeCreatePrimitive(TypeKind_PrimitiveBool);
+    return result;
+}
+
+static ASTNode* BindIntegerLiteralExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_IntegerLiteralExpression);
+    SyntaxToken literal = syntax->integerLiteralExpr.integerLiteral;
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_IntegerLiteral, binder->symbolTable, syntax);
+    result->isRValue = true;
+    result->intvalue = literal.intvalue;
+    if (CHAR_MIN <= literal.intvalue && literal.intvalue <= CHAR_MAX) {
+        result->type = TypeCreatePrimitive(TypeKind_PrimitiveByte);
+    } else {
+        if (SHRT_MIN <= literal.intvalue && literal.intvalue <= SHRT_MAX) {
+            result->type = TypeCreatePrimitive(TypeKind_PrimitiveShort);
+        } else {
+            if (INT_MIN <= literal.intvalue && literal.intvalue <= INT_MAX) {
+                result->type = TypeCreatePrimitive(TypeKind_PrimitiveInt);
+            } else {
+                result->type = TypeCreatePrimitive(TypeKind_PrimitiveLong);
+            }
+        }
+    }
+    return result;
+}
+
+static ASTNode* BindEnumValueLiteralExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_EnumValueLiteralExpression);
+    SyntaxToken enumIdentifier = syntax->enumLiteralExpr.enumIdentifier;
+    SyntaxToken valueIdentifier = syntax->enumLiteralExpr.valueIdentifier;
+    String enumText = TokenGetText(enumIdentifier);
+    Symbol* enumSymbol = GetSymbol(binder->symbolTable, enumText);
+    if (enumSymbol == NULL) {
+        ReportError(TokenGetLocation(enumIdentifier), "Undeclared identifier '%s'", enumText.cstr);
+    }
+    if (enumSymbol->kind != SymbolKind_Enum) {
+        ReportError(TokenGetLocation(enumIdentifier), "Identifier '%s' is not an enum", enumText.cstr);
+    }
+    String valueText = TokenGetText(valueIdentifier);
+    Symbol* valueSymbol = GetSymbol(enumSymbol->membersSymbolTable, valueText);
+    if (valueSymbol == NULL) {
+        ReportError(TokenGetLocation(enumIdentifier), "Identifier '%s' is not a member of enum '%s'", valueText.cstr, enumText.cstr);
+    }
+    assert(valueSymbol->kind == SymbolKind_Enumvalue);
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_EnumValueLiteral, binder->symbolTable, syntax);
+    result->isRValue = true;
+    result->symbol = valueSymbol;
+    result->type = valueSymbol->type;
+    return result;
+}
+
+static ASTNode* BindArrayLiteralExpression(Binder* binder, Symbol* arraySymbol, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_ArrayLiteralExpression);
+    assert(arraySymbol->type.isArray);
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_ArrayLiteral, binder->symbolTable, syntax);
+    Type arrayElemType = GetElementTypeForArrayType(arraySymbol->type);
+    for (int32 index = 0; index < syntax->arrayLiteralExpr.elemsWithSeparators.count; index += 2) {
+        SyntaxNode* expression = syntax->arrayLiteralExpr.elemsWithSeparators.nodes[index];
+        ASTNode* boundExpression = BindExpression(binder, expression);
+        TypeConversionResult conversion = CanConvertTypeFromTo(boundExpression->type, arrayElemType);
+        if (conversion == TypeConversionResult_NonConvertible || conversion == TypeConversionResult_ExplicitlyConvertible) {
+            ReportError(TokenGetLocation(expression->token), "Cannot convert type '%s' of element %d in array initializer to array type '%s'", TypeGetText(boundExpression->type).cstr, index / 2 + 1, TypeGetText(arrayElemType).cstr);
+        }
+        ASTNodeArrayPush(&result->children, boundExpression);
+    }
+    int32 elementCount = result->children.count;
+    SyntaxToken leftBrace = syntax->arrayLiteralExpr.leftBrace;
+    if (arraySymbol->type.arrayElementCount == -1) {
+        arraySymbol->type.arrayElementCount = elementCount;
+    }
+    if (elementCount == 0) {
+        ReportError(TokenGetLocation(leftBrace), "Element count cannot be zero in array initializer of array '%s'", arraySymbol->name.cstr);
+    }
+    if (arraySymbol->type.arrayElementCount != elementCount) {
+        ReportError(TokenGetLocation(leftBrace), "Element count %d of array initializer does not match element count %d of array '%s'", elementCount, arraySymbol->type.arrayElementCount, arraySymbol->name.cstr);
+    }
+    result->isRValue = true;
+    return result;
+}
+
+static ASTNode* BindNameExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_NameExpression);
+    SyntaxToken identifier = syntax->nameExpr.identifier;
+    String identifierText = TokenGetText(identifier);
+    Symbol* symbol = GetSymbol(binder->symbolTable, identifierText);
+    if (symbol == NULL) {
+        ReportError(TokenGetLocation(identifier), "Undeclared identifier '%s'", identifierText.cstr);
+    }
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_NameExpression, binder->symbolTable, syntax);
+    result->symbol = symbol;
+    result->type = symbol->type;
+    return result;
+}
+
+static ASTNode* BindParenthesizedExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_ParenthesizedExpression);
+    ASTNode* inner = BindExpression(binder, syntax->parenthesizedExpr.expression);
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_ParenthesizedExpression, binder->symbolTable, syntax);
+    result->type = inner->type;
+    result->left = inner;
+    return result;
+}
+
+static ASTNode* BindFunctionCallExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_FuncCallExpression);
+    ASTNode* left = BindExpression(binder, syntax->funcCallExpr.func);
+    SyntaxToken leftParen = syntax->funcCallExpr.leftParen;
+    Symbol* funcSymbol = left->symbol;
+    if (funcSymbol == NULL) {
+        ReportError(TokenGetLocation(leftParen), "Expression left of '%s' is not a known symbol", TokenGetText(leftParen));
+    }
+    if (funcSymbol->kind != SymbolKind_Function) {
+        ReportError(TokenGetLocation(leftParen), "Identifier '%s' is not a callable function", funcSymbol->name.cstr);
+    }
+    ASTNodeArray argumentList = ASTNodeArrayCreate();
+    for (int32 index = 0; index < syntax->funcCallExpr.argumentsWithSeparators.count; index += 2) {
+        SyntaxNode* arg = syntax->funcCallExpr.argumentsWithSeparators.nodes[index];
+        ASTNode* boundArg = BindExpression(binder, arg);
+        ASTNodeArrayPush(&argumentList, boundArg);
+    }
+    if (funcSymbol->isVariadric) {
+        if (argumentList.count < funcSymbol->membersSymbolTable->count) {
+            ReportError(TokenGetLocation(leftParen), "Function '%s' expects at least %d arguments but %d arguments were provided", funcSymbol->name.cstr, funcSymbol->membersSymbolTable->count, argumentList.count);
+        }
+    } else {
+        if (argumentList.count != funcSymbol->membersSymbolTable->count) {
+            ReportError(TokenGetLocation(leftParen), "Function '%s' expects %d arguments but %d arguments were provided", funcSymbol->name.cstr, funcSymbol->membersSymbolTable->count, argumentList.count);
+        }
+    }
+    for (int32 argumentIndex = 0; argumentIndex < funcSymbol->membersSymbolTable->count; argumentIndex += 1) {
+        Type argumentType = argumentList.nodes[argumentIndex]->type;
+        Type expectedType = funcSymbol->membersSymbolTable->symbols[argumentIndex]->type;
+        TypeConversionResult conversion = CanConvertTypeFromTo(argumentType, expectedType);
+        if (conversion == TypeConversionResult_NonConvertible) {
+            ReportError(TokenGetLocation(leftParen), "Passed incompatible type '%s' for argument %d to function '%s' - expected type '%s'", TypeGetText(argumentType).cstr, argumentIndex + 1, funcSymbol->name.cstr, TypeGetText(expectedType).cstr);
+        }
+        if (conversion == TypeConversionResult_ExplicitlyConvertible) {
+            ReportError(TokenGetLocation(leftParen), "Cannot implicitly convert type '%s' of argument %d  to expected type '%s' in function call of '%s'", TypeGetText(argumentType).cstr, argumentIndex + 1, TypeGetText(expectedType).cstr, funcSymbol->name.cstr);
+        }
+    }
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_FunccallExpression, binder->symbolTable, syntax);
+    result->symbol = funcSymbol;
+    result->type = funcSymbol->type;
+    result->children = argumentList;
+    return result;
+}
+
+static ASTNode* BindArrayIndexingExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_ArrayIndexExpression);
+    SyntaxToken leftBracket = syntax->arrayIndexExpr.leftBracket;
+    ASTNode* left = BindExpression(binder, syntax->arrayIndexExpr.arr);
+    ASTNode* index = BindExpression(binder, syntax->arrayIndexExpr.indexExpression);
+    if (!IsNumberType(index->type)) {
+        ReportError(TokenGetLocation(leftBracket), "Array index after '%s' must be number type", TokenKindToString(leftBracket.kind).cstr);
+    }
+    if (left->symbol == NULL || TypeGetIndirectionLevel(left->symbol->type) == 0) {
+        ReportError(TokenGetLocation(leftBracket), "Left hand side of array index operator '%s' is not a known array or pointer", TokenKindToString(leftBracket.kind).cstr);
+    }
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_Arrayindexing, binder->symbolTable, syntax);
+    result->type = left->symbol->type;
+    if (result->type.isArray) {
+        result->type.isArray = false;
+    } else {
+        result->type = GetBaseTypeForPointerType(result->type);
+    }
+    result->left = left;
+    result->right = index;
+    return result;
+}
+
+static ASTNode* BindMemberAccessExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_MemberAccessExpression);
+    ASTNode* container = BindExpression(binder, syntax->memberAccessExpr.container);
+    SyntaxToken accessorToken = syntax->memberAccessExpr.accessToken;
+    if (container->type.kind != TypeKind_Struct && container->type.kind != TypeKind_Union) {
+        ReportError(TokenGetLocation(accessorToken), "Attempt to access member of non union or struct identifier '%s'", container->symbol->name.cstr);
+    }
+    Symbol* containerSymbol = GetSymbol(binder->symbolTable, container->type.name);
+    assert(containerSymbol != NULL);
+    if (containerSymbol->kind != SymbolKind_Struct && containerSymbol->kind != SymbolKind_Union) {
+        ReportError(TokenGetLocation(accessorToken), "Attempt to access member of non union or struct identifier '%s'", containerSymbol->name.cstr);
+    }
+    if (!containerSymbol->alreadyDefined) {
+        ReportError(TokenGetLocation(accessorToken), "Attempt to access member of forward declared but undefined union or struct '%s'", containerSymbol->name.cstr);
+    }
+    bool isArrow = accessorToken.kind == SyntaxKind_ArrowToken;
+    if (isArrow && TypeGetIndirectionLevel(container->type) == 0) {
+        ReportError(TokenGetLocation(accessorToken), "Member access of '%s' with '->' is only allowed for pointer types", containerSymbol->name.cstr);
+    }
+    if (!isArrow && TypeGetIndirectionLevel(container->type) > 0) {
+        ReportError(TokenGetLocation(accessorToken), "Member access of '%s' with '.' is only allowed for non-pointer types", containerSymbol->name.cstr);
+    }
+    SyntaxToken memberIdentifier = syntax->memberAccessExpr.memberIdentifier;
+    String identifierText = TokenGetText(memberIdentifier);
+    Symbol* memberSymbol = GetSymbol(containerSymbol->membersSymbolTable, identifierText);
+    if (memberSymbol == NULL) {
+        ReportError(TokenGetLocation(memberIdentifier), "Undeclared struct or union member '%s'", identifierText.cstr);
+    }
+    assert(memberSymbol->kind == SymbolKind_Member);
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_Memberaccess, binder->symbolTable, syntax);
+    result->symbol = memberSymbol;
+    result->type = memberSymbol->type;
+    result->left = container;
+    return result;
+}
+
+static ASTNode* BindUnaryExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_UnaryExpression);
+    ASTNode* operand = BindExpression(binder, syntax->unaryExpr.operand);
+    SyntaxToken operatorToken = syntax->unaryExpr.operatorToken;
+    UnaryOperator op = GetUnaryOperationForToken(operatorToken, operand->type);
+    if (op.operandMustBeLValue && operand->isRValue) {
+        ReportError(TokenGetLocation(operatorToken), "Operand of operator '%s' must be an storage location", TokenKindToString(operatorToken.kind).cstr);
+    }
+    ASTNode* result = ASTNodeCreate2(op.operatorKind, binder->symbolTable, syntax);
+    result->isRValue = op.resultIsRValue;
+    result->type = op.resultType;
+    result->left = operand;
+    return result;
+}
+
+static ASTNode* BindBinaryExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_BinaryExpression);
+    ASTNode* left = BindExpression(binder, syntax->binaryExpr.left);
+    ASTNode* right = BindExpression(binder, syntax->binaryExpr.right);
+    SyntaxToken operatorToken = syntax->binaryExpr.operatorToken;
+    BinaryOperator op = GetBinaryOperationForToken(operatorToken, left->type, right->type);
+    if (op.leftMustBeLValue && left->isRValue) {
+        ReportError(TokenGetLocation(operatorToken), "Left argument of operator '%s' must be an storage location", TokenKindToString(operatorToken.kind).cstr);
+    }
+    if (op.rightMustBeLValue && right->isRValue) {
+        ReportError(TokenGetLocation(operatorToken), "Right argument of operator '%s' must be a storage location", TokenKindToString(operatorToken.kind).cstr);
+    }
+    ASTNode* result = ASTNodeCreate2(op.operatorKind, binder->symbolTable, syntax);
+    result->isRValue = op.resultIsRValue;
+    result->type = op.resultType;
+    result->left = left;
+    result->right = right;
+    return result;
+}
+
+static ASTNode* BindTernaryConditionalExpression(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_TernaryConditionalExpression);
+    ASTNode* condition = BindExpression(binder, syntax->ternaryConditionalExpr.conditionExpression);
+    ASTNode* thenExpression = BindExpression(binder, syntax->ternaryConditionalExpr.thenExpression);
+    ASTNode* elseExpression = BindExpression(binder, syntax->ternaryConditionalExpr.elseExpression);
+    Type type = GetTypeThatFitsBothTypes(thenExpression->type, elseExpression->type);
+    if (IsVoidType(type)) {
+        ReportError(TokenGetLocation(syntax->ternaryConditionalExpr.questionmark), "Incompatible expression types in ternary operator - then branch: '%s', else branch: '%s'", TypeGetText(thenExpression->type).cstr, TypeGetText(elseExpression->type).cstr);
+    }
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_TernaryConditionalExpression, binder->symbolTable, syntax);
+    result->left = condition;
+    result->right = thenExpression;
+    result->extra1 = elseExpression;
+    result->type = type;
+    result->isRValue = true;
+    return result;
+}
+
+static ASTNode* BindExpression(Binder* binder, SyntaxNode* syntax) {
+    ASTNode* result = NULL;
+    switch (syntax->kind) {
+        case SyntaxKind_UnaryExpression: {
+            result = BindUnaryExpression(binder, syntax);
+            break;
+        }
+        case SyntaxKind_BinaryExpression: {
+            result = BindBinaryExpression(binder, syntax);
+            break;
+        }
+        case SyntaxKind_FuncCallExpression: {
+            result = BindFunctionCallExpression(binder, syntax);
+            break;
+        }
+        case SyntaxKind_ArrayIndexExpression: {
+            result = BindArrayIndexingExpression(binder, syntax);
+            break;
+        }
+        case SyntaxKind_MemberAccessExpression: {
+            result = BindMemberAccessExpression(binder, syntax);
+            break;
+        }
+        case SyntaxKind_TypeCastExpression: {
+            result = BindTypeCastExpression(binder, syntax);
+            break;
+        }
+        case SyntaxKind_ParenthesizedExpression: {
+            result = BindParenthesizedExpression(binder, syntax);
+            break;
+        }
+        case SyntaxKind_TernaryConditionalExpression: {
+            result = BindTernaryConditionalExpression(binder, syntax);
+            break;
+        }
+        case SyntaxKind_SizeOfExpression: {
+            result = BindSizeOfExpression(binder, syntax);
+            break;
+        }
+        case SyntaxKind_NameExpression: {
+            result = BindNameExpression(binder, syntax);
+            break;
+        }
+        case SyntaxKind_TypeExpression: {
+            result = BindTypeExpression(binder, syntax);
+            break;
+        }
+        case SyntaxKind_NullLiteralExpression: {
+            result = BindNullLiteralExpression(binder, syntax);
+            break;
+        }
+        case SyntaxKind_IntegerLiteralExpression: {
+            result = BindIntegerLiteralExpression(binder, syntax);
+            break;
+        }
+        case SyntaxKind_CharacterLiteralExpression: {
+            result = BindCharacterLiteralExpression(binder, syntax);
+            break;
+        }
+        case SyntaxKind_BoolLiteralExpression: {
+            result = BindBoolLiteralExpression(binder, syntax);
+            break;
+        }
+        case SyntaxKind_StringLiteralExpression: {
+            result = BindStringLiteralExpression(binder, syntax);
+            break;
+        }
+        case SyntaxKind_EnumValueLiteralExpression: {
+            result = BindEnumValueLiteralExpression(binder, syntax);
+            break;
+        }
+        default: {
+            assert(false && "Unexpected expression in binder");
+        }
+    }
+    if (result->type.isArray) {
+        result->isRValue = true;
+    }
+    return result;
+}
+
+static ASTNode* BindExpressionStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_ExpressionStatement);
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_ExpressionStatement, binder->symbolTable, syntax);
+    result->left = BindExpression(binder, syntax->expressionStmt.expression);
+    return result;
+}
+
+static ASTNode* BindVariableDefinitionStatement(Binder* binder, SyntaxNode* syntax, SymbolScopeKind symbolScopeKind) {
+    assert(syntax->kind == SyntaxKind_VariableDeclarationStatement);
+    SyntaxToken identifier = syntax->variableDeclarationStmt.identifier;
+    bool isLocalPersist = syntax->variableDeclarationStmt.letKeyword.kind == SyntaxKind_LetLocalPersistKeyword;
+    if (isLocalPersist) {
+        if (symbolScopeKind != SymbolScopeKind_Local) {
+            ReportError(TokenGetLocation(identifier), "Cannot mark global variable '%s' as local persistent", TokenGetText(identifier).cstr);
+        }
+        symbolScopeKind = SymbolScopeKind_LocalPersist;
+    }
+    Type type = BindType(binder, syntax->variableDeclarationStmt.typeExpression);
+    Symbol* varSymbol = AddSymbol(binder->symbolTable, TokenGetText(identifier), SymbolKind_Variable, symbolScopeKind, type);
+    if (varSymbol == NULL) {
+        ReportError(TokenGetLocation(identifier), "Symbol was '%s' already declared in current scope", TokenGetText(identifier).cstr);
+    }
+    if (IsVoidType(type)) {
+        ReportError(TokenGetLocation(identifier), "'void' not allowed as variables '%s' storage type", TokenGetText(identifier).cstr);
+    }
+    if (syntax->variableDeclarationStmt.leftBracket.kind == SyntaxKind_LeftBracketToken) {
+        int64 arrayElementCount = -1;
+        bool arrayElementCountDefined = false;
+        if (syntax->variableDeclarationStmt.arraySizeLiteral.kind == SyntaxKind_IntegerLiteralToken) {
+            arrayElementCount = syntax->variableDeclarationStmt.arraySizeLiteral.intvalue;
+            arrayElementCountDefined = true;
+        }
+        if (arrayElementCountDefined && arrayElementCount <= 0) {
+            ReportError(TokenGetLocation(identifier), "Array size must be greater than zero for '%s'", TokenGetText(identifier).cstr);
+        }
+        varSymbol->type.isArray = true;
+        varSymbol->type.arrayElementCount = arrayElementCount;
+    }
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_VariableDeclarationStatement, binder->symbolTable, syntax);
+    result->symbol = varSymbol;
+    if (syntax->variableDeclarationStmt.initializerExpression != NULL) {
+        ASTNode* boundInitializer = NULL;
+        if (result->symbol->type.isArray) {
+            boundInitializer = BindArrayLiteralExpression(binder, result->symbol, syntax->variableDeclarationStmt.initializerExpression);
+        } else {
+            boundInitializer = BindExpression(binder, syntax->variableDeclarationStmt.initializerExpression);
+        }
+        result->left = boundInitializer;
+    }
+    return result;
+}
+
+static ASTNode* BindIfStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_IfStatement);
+    assert(binder->currentFunctionSymbol != NULL);
+    ASTNode* boundCondition = BindExpression(binder, syntax->ifStmt.condition);
+    ASTNode* boundThenBranch = BindStatement(binder, syntax->ifStmt.thenBlock);
+    boundThenBranch = _WrapInBlockStatementIfNecessary(binder, boundThenBranch);
+    ASTNode* boundElseBranch = NULL;
+    if (syntax->ifStmt.elseBlock != NULL) {
+        boundElseBranch = BindStatement(binder, syntax->ifStmt.elseBlock);
+        boundElseBranch = _WrapInBlockStatementIfNecessary(binder, boundElseBranch);
+    }
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_IfStatement, binder->symbolTable, syntax);
+    result->left = boundCondition;
+    result->right = boundThenBranch;
+    result->extra1 = boundElseBranch;
+    return result;
+}
+
+static ASTNode* BindWhileStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_WhileStatement);
+    assert(binder->currentFunctionSymbol != NULL);
+    ASTNode* boundCondition = BindExpression(binder, syntax->whileStmt.condition);
+    binder->loopLevel += 1;
+    ASTNode* boundBody = BindStatement(binder, syntax->whileStmt.body);
+    boundBody = _WrapInBlockStatementIfNecessary(binder, boundBody);
+    binder->loopLevel -= 1;
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_WhileStatement, binder->symbolTable, syntax);
+    result->left = boundCondition;
+    result->right = boundBody;
+    return result;
+}
+
+static ASTNode* BindDoWhileStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_DoWhileStatement);
+    assert(binder->currentFunctionSymbol != NULL);
+    binder->loopLevel += 1;
+    ASTNode* boundBody = BindStatement(binder, syntax->doWhileStmt.body);
+    boundBody = _WrapInBlockStatementIfNecessary(binder, boundBody);
+    binder->loopLevel -= 1;
+    ASTNode* boundCondition = BindExpression(binder, syntax->doWhileStmt.condition);
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_DoWhileStatement, binder->symbolTable, syntax);
+    result->left = boundCondition;
+    result->right = boundBody;
+    return result;
+}
+
+static ASTNode* BindForStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_ForStatement);
+    assert(binder->currentFunctionSymbol != NULL);
+    binder->symbolTable = SymbolTableCreate(binder->symbolTable);
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_ForStatement, binder->symbolTable, syntax);
+    ASTNode* boundInitializer = NULL;
+    if (syntax->forStmt.initializerStatement->kind == SyntaxKind_VariableDeclarationStatement) {
+        boundInitializer = BindVariableDefinitionStatement(binder, syntax->forStmt.initializerStatement, SymbolScopeKind_Local);
+    } else {
+        boundInitializer = BindExpressionStatement(binder, syntax->forStmt.initializerStatement);
+    }
+    ASTNode* boundCondition = BindExpressionStatement(binder, syntax->forStmt.conditionStatement);
+    ASTNode* boundIncrementExpr = BindExpression(binder, syntax->forStmt.incrementExpression);
+    binder->loopLevel += 1;
+    ASTNode* boundBody = BindStatement(binder, syntax->forStmt.body);
+    boundBody = _WrapInBlockStatementIfNecessary(binder, boundBody);
+    binder->loopLevel -= 1;
+    binder->symbolTable = binder->symbolTable->parent;
+    result->left = boundInitializer;
+    result->right = boundCondition;
+    result->extra1 = boundIncrementExpr;
+    result->extra2 = boundBody;
+    return result;
+}
+
+static ASTNode* BindReturnStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_ReturnStatement);
+    assert(binder->currentFunctionSymbol != NULL);
+    if (binder->currentFunctionSymbol == NULL) {
+        ReportError(TokenGetLocation(syntax->returnStmt.returnKeyword), "Invalid 'return' statement found outside of function definition");
+    }
+    Type functionReturnType = binder->currentFunctionSymbol->type;
+    if (IsVoidType(functionReturnType) && syntax->returnStmt.returnExpression != NULL) {
+        ReportError(TokenGetLocation(syntax->returnStmt.returnKeyword), "Invalid return expression in void function");
+    }
+    if (!IsVoidType(functionReturnType) && syntax->returnStmt.returnExpression == NULL) {
+        ReportError(TokenGetLocation(syntax->returnStmt.returnKeyword), "Must return expression in non-void function");
+    }
+    ASTNode* boundExpression = NULL;
+    if (syntax->returnStmt.returnExpression != NULL) {
+        boundExpression = BindExpression(binder, syntax->returnStmt.returnExpression);
+        TypeConversionResult conversion = CanConvertTypeFromTo(boundExpression->type, functionReturnType);
+        if (conversion == TypeConversionResult_NonConvertible) {
+            ReportError(TokenGetLocation(syntax->returnStmt.returnKeyword), "Incompatible types for return expression '%s'", TokenKindToString(syntax->returnStmt.returnKeyword.kind).cstr);
+        }
+        if (conversion == TypeConversionResult_ExplicitlyConvertible) {
+            ReportError(TokenGetLocation(syntax->returnStmt.returnKeyword), "Types cannot be implicitly converted for return expression '%s'", TokenKindToString(syntax->returnStmt.returnKeyword.kind).cstr);
+        }
+    }
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_ReturnStatement, binder->symbolTable, syntax);
+    result->left = boundExpression;
+    return result;
+}
+
+static ASTNode* BindBreakStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_BreakStatement);
+    assert(binder->currentFunctionSymbol != NULL);
+    if (binder->loopLevel == 0 && binder->switchCaseLevel == 0) {
+        ReportError(TokenGetLocation(syntax->breakStmt.breakKeyword), "Invalid 'break' statement found outside of loop or switch-case definition");
+    }
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_BreakStatement, binder->symbolTable, syntax);
+    return result;
+}
+
+static ASTNode* BindContinueStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_ContinueStatement);
+    assert(binder->currentFunctionSymbol != NULL);
+    if (binder->loopLevel == 0) {
+        ReportError(TokenGetLocation(syntax->continueStmt.continueKeyword), "Invalid 'continue' statement found outside of loop definition");
+    }
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_ContinueStatement, binder->symbolTable, syntax);
+    return result;
+}
+
+static ASTNode* BindBlockStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_BlockStatement);
+    assert(binder->currentFunctionSymbol != NULL);
+    binder->symbolTable = SymbolTableCreate(binder->symbolTable);
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_BlockStatement, binder->symbolTable, syntax);
+    for (int32 index = 0; index < syntax->blockStmt.statements.count; index += 1) {
+        SyntaxNode* statement = syntax->blockStmt.statements.nodes[index];
+        ASTNode* boundStatement = BindStatement(binder, statement);
+        ASTNodeArrayPush(&result->children, boundStatement);
+    }
+    binder->symbolTable = binder->symbolTable->parent;
+    return _FlattenBlockStatementIfNecessary(binder, result);
+}
+
+static ASTNode* BindCaseStatement(Binder* binder, ASTNode* switchExpression, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_CaseStatement || syntax->kind == SyntaxKind_DefaultStatement);
+    assert(binder->currentFunctionSymbol != NULL);
+    assert(binder->switchCaseLevel != 0);
+    bool isDefault = syntax->kind == SyntaxKind_DefaultStatement;
+    ASTNode* caseExpression = NULL;
+    if (syntax->kind == SyntaxKind_CaseStatement) {
+        caseExpression = BindExpression(binder, syntax->caseStmt.literalExpression);
+        if (caseExpression->kind != ASTNodeKind_IntegerLiteral && caseExpression->kind != ASTNodeKind_StringLiteral && caseExpression->kind != ASTNodeKind_CharacterLiteral && caseExpression->kind != ASTNodeKind_EnumValueLiteral) {
+            ReportError(TokenGetLocation(caseExpression->token), "Expected literal in case label but got '%s'", TokenKindToString(caseExpression->token.kind).cstr);
+        }
+        TypeConversionResult conversion = CanConvertTypeFromTo(caseExpression->type, switchExpression->type);
+        if (conversion != TypeConversionResult_Identical && conversion != TypeConversionResult_ImplictlyConvertible) {
+            ReportError(TokenGetLocation(caseExpression->token), "Cannot convert type '%s' of case label literal '%s' to its switch expression type '%s'", TypeGetText(caseExpression->type).cstr, TokenGetText(caseExpression->token).cstr, TypeGetText(switchExpression->type).cstr);
+        }
+    }
+    ASTNode* body = BindBlockStatement(binder, isDefault ? syntax->defaultStmt.body : syntax->caseStmt.body);
+    if (body->children.count == 0) {
+        body = NULL;
+    }
+    ASTNode* result = ASTNodeCreate2(isDefault ? ASTNodeKind_DefaultStatement : ASTNodeKind_CaseStatement, binder->symbolTable, syntax);
+    result->left = body;
+    result->right = caseExpression;
+    return result;
+}
+
+static ASTNode* BindSwitchStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(syntax->kind == SyntaxKind_SwitchStatement);
+    assert(binder->currentFunctionSymbol != NULL);
+    ASTNode* switchExpression = BindExpression(binder, syntax->switchStmt.switchExpression);
+    binder->switchCaseLevel += 1;
+    int32 defaultStatementEncountered = false;
+    ASTNodeArray caseStatements = ASTNodeArrayCreate();
+    for (int32 index = 0; index < syntax->switchStmt.caseStatements.count; index += 1) {
+        SyntaxNode* caseStatement = syntax->switchStmt.caseStatements.nodes[index];
+        ASTNode* boundCaseStatement = BindCaseStatement(binder, switchExpression, caseStatement);
+        if (defaultStatementEncountered) {
+            ReportError(TokenGetLocation(caseStatement->caseStmt.caseKeyword), "Unexpected case statement after default statement was already defined");
+        }
+        if (caseStatement->kind == SyntaxKind_DefaultStatement) {
+            defaultStatementEncountered = true;
+        }
+        ASTNodeArrayPush(&caseStatements, boundCaseStatement);
+    }
+    binder->switchCaseLevel -= 1;
+    if (caseStatements.count == 0) {
+        ReportError(TokenGetLocation(syntax->switchStmt.switchKeyword), "Empty switch statements are not allowed");
+    }
+    for (int32 index = 0; index < caseStatements.count; index += 1) {
+        ASTNode* a = caseStatements.nodes[index];
+        for (int32 inner = index + 1; inner < caseStatements.count; inner += 1) {
+            ASTNode* b = caseStatements.nodes[inner];
+            if (a->right && b->right && AreLiteralsEqual(a->right, b->right)) {
+                ReportError(TokenGetLocation(b->token), "Duplicate switch case literal '%s'", TokenGetText(b->right->token).cstr);
+            }
+        }
+    }
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_SwitchStatement, binder->symbolTable, syntax);
+    result->left = switchExpression;
+    result->children = caseStatements;
+    return result;
+}
+
+static ASTNode* BindStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(binder->currentFunctionSymbol != NULL);
+    switch (syntax->kind) {
+        case SyntaxKind_BlockStatement: {
+            return BindBlockStatement(binder, syntax);
+        }
+        case SyntaxKind_IfStatement: {
+            return BindIfStatement(binder, syntax);
+        }
+        case SyntaxKind_DoWhileStatement: {
+            return BindDoWhileStatement(binder, syntax);
+        }
+        case SyntaxKind_WhileStatement: {
+            return BindWhileStatement(binder, syntax);
+        }
+        case SyntaxKind_ForStatement: {
+            return BindForStatement(binder, syntax);
+        }
+        case SyntaxKind_ReturnStatement: {
+            return BindReturnStatement(binder, syntax);
+        }
+        case SyntaxKind_BreakStatement: {
+            return BindBreakStatement(binder, syntax);
+        }
+        case SyntaxKind_ContinueStatement: {
+            return BindContinueStatement(binder, syntax);
+        }
+        case SyntaxKind_SwitchStatement: {
+            return BindSwitchStatement(binder, syntax);
+        }
+        case SyntaxKind_VariableDeclarationStatement: {
+            return BindVariableDefinitionStatement(binder, syntax, SymbolScopeKind_Local);
+        }
+        case SyntaxKind_ExpressionStatement: {
+            return BindExpressionStatement(binder, syntax);
+        }
+        default: {
+            assert(false && "Unexpected statement in binder");
+        }
+    }
+    exit(1);
+}
+
+static ASTNode* BindGlobalVariableDefinitionStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(binder->currentFunctionSymbol == NULL);
+    assert(syntax->kind == SyntaxKind_GlobalVariableDeclarationStatement);
+    bool isExternal = syntax->globalVariableStmt.externKeyword.kind == SyntaxKind_ExternKeyword;
+    SymbolScopeKind symbolScopeKind = isExternal ? SymbolScopeKind_Extern : SymbolScopeKind_Global;
+    return BindVariableDefinitionStatement(binder, syntax->globalVariableStmt.variableDeclarationStatement, symbolScopeKind);
+}
+
+static ASTNode* BindStructOrUnionDefinitionStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(binder->currentFunctionSymbol == NULL);
+    assert(syntax->kind == SyntaxKind_StructOrUnionDeclarationStatement || syntax->kind == SyntaxKind_StructOrUniontDefinitionStatement);
+    bool isExternal = syntax->structOrUnionDeclarationStmt.externKeyword.kind == SyntaxKind_ExternKeyword;
+    SymbolScopeKind symbolScopeKind = isExternal ? SymbolScopeKind_Extern : SymbolScopeKind_Global;
+    bool isUnion = syntax->structOrUnionDeclarationStmt.structOrUnionKeyword.kind == SyntaxKind_UnionKeyword;
+    SyntaxToken identifier = syntax->structOrUnionDeclarationStmt.identifier;
+    String name = TokenGetText(identifier);
+    Symbol* structSymbol = GetSymbol(binder->symbolTable, name);
+    if (structSymbol != NULL) {
+        if (isUnion && structSymbol->kind != SymbolKind_Union) {
+            ReportError(TokenGetLocation(identifier), "Another symbol with the same name '%s' but different type was already declared in current scope", TokenGetText(identifier).cstr);
+        }
+        if (!isUnion && structSymbol->kind != SymbolKind_Struct) {
+            ReportError(TokenGetLocation(identifier), "Another symbol with the same name '%s' but different type was already declared in current scope", TokenGetText(identifier).cstr);
+        }
+        if (structSymbol->scopeKind != symbolScopeKind) {
+            ReportError(TokenGetLocation(identifier), "Struct or union '%s was previously declared but with different scope attribute", TokenGetText(identifier).cstr);
+        }
+    }
+    if (structSymbol == NULL) {
+        Type type = TypeCreate(isUnion ? TypeKind_Union : TypeKind_Struct, 0, name);
+        structSymbol = AddSymbol(binder->symbolTable, name, isUnion ? SymbolKind_Union : SymbolKind_Struct, symbolScopeKind, type);
+    }
+    if (syntax->kind == SyntaxKind_StructOrUnionDeclarationStatement) {
+        ASTNode* result = ASTNodeCreate2(isUnion ? ASTNodeKind_UnionDeclarationStatement : ASTNodeKind_StructDeclarationStatement, binder->symbolTable, syntax);
+        result->symbol = structSymbol;
+        return result;
+    } else {
+        structSymbol->membersSymbolTable = SymbolTableCreate(binder->symbolTable);
+        binder->symbolTable = structSymbol->membersSymbolTable;
+        for (int32 index = 0; index < syntax->structOrUnionDefinitionStmt.memberDeclarationStatements.count; index += 1) {
+            SyntaxNode* memberDeclaration = syntax->structOrUnionDefinitionStmt.memberDeclarationStatements.nodes[index];
+            ASTNode* memberNode = BindVariableDefinitionStatement(binder, memberDeclaration, SymbolScopeKind_Local);
+            memberNode->symbol->kind = SymbolKind_Member;
+        }
+        binder->symbolTable = binder->symbolTable->parent;
+        if (structSymbol->membersSymbolTable->count == 0) {
+            ReportError(TokenGetLocation(identifier), "Struct or union '%s' needs at least one member", name.cstr);
+        }
+        if (structSymbol->alreadyDefined) {
+            ReportError(TokenGetLocation(identifier), "Duplicate struct or union definition of '%s'", name.cstr);
+        }
+        structSymbol->alreadyDefined = true;
+        ASTNode* result = ASTNodeCreate2(isUnion ? ASTNodeKind_UnionDefinitionStatement : ASTNodeKind_StructDefinitionStatement, binder->symbolTable, syntax);
+        result->symbol = structSymbol;
+        return result;
+    }
+}
+
+static ASTNode* BindEnumDefinitionStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(binder->currentFunctionSymbol == NULL);
+    assert(syntax->kind == SyntaxKind_EnumDeclarationStatement || syntax->kind == SyntaxKind_EnumDefinitionStatement);
+    bool isExternal = syntax->enumDeclarationStmt.externKeyword.kind == SyntaxKind_ExternKeyword;
+    SymbolScopeKind symbolScopeKind = isExternal ? SymbolScopeKind_Extern : SymbolScopeKind_Global;
+    SyntaxToken identifier = syntax->enumDeclarationStmt.identifier;
+    String name = TokenGetText(identifier);
+    if (binder->currentFunctionSymbol != NULL) {
+        ReportError(TokenGetLocation(identifier), "Unexpected enum declaration of '%s' while already parsing function", name.cstr);
+    }
+    Symbol* enumSymbol = GetSymbol(binder->symbolTable, name);
+    if (enumSymbol != NULL) {
+        if (enumSymbol->kind != SymbolKind_Enum) {
+            ReportError(TokenGetLocation(identifier), "Another symbol with the same name '%s' but different type was already declared in current scope", TokenGetText(identifier).cstr);
+        }
+        if (enumSymbol->scopeKind != symbolScopeKind) {
+            ReportError(TokenGetLocation(identifier), "Enum '%s was previously declared but with different scope attribute", TokenGetText(identifier).cstr);
+        }
+    }
+    if (enumSymbol == NULL) {
+        Type type = TypeCreate(TypeKind_Enum, 0, name);
+        enumSymbol = AddSymbol(binder->symbolTable, name, SymbolKind_Enum, symbolScopeKind, type);
+    }
+    if (syntax->kind == SyntaxKind_EnumDeclarationStatement) {
+        ASTNode* result = ASTNodeCreate2(ASTNodeKind_EnumDeclarationStatement, binder->symbolTable, syntax);
+        result->symbol = enumSymbol;
+        return result;
+    } else {
+        enumSymbol->membersSymbolTable = SymbolTableCreate(binder->symbolTable);
+        binder->symbolTable = enumSymbol->membersSymbolTable;
+        int64 valueCounter = 0;
+        Type memberType = TypeCreate(TypeKind_Enum, 0, enumSymbol->name);
+        for (int32 index = 0; index < syntax->enumDefinitionStmt.memberClauses.count; index += 1) {
+            SyntaxNode* memberClause = syntax->enumDefinitionStmt.memberClauses.nodes[index];
+            String valueName = TokenGetText(memberClause->enumMember.identifier);
+            Symbol* valueSymbol = AddSymbol(binder->symbolTable, valueName, SymbolKind_Enumvalue, SymbolScopeKind_Global, memberType);
+            if (valueSymbol == NULL) {
+                ReportError(TokenGetLocation(identifier), "Symbol was '%s' already declared in current scope", TokenGetText(identifier).cstr);
+            }
+            if (memberClause->enumMember.integerLiteral.kind == SyntaxKind_IntegerLiteralToken) {
+                SyntaxToken valueToken = memberClause->enumMember.integerLiteral;
+                if (valueToken.intvalue < valueCounter) {
+                    ReportError(TokenGetLocation(valueToken), "Assigned value of enum value literal '%s' must chosen such that all enum values of '%s' are unique - chosen value '%lld' would lead to duplicates", TokenGetText(memberClause->enumMember.identifier).cstr, enumSymbol->name.cstr, valueToken.intvalue);
+                }
+                valueCounter = valueToken.intvalue;
+            }
+            valueSymbol->kind = SymbolKind_Enumvalue;
+            valueSymbol->enumValue = valueCounter;
+            valueCounter += 1;
+        }
+        binder->symbolTable = binder->symbolTable->parent;
+        if (enumSymbol->membersSymbolTable->count == 0) {
+            ReportError(TokenGetLocation(identifier), "Enum '%s' needs at least one member", name.cstr);
+        }
+        if (enumSymbol->alreadyDefined) {
+            ReportError(TokenGetLocation(identifier), "Duplicate enum definition of '%s'", name.cstr);
+        }
+        enumSymbol->alreadyDefined = true;
+        ASTNode* result = ASTNodeCreate2(ASTNodeKind_EnumDefinitionStatement, binder->symbolTable, syntax);
+        result->symbol = enumSymbol;
+        return result;
+    }
+}
+
+static ASTNode* BindFunctionDefinitionStatement(Binder* binder, SyntaxNode* syntax) {
+    assert(binder->currentFunctionSymbol == NULL);
+    assert(syntax->kind == SyntaxKind_FunctionDeclarationStatement || syntax->kind == SyntaxKind_FunctionDefinitionStatement);
+    Type returnType = BindType(binder, syntax->functionDeclarationStmt.returnType);
+    SyntaxToken identifier = syntax->functionDeclarationStmt.identifier;
+    bool isExternal = syntax->functionDeclarationStmt.externKeyword.kind == SyntaxKind_ExternKeyword;
+    SymbolScopeKind symbolScopeKind = isExternal ? SymbolScopeKind_Extern : SymbolScopeKind_Global;
+    Symbol* functionSymbol = GetSymbol(binder->symbolTable, TokenGetText(identifier));
+    if (functionSymbol != NULL) {
+        if (functionSymbol->kind != SymbolKind_Function) {
+            ReportError(TokenGetLocation(identifier), "Another symbol with the same name '%s' but different type was already declared in current scope", TokenGetText(identifier).cstr);
+        }
+        if (functionSymbol->scopeKind != symbolScopeKind) {
+            ReportError(TokenGetLocation(identifier), "Function '%s was previously declared but with different scope attribute", TokenGetText(identifier).cstr);
+        }
+    }
+    if (functionSymbol == NULL) {
+        functionSymbol = AddSymbol(binder->symbolTable, TokenGetText(identifier), SymbolKind_Function, symbolScopeKind, returnType);
+    }
+    SymbolTable* functionParamsSymbolTable = SymbolTableCreate(binder->symbolTable);
+    binder->symbolTable = functionParamsSymbolTable;
+    bool isVariadric = false;
+    for (int32 index = 0; index < syntax->functionDeclarationStmt.params.count; index += 1) {
+        SyntaxNode* param = syntax->functionDeclarationStmt.params.nodes[index];
+        if (param->kind == SyntaxKind_DotDotDotToken) {
+            isVariadric = true;
+            assert(index == syntax->functionDeclarationStmt.params.count - 1 && "'...' must be last param");
+            break;
+        }
+        ASTNode* paramNode = BindVariableDefinitionStatement(binder, param, SymbolScopeKind_Local);
+        paramNode->symbol->kind = SymbolKind_Parameter;
+        if (param->variableDeclarationStmt.terminatorToken.kind != SyntaxKind_CommaToken) {
+            assert(index == syntax->functionDeclarationStmt.params.count - 1 && "param omitting ',' must be last param");
+            break;
+        }
+    }
+    binder->symbolTable = binder->symbolTable->parent;
+    if (functionSymbol->membersSymbolTable != NULL) {
+        if (!TypesIdentical(returnType, functionSymbol->type)) {
+            ReportError(TokenGetLocation(identifier), "Return type of function '%s' does not match return type of a previous declaration", TokenGetText(identifier).cstr);
+        }
+        if (functionSymbol->isVariadric != isVariadric) {
+            ReportError(TokenGetLocation(identifier), "Vadriaticity of function '%s' does not match with a previous declaration", TokenGetText(identifier).cstr);
+        }
+        if (functionParamsSymbolTable->count != functionSymbol->membersSymbolTable->count) {
+            ReportError(TokenGetLocation(syntax->functionDeclarationStmt.leftParen), "Function '%s' was previously declared with %d parameters wheras new declaration has %d parameters", functionSymbol->name.cstr, functionSymbol->membersSymbolTable->count, functionParamsSymbolTable->count);
+        }
+        for (int32 paramIndex = 0; paramIndex < functionParamsSymbolTable->count; paramIndex += 1) {
+            Type paramType = functionParamsSymbolTable->symbols[paramIndex]->type;
+            Type previosType = functionSymbol->membersSymbolTable->symbols[paramIndex]->type;
+            if (!TypesIdentical(paramType, previosType)) {
+                ReportError(TokenGetLocation(syntax->functionDeclarationStmt.leftParen), "Previous function '%s' parameter %d declared type differs from current declared type", functionSymbol->name.cstr, paramIndex + 1);
+            }
+        }
+    }
+    functionSymbol->membersSymbolTable = functionParamsSymbolTable;
+    functionSymbol->isVariadric = isVariadric;
+    ASTNode* body = NULL;
+    if (syntax->kind == SyntaxKind_FunctionDefinitionStatement) {
+        if (isExternal) {
+            ReportError(TokenGetLocation(identifier), "Cannot define external function '%s'", TokenGetText(identifier).cstr);
+        }
+        if (functionSymbol->alreadyDefined) {
+            ReportError(TokenGetLocation(identifier), "Duplicate function definition of '%s'", TokenGetText(identifier).cstr);
+        }
+        binder->symbolTable = functionSymbol->membersSymbolTable;
+        binder->currentFunctionSymbol = functionSymbol;
+        body = BindBlockStatement(binder, syntax->functionDefinitionStmt.body);
+        functionSymbol->alreadyDefined = true;
+        binder->currentFunctionSymbol = NULL;
+        binder->symbolTable = binder->symbolTable->parent;
+    }
+    ASTNode* result = ASTNodeCreate2(syntax->kind == SyntaxKind_FunctionDeclarationStatement ? ASTNodeKind_FunctionDeclarationStatement : ASTNodeKind_FunctionDefinitionStatement, binder->symbolTable, syntax);
+    result->symbol = functionSymbol;
+    result->left = body;
+    return result;
+}
+
+static ASTNode* BindModuleStatement(Binder* binder, SyntaxNode* syntax) {
+    switch (syntax->kind) {
+        case SyntaxKind_ImportDeclarationStatement: {
+            return NULL;
+        }
+        case SyntaxKind_GlobalVariableDeclarationStatement: {
+            return BindGlobalVariableDefinitionStatement(binder, syntax);
+        }
+        case SyntaxKind_EnumDeclarationStatement: // Fallthrough
+        case SyntaxKind_EnumDefinitionStatement: {
+            return BindEnumDefinitionStatement(binder, syntax);
+        }
+        case SyntaxKind_StructOrUnionDeclarationStatement: // Fallthrough
+        case SyntaxKind_StructOrUniontDefinitionStatement: {
+            return BindStructOrUnionDefinitionStatement(binder, syntax);
+        }
+        case SyntaxKind_FunctionDeclarationStatement: // Fallthrough
+        case SyntaxKind_FunctionDefinitionStatement: {
+            return BindFunctionDefinitionStatement(binder, syntax);
+        }
+        default: {
+            assert(false && "Unexpected module statement in binder");
+        }
+    }
+    return NULL;
+}
+
+static ASTNode* BindModule(Binder* binder, ModuleStatementSyntax* syntax) {
+    assert(syntax->info.kind == SyntaxKind_Module);
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_Module, binder->symbolTable, (SyntaxNode*)syntax);
+    for (int32 index = 0; index < syntax->globalStatements.count; index += 1) {
+        SyntaxNode* statement = syntax->globalStatements.nodes[index];
+        ASTNode* boundStatement = BindModuleStatement(binder, statement);
+        if (boundStatement != NULL) {
+            ASTNodeArrayPush(&result->children, boundStatement);
+        }
+    }
+    return result;
+}
+
 static void Compile(String inputFilepath, String outputFilepath) {
     Source source = PreprocessFile(inputFilepath);
     SymbolTable* symbolTable = SymbolTableCreate(NULL);
@@ -5935,13 +7038,15 @@ static void Compile(String inputFilepath, String outputFilepath) {
     if (parser.tokenCur.kind != SyntaxKind_EndOfFileToken) {
         ReportError(TokenGetLocation(parser.tokenCur), "Expected EOF token after parsing file, instead got '%s'", TokenKindToString(parser.tokenCur.kind).cstr);
     }
-    Parser2 parser2 = Parser2Create(source, symbolTable);
-    SyntaxNode* syntaxTree2 = _ParseModule(&parser2);
-    if (parser2.tokenCur.kind != SyntaxKind_EndOfFileToken) {
-        ReportError(TokenGetLocation(parser2.tokenCur), "Expected EOF token after parsing file, instead got '%s'", TokenKindToString(parser2.tokenCur.kind).cstr);
-    }
-    Emitter emitter = EmitterCreate(outputFilepath);
+    Emitter emitter = EmitterCreate(StringAppend(outputFilepath, StringCreateFromCStr("old")));
     EmitRoot(&emitter, syntaxTree);
+    Parser2 parser2 = Parser2Create(source);
+    SyntaxTree* syntaxTree2 = _ParseModule(&parser2);
+    SymbolTable* symbolTable2 = SymbolTableCreate(NULL);
+    Binder binder = BinderCreate(source, symbolTable2);
+    ASTNode* boundTree = BindModule(&binder, syntaxTree2->moduleRoot);
+    Emitter emitter2 = EmitterCreate(outputFilepath);
+    EmitRoot(&emitter2, boundTree);
 }
 
 static void main(int32 argc, char** argv) {

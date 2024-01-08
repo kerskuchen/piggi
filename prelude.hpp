@@ -5,7 +5,7 @@
 #define let 
 #define fun
 #define as
-#define localpersist static
+#define letpersist static
 typedef const char* cstring;
 typedef long long longint;
 typedef char byte;
