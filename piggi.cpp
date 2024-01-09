@@ -1,5 +1,4 @@
 #include "parser.cpp"
-#include "parser2.cpp"
 #include "emitter.cpp"
 #include "preprocessor.cpp"
 #include "binder.cpp"
@@ -63,33 +62,17 @@ x get rid of all the parentheses in the output. we could use the fact that our p
 fun void Compile(String inputFilepath, String outputFilepath) {
     let Source source = PreprocessFile(inputFilepath);
 
+    let Parser parser = ParserCreate(source);
+    let SyntaxTree* syntaxTree = ParseModule(&parser);
+
     let SymbolTable* symbolTable = SymbolTableCreate(nullptr);
     // TODO: We can define builtin things here. the question is if we need to. 
     //       we just could declare stuff in a header now that we can parse those
+    let Binder binder = BinderCreate(source, symbolTable);
+    let ASTNode* boundTree = BindModule(&binder, syntaxTree->moduleRoot);
 
-    let Parser parser = ParserCreate(source, symbolTable);
-    let ASTNode* syntaxTree = ParseGlobalStatements(&parser);
-    if (parser.tokenCur.kind != SyntaxKind::EndOfFileToken)
-    {
-        ReportError(
-            TokenGetLocation(parser.tokenCur),
-            "Expected EOF token after parsing file, instead got '%s'", 
-            TokenKindToString(parser.tokenCur.kind).cstr
-        );
-    }
-
-    let Emitter emitter = EmitterCreate(StringAppend(outputFilepath, StringCreateFromCStr("old")));
-    EmitRoot(&emitter, syntaxTree);
-
-    let Parser2 parser2 = Parser2Create(source);
-    let SyntaxTree* syntaxTree2 = _ParseModule(&parser2);
-
-    let SymbolTable* symbolTable2 = SymbolTableCreate(nullptr);
-    let Binder binder = BinderCreate(source, symbolTable2);
-    let ASTNode* boundTree = BindModule(&binder, syntaxTree2->moduleRoot);
-
-    let Emitter emitter2 = EmitterCreate(outputFilepath);
-    EmitRoot(&emitter2, boundTree);
+    let Emitter emitter = EmitterCreate(outputFilepath);
+    EmitRoot(&emitter, boundTree);
 }
 
 fun void main(int argc, char** argv)

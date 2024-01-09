@@ -3054,27 +3054,23 @@ static SyntaxToken NextToken(Scanner* scanner) {
 }
 
 struct Parser; typedef struct Parser Parser; struct Parser {
-    SymbolTable* symbolTable;
-    SyntaxTree* tree;
-    Source source;
     Scanner scanner;
+    SyntaxTree* tree;
     SyntaxToken tokenPrev;
     SyntaxToken tokenCur;
     SyntaxToken tokenNext;
     SyntaxToken tokenNextAfter;
     int32 loopLevel;
     int32 switchCaseLevel;
-    Symbol* currentFunctionSymbol;
+    int32 functionLevel;
 };
 
-static Parser ParserCreate(Source source, SymbolTable* symbolTable) {
+static Parser ParserCreate(Source source) {
     SyntaxTree* tree = (SyntaxTree*)malloc(sizeof(SyntaxTree));
     tree->source = source;
     tree->moduleRoot = NULL;
     Parser result;
-    result.symbolTable = symbolTable;
     result.tree = tree;
-    result.source = source;
     result.scanner = ScannerCreate(tree);
     result.tokenPrev = SyntaxTokenCreateEmpty(tree);
     result.tokenCur = NextToken(&result.scanner);
@@ -3082,7 +3078,7 @@ static Parser ParserCreate(Source source, SymbolTable* symbolTable) {
     result.tokenNextAfter = NextToken(&result.scanner);
     result.loopLevel = 0;
     result.switchCaseLevel = 0;
-    result.currentFunctionSymbol = NULL;
+    result.functionLevel = 0;
     return result;
 }
 
@@ -3103,317 +3099,180 @@ static SyntaxToken MatchAndAdvanceToken(Parser* parser, SyntaxKind kind) {
     exit(1);
 }
 
-ASTNode* ParseStatement(Parser* parser);
-
-ASTNode* ParseExpression(Parser* parser);
-
-ASTNode* ParseVariableDefinitionStatement(Parser* parser, bool isExternal);
-
-Type ParseType(Parser* parser);
-
-static ASTNode* WrapInBlockStatementIfNecessary(Parser* parser, ASTNode* node) {
-    if (node->kind != ASTNodeKind_BlockStatement) {
-        ASTNode* block = ASTNodeCreate(ASTNodeKind_BlockStatement, parser->symbolTable, node->token);
-        ASTNodeArrayPush(&block->children, node);
-        node = block;
-    }
-    return node;
+static SyntaxNode* WrapTokenInNode(Parser* parser, SyntaxToken token) {
+    SyntaxNode* wrapper = SyntaxNodeCreate(token.kind, parser->tree);
+    wrapper->token = token;
+    return wrapper;
 }
 
-static ASTNode* FlattenBlockStatementIfNecessary(Parser* parser, ASTNode* node) {
-    if (node->kind == ASTNodeKind_BlockStatement) {
-        if (node->children.count == 1 && node->children.nodes[0]->kind == ASTNodeKind_BlockStatement) {
-            ASTNode* result = node->children.nodes[0];
-            result->symbolTable->parent = node->symbolTable->parent;
-            return FlattenBlockStatementIfNecessary(parser, result);
+SyntaxNode* ParseStatement(Parser* parser);
+
+SyntaxNode* ParseExpression(Parser* parser);
+
+SyntaxNode* ParseBinaryExpression(Parser* parser, int32 parentPrecedence);
+
+SyntaxNode* ParseUnaryExpression(Parser* parser, int32 parentPrecedence);
+
+static SyntaxNode* ParseTypeExpression(Parser* parser) {
+    switch (parser->tokenCur.kind) {
+        case SyntaxKind_VoidKeyword: // Fallthrough
+        case SyntaxKind_CharKeyword: // Fallthrough
+        case SyntaxKind_BoolKeyword: // Fallthrough
+        case SyntaxKind_ByteKeyword: // Fallthrough
+        case SyntaxKind_ShortKeyword: // Fallthrough
+        case SyntaxKind_IntKeyword: // Fallthrough
+        case SyntaxKind_LongKeyword: // Fallthrough
+        case SyntaxKind_CStringKeyword: // Fallthrough
+        case SyntaxKind_IdentifierToken: {
+            break;
+        }
+        default: {
+            ReportError(TokenGetLocation(parser->tokenCur), "Expected primitive type or identifier token - got token '%s'", TokenGetText(parser->tokenCur).cstr);
         }
     }
-    return node;
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_TypeExpression, parser->tree);
+    result->typeExpr.typeTokens = SyntaxNodeArrayCreate();
+    SyntaxToken identifier = AdvanceToken(parser);
+    SyntaxNode* identifierWrapper = WrapTokenInNode(parser, identifier);
+    SyntaxNodeArrayPush(&result->typeExpr.typeTokens, identifierWrapper);
+    while (parser->tokenCur.kind == SyntaxKind_StarToken) {
+        SyntaxToken star = AdvanceToken(parser);
+        SyntaxNode* starWrapper = WrapTokenInNode(parser, star);
+        SyntaxNodeArrayPush(&result->typeExpr.typeTokens, starWrapper);
+    }
+    return result;
 }
 
-static ASTNode* ParseFunctionCallExpression(Parser* parser, ASTNode* left) {
-    SyntaxToken identifier = left->token;
-    String identifierText = TokenGetText(identifier);
-    Symbol* funcSymbol = GetSymbol(parser->symbolTable, identifierText);
-    if (funcSymbol == NULL) {
-        ReportError(TokenGetLocation(identifier), "Undeclared function '%s'", identifierText.cstr);
-    }
-    if (funcSymbol->kind != SymbolKind_Function) {
-        ReportError(TokenGetLocation(identifier), "Identifier '%s' is not a callable function", identifierText.cstr);
-    }
-    SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
-    ASTNodeArray argumentList = ASTNodeArrayCreate();
+static SyntaxNode* ParseFunctionCallExpression(Parser* parser, SyntaxNode* func) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_FuncCallExpression, parser->tree);
+    result->funcCallExpr.func = func;
+    result->funcCallExpr.leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
+    result->funcCallExpr.argumentsWithSeparators = SyntaxNodeArrayCreate();
     while (parser->tokenCur.kind != SyntaxKind_RightParenToken) {
-        ASTNode* argument = ParseExpression(parser);
-        ASTNodeArrayPush(&argumentList, argument);
+        SyntaxNode* argument = ParseExpression(parser);
+        SyntaxNodeArrayPush(&result->funcCallExpr.argumentsWithSeparators, argument);
         if (parser->tokenCur.kind == SyntaxKind_CommaToken) {
-            MatchAndAdvanceToken(parser, SyntaxKind_CommaToken);
+            SyntaxToken comma = MatchAndAdvanceToken(parser, SyntaxKind_CommaToken);
+            SyntaxNode* commaWrapper = WrapTokenInNode(parser, comma);
+            SyntaxNodeArrayPush(&result->funcCallExpr.argumentsWithSeparators, commaWrapper);
         } else {
             break;
         }
     }
-    SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
-    if (funcSymbol->isVariadric) {
-        if (argumentList.count < funcSymbol->membersSymbolTable->count) {
-            ReportError(TokenGetLocation(leftParen), "Function '%s' expects at least %d arguments but %d arguments were provided", funcSymbol->name.cstr, funcSymbol->membersSymbolTable->count, argumentList.count);
-        }
+    result->funcCallExpr.rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
+    return result;
+}
+
+static SyntaxNode* ParseArrayIndexingExpression(Parser* parser, SyntaxNode* arr) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ArrayIndexExpression, parser->tree);
+    result->arrayIndexExpr.arr = arr;
+    result->arrayIndexExpr.leftBracket = MatchAndAdvanceToken(parser, SyntaxKind_LeftBracketToken);
+    result->arrayIndexExpr.indexExpression = ParseExpression(parser);
+    result->arrayIndexExpr.rightBracket = MatchAndAdvanceToken(parser, SyntaxKind_RightBracketToken);
+    return result;
+}
+
+static SyntaxNode* ParseMemberAccess(Parser* parser, SyntaxNode* container) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_MemberAccessExpression, parser->tree);
+    result->memberAccessExpr.container = container;
+    if (parser->tokenCur.kind == SyntaxKind_ArrowToken) {
+        result->memberAccessExpr.accessToken = MatchAndAdvanceToken(parser, SyntaxKind_ArrowToken);
     } else {
-        if (argumentList.count != funcSymbol->membersSymbolTable->count) {
-            ReportError(TokenGetLocation(leftParen), "Function '%s' expects %d arguments but %d arguments were provided", funcSymbol->name.cstr, funcSymbol->membersSymbolTable->count, argumentList.count);
-        }
+        result->memberAccessExpr.accessToken = MatchAndAdvanceToken(parser, SyntaxKind_DotToken);
     }
-    for (int32 argumentIndex = 0; argumentIndex < funcSymbol->membersSymbolTable->count; argumentIndex += 1) {
-        Type argumentType = argumentList.nodes[argumentIndex]->type;
-        Type expectedType = funcSymbol->membersSymbolTable->symbols[argumentIndex]->type;
-        TypeConversionResult conversion = CanConvertTypeFromTo(argumentType, expectedType);
-        if (conversion == TypeConversionResult_NonConvertible) {
-            ReportError(TokenGetLocation(leftParen), "Passed incompatible type '%s' for argument %d to function '%s' - expected type '%s'", TypeGetText(argumentType).cstr, argumentIndex + 1, funcSymbol->name.cstr, TypeGetText(expectedType).cstr);
-        }
-        if (conversion == TypeConversionResult_ExplicitlyConvertible) {
-            ReportError(TokenGetLocation(leftParen), "Cannot implicitly convert type '%s' of argument %d  to expected type '%s' in function call of '%s'", TypeGetText(argumentType).cstr, argumentIndex + 1, TypeGetText(expectedType).cstr, funcSymbol->name.cstr);
-        }
-    }
-    ASTNode* result = ASTNodeCreate(ASTNodeKind_FunccallExpression, parser->symbolTable, identifier);
-    result->symbol = funcSymbol;
-    result->type = funcSymbol->type;
-    result->children = argumentList;
+    result->memberAccessExpr.memberIdentifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
     return result;
 }
 
-static ASTNode* ParseArrayIndexingExpression(Parser* parser, ASTNode* left) {
-    SyntaxToken leftBracket = MatchAndAdvanceToken(parser, SyntaxKind_LeftBracketToken);
-    ASTNode* index = ParseExpression(parser);
-    SyntaxToken rightBracket = MatchAndAdvanceToken(parser, SyntaxKind_RightBracketToken);
-    if (!IsNumberType(index->type)) {
-        ReportError(TokenGetLocation(leftBracket), "Array index after '%s' must be number type", TokenKindToString(leftBracket.kind).cstr);
-    }
-    if (left->symbol == NULL || TypeGetIndirectionLevel(left->symbol->type) == 0) {
-        ReportError(TokenGetLocation(leftBracket), "Left hand side of array index operator '%s' is not a known array or pointer", TokenKindToString(leftBracket.kind).cstr);
-    }
-    ASTNode* result = ASTNodeCreate(ASTNodeKind_Arrayindexing, parser->symbolTable, left->token);
-    result->type = left->symbol->type;
-    if (result->type.isArray) {
-        result->type.isArray = false;
-    } else {
-        result->type = GetBaseTypeForPointerType(result->type);
-    }
-    result->left = left;
-    result->right = index;
+static SyntaxNode* ParseEnumLiteralExpression(Parser* parser) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_EnumValueLiteralExpression, parser->tree);
+    result->enumLiteralExpr.enumIdentifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
+    result->enumLiteralExpr.coloncolon = MatchAndAdvanceToken(parser, SyntaxKind_ColonColonToken);
+    result->enumLiteralExpr.valueIdentifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
     return result;
 }
 
-static ASTNode* ParseMemberAccess(Parser* parser, ASTNode* left, bool isArrow) {
-    SyntaxToken accessorToken;
-    if (isArrow) {
-        accessorToken = MatchAndAdvanceToken(parser, SyntaxKind_ArrowToken);
-    } else {
-        accessorToken = MatchAndAdvanceToken(parser, SyntaxKind_DotToken);
-    }
-    if (left->type.kind != TypeKind_Struct && left->type.kind != TypeKind_Union) {
-        ReportError(TokenGetLocation(accessorToken), "Attempt to access member of non union or struct identifier '%s'", left->symbol->name.cstr);
-    }
-    Symbol* containerSymbol = GetSymbol(parser->symbolTable, left->type.name);
-    assert(containerSymbol != NULL);
-    if (containerSymbol->kind != SymbolKind_Struct && containerSymbol->kind != SymbolKind_Union) {
-        ReportError(TokenGetLocation(accessorToken), "Attempt to access member of non union or struct identifier '%s'", containerSymbol->name.cstr);
-    }
-    if (!containerSymbol->alreadyDefined) {
-        ReportError(TokenGetLocation(accessorToken), "Attempt to access member of forward declared but undefined union or struct '%s'", containerSymbol->name.cstr);
-    }
-    if (isArrow && TypeGetIndirectionLevel(left->type) == 0) {
-        ReportError(TokenGetLocation(accessorToken), "Member access of '%s' with '->' is only allowed for pointer types", containerSymbol->name.cstr);
-    }
-    if (!isArrow && TypeGetIndirectionLevel(left->type) > 0) {
-        ReportError(TokenGetLocation(accessorToken), "Member access of '%s' with '.' is only allowed for non-pointer types", containerSymbol->name.cstr);
-    }
-    SyntaxToken memberIdentifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
-    String identifierText = TokenGetText(memberIdentifier);
-    Symbol* memberSymbol = GetSymbol(containerSymbol->membersSymbolTable, identifierText);
-    if (memberSymbol == NULL) {
-        ReportError(TokenGetLocation(memberIdentifier), "Undeclared struct or union member '%s'", identifierText.cstr);
-    }
-    assert(memberSymbol->kind == SymbolKind_Member);
-    ASTNode* result = ASTNodeCreate(ASTNodeKind_Memberaccess, parser->symbolTable, accessorToken);
-    result->symbol = memberSymbol;
-    result->type = memberSymbol->type;
-    result->left = left;
-    return result;
-}
-
-static ASTNode* ParseEnumLiteralExpression(Parser* parser) {
-    SyntaxToken enumIdentifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
-    SyntaxToken coloncolon = MatchAndAdvanceToken(parser, SyntaxKind_ColonColonToken);
-    SyntaxToken valueIdentifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
-    String enumText = TokenGetText(enumIdentifier);
-    Symbol* enumSymbol = GetSymbol(parser->symbolTable, enumText);
-    if (enumSymbol == NULL) {
-        ReportError(TokenGetLocation(enumIdentifier), "Undeclared identifier '%s'", enumText.cstr);
-    }
-    if (enumSymbol->kind != SymbolKind_Enum) {
-        ReportError(TokenGetLocation(enumIdentifier), "Identifier '%s' is not an enum", enumText.cstr);
-    }
-    String valueText = TokenGetText(valueIdentifier);
-    Symbol* valueSymbol = GetSymbol(enumSymbol->membersSymbolTable, valueText);
-    if (valueSymbol == NULL) {
-        ReportError(TokenGetLocation(enumIdentifier), "Identifier '%s' is not a member of enum '%s'", valueText.cstr, enumText.cstr);
-    }
-    assert(valueSymbol->kind == SymbolKind_Enumvalue);
-    ASTNode* result = ASTNodeCreate(ASTNodeKind_EnumValueLiteral, parser->symbolTable, valueIdentifier);
-    result->symbol = valueSymbol;
-    result->type = valueSymbol->type;
-    return result;
-}
-
-static ASTNode* ParseTypeExpression(Parser* parser) {
-    SyntaxToken startToken = parser->tokenCur;
-    Type type = ParseType(parser);
-    ASTNode* result = ASTNodeCreate(ASTNodeKind_TypeExpression, parser->symbolTable, startToken);
-    result->type = type;
-    return result;
-}
-
-static ASTNode* ParsePrimaryExpression(Parser* parser) {
+static SyntaxNode* ParsePrimaryExpression(Parser* parser) {
     switch (parser->tokenCur.kind) {
         case SyntaxKind_LeftParenToken: {
-            SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
-            ASTNode* inner = ParseExpression(parser);
-            SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
-            ASTNode* result = ASTNodeCreate(ASTNodeKind_ParenthesizedExpression, parser->symbolTable, leftParen);
-            result->type = inner->type;
-            result->left = inner;
+            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ParenthesizedExpression, parser->tree);
+            result->parenthesizedExpr.leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
+            result->parenthesizedExpr.expression = ParseExpression(parser);
+            result->parenthesizedExpr.rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
             return result;
         }
         case SyntaxKind_SizeOfKeyword: {
-            SyntaxToken sizeofKeyword = MatchAndAdvanceToken(parser, SyntaxKind_SizeOfKeyword);
-            SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
-            ASTNode* typeExpr = ParseTypeExpression(parser);
-            SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
-            ASTNode* result = ASTNodeCreate(ASTNodeKind_SizeOfExpression, parser->symbolTable, sizeofKeyword);
-            result->type = TypeCreatePrimitive(TypeKind_PrimitiveInt);
-            result->left = typeExpr;
-            result->isRValue = true;
+            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_SizeOfExpression, parser->tree);
+            result->sizeofExpr.sizeofKeyword = MatchAndAdvanceToken(parser, SyntaxKind_SizeOfKeyword);
+            result->sizeofExpr.leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
+            result->sizeofExpr.typeExpression = ParseTypeExpression(parser);
+            result->sizeofExpr.rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
             return result;
         }
         case SyntaxKind_IdentifierToken: {
             if (parser->tokenNext.kind == SyntaxKind_ColonColonToken) {
                 return ParseEnumLiteralExpression(parser);
             }
-            SyntaxToken identifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
-            String identifierText = TokenGetText(identifier);
-            Symbol* symbol = GetSymbol(parser->symbolTable, identifierText);
-            if (symbol == NULL) {
-                ReportError(TokenGetLocation(identifier), "Undeclared identifier '%s'", identifierText.cstr);
-            }
-            ASTNode* result = ASTNodeCreate(ASTNodeKind_NameExpression, parser->symbolTable, identifier);
-            result->symbol = symbol;
-            result->type = symbol->type;
+            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_NameExpression, parser->tree);
+            result->nameExpr.identifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
             return result;
         }
         case SyntaxKind_StringLiteralToken: {
-            SyntaxToken token = MatchAndAdvanceToken(parser, SyntaxKind_StringLiteralToken);
+            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_StringLiteralExpression, parser->tree);
+            result->stringLiteralExpr.stringLiteralTokens = SyntaxNodeArrayCreate();
             while (parser->tokenCur.kind == SyntaxKind_StringLiteralToken) {
-                SyntaxToken next = MatchAndAdvanceToken(parser, SyntaxKind_StringLiteralToken);
-                token.location.end = next.location.end;
-                token.debugString = TokenGetText(token);
-                token.stringValueWithoutQuotes = StringAppend(token.stringValueWithoutQuotes, next.stringValueWithoutQuotes);
+                SyntaxToken literal = MatchAndAdvanceToken(parser, SyntaxKind_StringLiteralToken);
+                SyntaxNode* literalWrapper = WrapTokenInNode(parser, literal);
+                SyntaxNodeArrayPush(&result->stringLiteralExpr.stringLiteralTokens, literalWrapper);
             }
-            ASTNode* result = ASTNodeCreate(ASTNodeKind_StringLiteral, parser->symbolTable, token);
-            result->isRValue = true;
-            result->stringvalue = token.stringValueWithoutQuotes;
-            result->type = TypeCreate(TypeKind_PrimitiveChar, 1, StringCreateEmpty());
             return result;
         }
         case SyntaxKind_NullKeyword: {
-            SyntaxToken token = MatchAndAdvanceToken(parser, SyntaxKind_NullKeyword);
-            ASTNode* result = ASTNodeCreate(ASTNodeKind_NullLiteral, parser->symbolTable, token);
-            result->isRValue = true;
-            result->type = TypeCreate(TypeKind_PrimitiveNull, 1, StringCreateEmpty());
+            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_NullLiteralExpression, parser->tree);
+            result->nullLiteralExpr.nullLiteral = MatchAndAdvanceToken(parser, SyntaxKind_NullKeyword);
             return result;
         }
         case SyntaxKind_CharacterLiteralToken: {
-            SyntaxToken token = MatchAndAdvanceToken(parser, SyntaxKind_CharacterLiteralToken);
-            ASTNode* result = ASTNodeCreate(ASTNodeKind_CharacterLiteral, parser->symbolTable, token);
-            result->isRValue = true;
-            result->intvalue = token.intvalue;
-            result->stringvalue = token.stringValueWithoutQuotes;
-            result->type = TypeCreatePrimitive(TypeKind_PrimitiveChar);
+            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_CharacterLiteralExpression, parser->tree);
+            result->characterLiteralExpr.characterLiteral = MatchAndAdvanceToken(parser, SyntaxKind_CharacterLiteralToken);
             return result;
         }
+        case SyntaxKind_FalseKeyword: // Fallthrough
         case SyntaxKind_TrueKeyword: {
-            SyntaxToken token = MatchAndAdvanceToken(parser, SyntaxKind_TrueKeyword);
-            ASTNode* result = ASTNodeCreate(ASTNodeKind_BoolLiteral, parser->symbolTable, token);
-            result->isRValue = true;
-            result->intvalue = 1;
-            result->type = TypeCreatePrimitive(TypeKind_PrimitiveBool);
-            return result;
-        }
-        case SyntaxKind_FalseKeyword: {
-            SyntaxToken token = MatchAndAdvanceToken(parser, SyntaxKind_FalseKeyword);
-            ASTNode* result = ASTNodeCreate(ASTNodeKind_BoolLiteral, parser->symbolTable, token);
-            result->isRValue = true;
-            result->intvalue = 0;
-            result->type = TypeCreatePrimitive(TypeKind_PrimitiveBool);
+            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_BoolLiteralExpression, parser->tree);
+            result->boolLiteralExpr.boolLiteral = AdvanceToken(parser);
             return result;
         }
         case SyntaxKind_IntegerLiteralToken: // Fallthrough
         default: {
-            SyntaxToken token = MatchAndAdvanceToken(parser, SyntaxKind_IntegerLiteralToken);
-            ASTNode* result = ASTNodeCreate(ASTNodeKind_IntegerLiteral, parser->symbolTable, token);
-            result->isRValue = true;
-            result->intvalue = token.intvalue;
-            if (CHAR_MIN <= token.intvalue && token.intvalue <= CHAR_MAX) {
-                result->type = TypeCreatePrimitive(TypeKind_PrimitiveByte);
-            } else {
-                if (SHRT_MIN <= token.intvalue && token.intvalue <= SHRT_MAX) {
-                    result->type = TypeCreatePrimitive(TypeKind_PrimitiveShort);
-                } else {
-                    if (INT_MIN <= token.intvalue && token.intvalue <= INT_MAX) {
-                        result->type = TypeCreatePrimitive(TypeKind_PrimitiveInt);
-                    } else {
-                        result->type = TypeCreatePrimitive(TypeKind_PrimitiveLong);
-                    }
-                }
-            }
+            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_IntegerLiteralExpression, parser->tree);
+            result->integerLiteralExpr.integerLiteral = MatchAndAdvanceToken(parser, SyntaxKind_IntegerLiteralToken);
             return result;
         }
     }
 }
 
-static ASTNode* ParseArrayLiteralExpression(Parser* parser, Symbol* arraySymbol) {
-    assert(arraySymbol->type.isArray);
-    SyntaxToken leftBrace = MatchAndAdvanceToken(parser, SyntaxKind_LeftBraceToken);
-    ASTNode* result = ASTNodeCreate(ASTNodeKind_ArrayLiteral, parser->symbolTable, leftBrace);
-    int32 elementCount = 0;
+static SyntaxNode* ParseArrayLiteralExpression(Parser* parser) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ArrayLiteralExpression, parser->tree);
+    result->arrayLiteralExpr.leftBrace = MatchAndAdvanceToken(parser, SyntaxKind_LeftBraceToken);
+    result->arrayLiteralExpr.elemsWithSeparators = SyntaxNodeArrayCreate();
     while (parser->tokenCur.kind != SyntaxKind_RightBraceToken) {
-        ASTNode* expression = ParseExpression(parser);
-        elementCount += 1;
-        Type arrayElemType = GetElementTypeForArrayType(arraySymbol->type);
-        TypeConversionResult conversion = CanConvertTypeFromTo(expression->type, arrayElemType);
-        if (conversion == TypeConversionResult_NonConvertible || conversion == TypeConversionResult_ExplicitlyConvertible) {
-            ReportError(TokenGetLocation(expression->token), "Cannot convert type '%s' of element %d in array initializer to array type '%s'", TypeGetText(expression->type).cstr, elementCount, TypeGetText(arrayElemType).cstr);
-        }
-        ASTNodeArrayPush(&result->children, expression);
-        if (parser->tokenCur.kind == SyntaxKind_RightBraceToken) {
-            break;
+        SyntaxNode* expression = ParseExpression(parser);
+        SyntaxNodeArrayPush(&result->arrayLiteralExpr.elemsWithSeparators, expression);
+        if (parser->tokenCur.kind == SyntaxKind_CommaToken) {
+            SyntaxToken comma = MatchAndAdvanceToken(parser, SyntaxKind_CommaToken);
+            SyntaxNode* commaWrapper = WrapTokenInNode(parser, comma);
+            SyntaxNodeArrayPush(&result->arrayLiteralExpr.elemsWithSeparators, commaWrapper);
         } else {
-            MatchAndAdvanceToken(parser, SyntaxKind_CommaToken);
+            break;
         }
     }
-    SyntaxToken rightBrace = MatchAndAdvanceToken(parser, SyntaxKind_RightBraceToken);
-    if (arraySymbol->type.arrayElementCount == -1) {
-        arraySymbol->type.arrayElementCount = elementCount;
-    }
-    if (elementCount == 0) {
-        ReportError(TokenGetLocation(leftBrace), "Element count cannot be zero in array initializer of array '%s'", arraySymbol->name.cstr);
-    }
-    if (arraySymbol->type.arrayElementCount != elementCount) {
-        ReportError(TokenGetLocation(leftBrace), "Element count %d of array initializer does not match element count %d of array '%s'", elementCount, arraySymbol->type.arrayElementCount, arraySymbol->name.cstr);
-    }
+    result->arrayLiteralExpr.rightBrace = MatchAndAdvanceToken(parser, SyntaxKind_RightBraceToken);
     return result;
 }
 
-static ASTNode* ParsePostFixExpression(Parser* parser) {
-    ASTNode* left = ParsePrimaryExpression(parser);
+static SyntaxNode* ParsePostFixExpression(Parser* parser) {
+    SyntaxNode* left = ParsePrimaryExpression(parser);
     bool foundPostfix = false;
     do {
         foundPostfix = false;
@@ -3421,62 +3280,38 @@ static ASTNode* ParsePostFixExpression(Parser* parser) {
             foundPostfix = true;
             left = ParseFunctionCallExpression(parser, left);
         }
-        if (parser->tokenCur.kind == SyntaxKind_DotToken) {
+        if (parser->tokenCur.kind == SyntaxKind_DotToken || parser->tokenCur.kind == SyntaxKind_ArrowToken) {
             foundPostfix = true;
-            left = ParseMemberAccess(parser, left, false);
-        }
-        if (parser->tokenCur.kind == SyntaxKind_ArrowToken) {
-            foundPostfix = true;
-            left = ParseMemberAccess(parser, left, true);
+            left = ParseMemberAccess(parser, left);
         }
         if (parser->tokenCur.kind == SyntaxKind_LeftBracketToken) {
             foundPostfix = true;
             left = ParseArrayIndexingExpression(parser, left);
         }
     } while (foundPostfix);
-    if (left->type.isArray) {
-        left->isRValue = true;
-    }
     return left;
 }
 
-ASTNode* ParseBinaryExpression(Parser* parser, int32 parentPrecedence);
-
-ASTNode* ParseUnaryExpression(Parser* parser, int32 parentPrecedence);
-
-static ASTNode* ParseCastExpression(Parser* parser) {
+static SyntaxNode* ParseCastExpression(Parser* parser) {
     if (parser->tokenCur.kind != SyntaxKind_LeftParenToken || parser->tokenNext.kind != SyntaxKind_AsKeyword) {
         return ParsePostFixExpression(parser);
     }
-    SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
-    SyntaxToken asKeyword = MatchAndAdvanceToken(parser, SyntaxKind_AsKeyword);
-    Type targetType = ParseType(parser);
-    SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
-    ASTNode* expression = ParseUnaryExpression(parser, 0);
-    TypeConversionResult conversion = CanConvertTypeFromTo(expression->type, targetType);
-    if (conversion == TypeConversionResult_NonConvertible) {
-        ReportError(TokenGetLocation(asKeyword), "Cast from type '%s' to type '%s' is impossible", TypeGetText(expression->type).cstr, TypeGetText(targetType).cstr);
-    }
-    ASTNode* result = ASTNodeCreate(ASTNodeKind_CastExpression, parser->symbolTable, asKeyword);
-    result->type = targetType;
-    result->left = expression;
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_TypeCastExpression, parser->tree);
+    result->typeCastExpr.leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
+    result->typeCastExpr.asKeyword = MatchAndAdvanceToken(parser, SyntaxKind_AsKeyword);
+    result->typeCastExpr.targetTypeExpression = ParseTypeExpression(parser);
+    result->typeCastExpr.rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
+    result->typeCastExpr.expression = ParseUnaryExpression(parser, 0);
     return result;
 }
 
-static ASTNode* ParseUnaryExpression(Parser* parser, int32 parentPrecedence) {
-    ASTNode* left = NULL;
+static SyntaxNode* ParseUnaryExpression(Parser* parser, int32 parentPrecedence) {
+    SyntaxNode* left = NULL;
     int32 unaryOperatorPrecedence = GetUnaryOperatorPrecedence(parser->tokenCur.kind);
     if ((unaryOperatorPrecedence != 0) && (unaryOperatorPrecedence >= parentPrecedence)) {
-        SyntaxToken operatorToken = AdvanceToken(parser);
-        ASTNode* operand = ParseBinaryExpression(parser, unaryOperatorPrecedence);
-        UnaryOperator op = GetUnaryOperationForToken(operatorToken, operand->type);
-        if (op.operandMustBeLValue && operand->isRValue) {
-            ReportError(TokenGetLocation(operatorToken), "Operand of operator '%s' must be an storage location", TokenKindToString(operatorToken.kind).cstr);
-        }
-        ASTNode* result = ASTNodeCreate(op.operatorKind, parser->symbolTable, operatorToken);
-        result->isRValue = op.resultIsRValue;
-        result->type = op.resultType;
-        result->left = operand;
+        SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_UnaryExpression, parser->tree);
+        result->unaryExpr.operatorToken = AdvanceToken(parser);
+        result->unaryExpr.operand = ParseBinaryExpression(parser, unaryOperatorPrecedence);
         left = result;
     } else {
         left = ParseCastExpression(parser);
@@ -3484,56 +3319,38 @@ static ASTNode* ParseUnaryExpression(Parser* parser, int32 parentPrecedence) {
     return left;
 }
 
-static ASTNode* ParseBinaryExpression(Parser* parser, int32 parentPrecedence) {
-    ASTNode* left = ParseUnaryExpression(parser, parentPrecedence);
+static SyntaxNode* ParseBinaryExpression(Parser* parser, int32 parentPrecedence) {
+    SyntaxNode* left = ParseUnaryExpression(parser, parentPrecedence);
     while (true) {
         int32 precedence = GetBinaryOperatorPrecedence(parser->tokenCur.kind);
         if (precedence == 0 || precedence < parentPrecedence || precedence == parentPrecedence && !IsBinaryOperatorRightAssociative(parser->tokenCur.kind)) {
             break;
         }
-        SyntaxToken operatorToken = AdvanceToken(parser);
-        ASTNode* right = ParseBinaryExpression(parser, precedence);
-        BinaryOperator op = GetBinaryOperationForToken(operatorToken, left->type, right->type);
-        if (op.leftMustBeLValue && left->isRValue) {
-            ReportError(TokenGetLocation(operatorToken), "Left argument of operator '%s' must be an storage location", TokenKindToString(operatorToken.kind).cstr);
-        }
-        if (op.rightMustBeLValue && right->isRValue) {
-            ReportError(TokenGetLocation(operatorToken), "Right argument of operator '%s' must be a storage location", TokenKindToString(operatorToken.kind).cstr);
-        }
-        ASTNode* result = ASTNodeCreate(op.operatorKind, parser->symbolTable, operatorToken);
-        result->isRValue = op.resultIsRValue;
-        result->type = op.resultType;
-        result->left = left;
-        result->right = right;
+        SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_BinaryExpression, parser->tree);
+        result->binaryExpr.left = left;
+        result->binaryExpr.operatorToken = AdvanceToken(parser);
+        result->binaryExpr.right = ParseBinaryExpression(parser, precedence);
         left = result;
     }
     return left;
 }
 
-static ASTNode* ParseTernaryConditionExpression(Parser* parser) {
-    ASTNode* condition = ParseBinaryExpression(parser, 0);
+static SyntaxNode* ParseTernaryConditionExpression(Parser* parser) {
+    SyntaxNode* left = ParseBinaryExpression(parser, 0);
     if (parser->tokenCur.kind == SyntaxKind_QuestionmarkToken) {
-        SyntaxToken questionmark = MatchAndAdvanceToken(parser, SyntaxKind_QuestionmarkToken);
-        ASTNode* thenExpression = ParseTernaryConditionExpression(parser);
-        SyntaxToken colon = MatchAndAdvanceToken(parser, SyntaxKind_ColonToken);
-        ASTNode* elseExpression = ParseTernaryConditionExpression(parser);
-        Type type = GetTypeThatFitsBothTypes(thenExpression->type, elseExpression->type);
-        if (IsVoidType(type)) {
-            ReportError(TokenGetLocation(questionmark), "Incompatible expression types in ternary operator - then branch: '%s', else branch: '%s'", TypeGetText(thenExpression->type).cstr, TypeGetText(elseExpression->type).cstr);
-        }
-        ASTNode* ternary = ASTNodeCreate(ASTNodeKind_TernaryConditionalExpression, parser->symbolTable, questionmark);
-        ternary->left = condition;
-        ternary->right = thenExpression;
-        ternary->extra1 = elseExpression;
-        ternary->type = type;
-        ternary->isRValue = true;
-        condition = ternary;
+        SyntaxNode* ternary = SyntaxNodeCreate(SyntaxKind_TernaryConditionalExpression, parser->tree);
+        ternary->ternaryConditionalExpr.conditionExpression = left;
+        ternary->ternaryConditionalExpr.questionmark = MatchAndAdvanceToken(parser, SyntaxKind_QuestionmarkToken);
+        ternary->ternaryConditionalExpr.thenExpression = ParseTernaryConditionExpression(parser);
+        ternary->ternaryConditionalExpr.colon = MatchAndAdvanceToken(parser, SyntaxKind_ColonToken);
+        ternary->ternaryConditionalExpr.elseExpression = ParseTernaryConditionExpression(parser);
+        return ternary;
     }
-    return condition;
+    return left;
 }
 
-static ASTNode* ParseAssignmentExpression(Parser* parser) {
-    ASTNode* left = ParseTernaryConditionExpression(parser);
+static SyntaxNode* ParseAssignmentExpression(Parser* parser) {
+    SyntaxNode* left = ParseTernaryConditionExpression(parser);
     switch (parser->tokenCur.kind) {
         case SyntaxKind_EqualsToken: // Fallthrough
         case SyntaxKind_PlusEqualsToken: // Fallthrough
@@ -3546,252 +3363,176 @@ static ASTNode* ParseAssignmentExpression(Parser* parser) {
         case SyntaxKind_PipeEqualsToken: // Fallthrough
         case SyntaxKind_LessLessEqualsToken: // Fallthrough
         case SyntaxKind_GreaterGreaterEqualsToken: {
-            SyntaxToken assignmentToken = AdvanceToken(parser);
-            ASTNode* right = ParseAssignmentExpression(parser);
-            BinaryOperator op = GetBinaryOperationForToken(assignmentToken, left->type, right->type);
-            if (left->isRValue) {
-                ReportError(TokenGetLocation(assignmentToken), "Left argument of operator '%s' must be an storage location", TokenKindToString(assignmentToken.kind).cstr);
-            }
-            ASTNode* assignment = ASTNodeCreate(op.operatorKind, parser->symbolTable, assignmentToken);
-            assignment->isRValue = op.resultIsRValue;
-            assignment->type = op.resultType;
-            assignment->left = left;
-            assignment->right = right;
-            left = assignment;
-            break;
-        }
-        default: {
-            break;
+            SyntaxNode* assignment = SyntaxNodeCreate(SyntaxKind_BinaryExpression, parser->tree);
+            assignment->binaryExpr.left = left;
+            assignment->binaryExpr.operatorToken = AdvanceToken(parser);
+            assignment->binaryExpr.right = ParseAssignmentExpression(parser);
+            return assignment;
         }
     }
     return left;
 }
 
-static ASTNode* ParseExpression(Parser* parser) {
+static SyntaxNode* ParseExpression(Parser* parser) {
     return ParseAssignmentExpression(parser);
 }
 
-static ASTNode* ParseExpressionStatement(Parser* parser) {
-    ASTNode* expression = ParseExpression(parser);
-    SyntaxToken semicolonToken = MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
-    ASTNode* result = ASTNodeCreate(ASTNodeKind_ExpressionStatement, parser->symbolTable, expression->token);
-    result->left = expression;
+static SyntaxNode* ParseExpressionStatement(Parser* parser) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ExpressionStatement, parser->tree);
+    result->expressionStmt.expression = ParseExpression(parser);
+    result->expressionStmt.semicolon = MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
     return result;
 }
 
-static ASTNode* ParseIfStatement(Parser* parser) {
-    SyntaxToken ifKeyword = MatchAndAdvanceToken(parser, SyntaxKind_IfKeyword);
-    SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
-    ASTNode* condition = ParseExpression(parser);
-    SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
-    ASTNode* thenBranch = ParseStatement(parser);
-    thenBranch = WrapInBlockStatementIfNecessary(parser, thenBranch);
-    ASTNode* elseBranch = NULL;
-    if (parser->tokenCur.kind == SyntaxKind_ElseKeyword) {
-        SyntaxToken elseKeyword = MatchAndAdvanceToken(parser, SyntaxKind_ElseKeyword);
-        elseBranch = ParseStatement(parser);
-        elseBranch = WrapInBlockStatementIfNecessary(parser, elseBranch);
-    }
-    ASTNode* result = ASTNodeCreate(ASTNodeKind_IfStatement, parser->symbolTable, ifKeyword);
-    result->left = condition;
-    result->right = thenBranch;
-    result->extra1 = elseBranch;
-    return result;
-}
-
-static ASTNode* ParseWhileStatement(Parser* parser) {
-    SyntaxToken whileKeyword = MatchAndAdvanceToken(parser, SyntaxKind_WhileKeyword);
-    SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
-    ASTNode* condition = ParseExpression(parser);
-    SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
-    parser->loopLevel += 1;
-    ASTNode* body = ParseStatement(parser);
-    body = WrapInBlockStatementIfNecessary(parser, body);
-    parser->loopLevel -= 1;
-    ASTNode* result = ASTNodeCreate(ASTNodeKind_WhileStatement, parser->symbolTable, whileKeyword);
-    result->left = condition;
-    result->right = body;
-    return result;
-}
-
-static ASTNode* ParseDoWhileStatement(Parser* parser) {
-    SyntaxToken doKeyword = MatchAndAdvanceToken(parser, SyntaxKind_DoKeyword);
-    parser->loopLevel += 1;
-    ASTNode* body = ParseStatement(parser);
-    body = WrapInBlockStatementIfNecessary(parser, body);
-    parser->loopLevel -= 1;
-    SyntaxToken whileKeyword = MatchAndAdvanceToken(parser, SyntaxKind_WhileKeyword);
-    SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
-    ASTNode* condition = ParseExpression(parser);
-    SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
-    SyntaxToken semicolon = MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
-    ASTNode* result = ASTNodeCreate(ASTNodeKind_DoWhileStatement, parser->symbolTable, whileKeyword);
-    result->left = condition;
-    result->right = body;
-    return result;
-}
-
-static ASTNode* ParseForStatement(Parser* parser) {
-    SyntaxToken forKeyword = MatchAndAdvanceToken(parser, SyntaxKind_ForKeyword);
-    parser->symbolTable = SymbolTableCreate(parser->symbolTable);
-    ASTNode* result = ASTNodeCreate(ASTNodeKind_ForStatement, parser->symbolTable, forKeyword);
-    SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
-    ASTNode* initializer = NULL;
-    if (parser->tokenCur.kind == SyntaxKind_LetKeyword) {
-        initializer = ParseVariableDefinitionStatement(parser, false);
+static SyntaxNode* ParseVariableDefinitionStatement(Parser* parser, bool skipLet, bool allowInitializer, SyntaxKind terminator) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_VariableDeclarationStatement, parser->tree);
+    if (skipLet) {
+        result->variableDeclarationStmt.letKeyword = SyntaxTokenCreateEmpty(parser->tree);
     } else {
-        initializer = ParseExpressionStatement(parser);
+        if (parser->tokenCur.kind == SyntaxKind_LetLocalPersistKeyword) {
+            result->variableDeclarationStmt.letKeyword = MatchAndAdvanceToken(parser, SyntaxKind_LetLocalPersistKeyword);
+        } else {
+            result->variableDeclarationStmt.letKeyword = MatchAndAdvanceToken(parser, SyntaxKind_LetKeyword);
+        }
     }
-    ASTNode* condition = ParseExpressionStatement(parser);
-    ASTNode* iterator = ParseExpression(parser);
-    SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
+    result->variableDeclarationStmt.typeExpression = ParseTypeExpression(parser);
+    result->variableDeclarationStmt.identifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
+    if (parser->tokenCur.kind == SyntaxKind_LeftBracketToken) {
+        result->variableDeclarationStmt.leftBracket = MatchAndAdvanceToken(parser, SyntaxKind_LeftBracketToken);
+        if (parser->tokenCur.kind == SyntaxKind_IntegerLiteralToken) {
+            result->variableDeclarationStmt.arraySizeLiteral = MatchAndAdvanceToken(parser, SyntaxKind_IntegerLiteralToken);
+        }
+        result->variableDeclarationStmt.rightBracket = MatchAndAdvanceToken(parser, SyntaxKind_RightBracketToken);
+        if (parser->tokenCur.kind == SyntaxKind_EqualsToken && allowInitializer) {
+            result->variableDeclarationStmt.equalsToken = MatchAndAdvanceToken(parser, SyntaxKind_EqualsToken);
+            result->variableDeclarationStmt.initializerExpression = ParseArrayLiteralExpression(parser);
+        } else {
+            result->variableDeclarationStmt.equalsToken = SyntaxTokenCreateEmpty(parser->tree);
+            result->variableDeclarationStmt.initializerExpression = NULL;
+        }
+    } else {
+        result->variableDeclarationStmt.leftBracket = SyntaxTokenCreateEmpty(parser->tree);
+        result->variableDeclarationStmt.arraySizeLiteral = SyntaxTokenCreateEmpty(parser->tree);
+        result->variableDeclarationStmt.rightBracket = SyntaxTokenCreateEmpty(parser->tree);
+        if (parser->tokenCur.kind == SyntaxKind_EqualsToken && allowInitializer) {
+            result->variableDeclarationStmt.equalsToken = MatchAndAdvanceToken(parser, SyntaxKind_EqualsToken);
+            result->variableDeclarationStmt.initializerExpression = ParseExpression(parser);
+        } else {
+            result->variableDeclarationStmt.equalsToken = SyntaxTokenCreateEmpty(parser->tree);
+            result->variableDeclarationStmt.initializerExpression = NULL;
+        }
+    }
+    if (terminator == SyntaxKind_BadToken) {
+        result->variableDeclarationStmt.terminatorToken = SyntaxTokenCreateEmpty(parser->tree);
+    } else {
+        result->variableDeclarationStmt.terminatorToken = MatchAndAdvanceToken(parser, terminator);
+    }
+    return result;
+}
+
+static SyntaxNode* ParseIfStatement(Parser* parser) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_IfStatement, parser->tree);
+    result->ifStmt.ifKeyword = MatchAndAdvanceToken(parser, SyntaxKind_IfKeyword);
+    result->ifStmt.leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
+    result->ifStmt.condition = ParseExpression(parser);
+    result->ifStmt.rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
+    result->ifStmt.thenBlock = ParseStatement(parser);
+    result->ifStmt.elseBlock = NULL;
+    result->ifStmt.elseKeyword = SyntaxTokenCreateEmpty(parser->tree);
+    if (parser->tokenCur.kind == SyntaxKind_ElseKeyword) {
+        result->ifStmt.elseKeyword = MatchAndAdvanceToken(parser, SyntaxKind_ElseKeyword);
+        result->ifStmt.elseBlock = ParseStatement(parser);
+    }
+    return result;
+}
+
+static SyntaxNode* ParseWhileStatement(Parser* parser) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_WhileStatement, parser->tree);
+    result->whileStmt.whileKeyword = MatchAndAdvanceToken(parser, SyntaxKind_WhileKeyword);
+    result->whileStmt.leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
+    result->whileStmt.condition = ParseExpression(parser);
+    result->whileStmt.rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
     parser->loopLevel += 1;
-    ASTNode* body = ParseStatement(parser);
-    body = WrapInBlockStatementIfNecessary(parser, body);
+    result->whileStmt.body = ParseStatement(parser);
     parser->loopLevel -= 1;
-    parser->symbolTable = parser->symbolTable->parent;
-    result->left = initializer;
-    result->right = condition;
-    result->extra1 = iterator;
-    result->extra2 = body;
     return result;
 }
 
-static ASTNode* ParseReturnStatement(Parser* parser) {
-    SyntaxToken returnKeyword = MatchAndAdvanceToken(parser, SyntaxKind_ReturnKeyword);
-    if (parser->currentFunctionSymbol == NULL) {
-        ReportError(TokenGetLocation(returnKeyword), "Invalid 'return' statement found outside of function definition");
+static SyntaxNode* ParseDoWhileStatement(Parser* parser) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_DoWhileStatement, parser->tree);
+    result->doWhileStmt.doKeyword = MatchAndAdvanceToken(parser, SyntaxKind_DoKeyword);
+    parser->loopLevel += 1;
+    result->doWhileStmt.body = ParseStatement(parser);
+    parser->loopLevel -= 1;
+    result->doWhileStmt.whileKeyword = MatchAndAdvanceToken(parser, SyntaxKind_WhileKeyword);
+    result->doWhileStmt.leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
+    result->doWhileStmt.condition = ParseExpression(parser);
+    result->doWhileStmt.rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
+    result->doWhileStmt.semicolon = MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
+    return result;
+}
+
+static SyntaxNode* ParseForStatement(Parser* parser) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ForStatement, parser->tree);
+    result->forStmt.forKeyword = MatchAndAdvanceToken(parser, SyntaxKind_ForKeyword);
+    result->forStmt.leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
+    if (parser->tokenCur.kind == SyntaxKind_LetKeyword) {
+        result->forStmt.initializerStatement = ParseVariableDefinitionStatement(parser, false, true, SyntaxKind_SemicolonToken);
+    } else {
+        result->forStmt.initializerStatement = ParseExpressionStatement(parser);
     }
-    Type functionReturnType = parser->currentFunctionSymbol->type;
-    if (IsVoidType(functionReturnType) && parser->tokenCur.kind != SyntaxKind_SemicolonToken) {
-        ReportError(TokenGetLocation(returnKeyword), "Invalid return expression in void function");
+    result->forStmt.conditionStatement = ParseExpressionStatement(parser);
+    result->forStmt.incrementExpression = ParseExpression(parser);
+    result->forStmt.rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
+    parser->loopLevel += 1;
+    result->forStmt.body = ParseStatement(parser);
+    parser->loopLevel -= 1;
+    return result;
+}
+
+static SyntaxNode* ParseReturnStatement(Parser* parser) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ReturnStatement, parser->tree);
+    result->returnStmt.returnKeyword = MatchAndAdvanceToken(parser, SyntaxKind_ReturnKeyword);
+    if (parser->functionLevel == 0) {
+        ReportError(TokenGetLocation(result->returnStmt.returnKeyword), "Invalid 'return' keyword found outside of function definition");
     }
-    if (!IsVoidType(functionReturnType) && parser->tokenCur.kind == SyntaxKind_SemicolonToken) {
-        ReportError(TokenGetLocation(returnKeyword), "Must return expression in non-void function");
-    }
-    ASTNode* expression = NULL;
     if (parser->tokenCur.kind != SyntaxKind_SemicolonToken) {
-        expression = ParseExpression(parser);
-        TypeConversionResult conversion = CanConvertTypeFromTo(expression->type, functionReturnType);
-        if (conversion == TypeConversionResult_NonConvertible) {
-            ReportError(TokenGetLocation(returnKeyword), "Incompatible types for return expression '%s'", TokenKindToString(returnKeyword.kind).cstr);
-        }
-        if (conversion == TypeConversionResult_ExplicitlyConvertible) {
-            ReportError(TokenGetLocation(returnKeyword), "Types cannot be implicitly converted for return expression '%s'", TokenKindToString(returnKeyword.kind).cstr);
-        }
+        result->returnStmt.returnExpression = ParseExpression(parser);
+    } else {
+        result->returnStmt.returnExpression = NULL;
     }
-    SyntaxToken semicolonToken = MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
-    ASTNode* result = ASTNodeCreate(ASTNodeKind_ReturnStatement, parser->symbolTable, returnKeyword);
-    result->left = expression;
+    result->returnStmt.semicolon = MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
     return result;
 }
 
-static ASTNode* ParseBreakStatement(Parser* parser) {
-    SyntaxToken breakKeyword = MatchAndAdvanceToken(parser, SyntaxKind_BreakKeyword);
+static SyntaxNode* ParseBreakStatement(Parser* parser) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_BreakStatement, parser->tree);
+    result->breakStmt.breakKeyword = MatchAndAdvanceToken(parser, SyntaxKind_BreakKeyword);
     if (parser->loopLevel == 0 && parser->switchCaseLevel == 0) {
-        ReportError(TokenGetLocation(breakKeyword), "Invalid 'break' statement found outside of loop or switch-case definition");
+        ReportError(TokenGetLocation(result->breakStmt.breakKeyword), "Invalid 'break' keyword found outside of loop or switch-case definition");
     }
-    SyntaxToken semicolonToken = MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
-    ASTNode* result = ASTNodeCreate(ASTNodeKind_BreakStatement, parser->symbolTable, breakKeyword);
+    result->returnStmt.semicolon = MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
     return result;
 }
 
-static ASTNode* ParseContinueStatement(Parser* parser) {
-    SyntaxToken continueKeyword = MatchAndAdvanceToken(parser, SyntaxKind_ContinueKeyword);
+static SyntaxNode* ParseContinueStatement(Parser* parser) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ContinueStatement, parser->tree);
+    result->continueStmt.continueKeyword = MatchAndAdvanceToken(parser, SyntaxKind_ContinueKeyword);
     if (parser->loopLevel == 0) {
-        ReportError(TokenGetLocation(continueKeyword), "Invalid 'continue' statement found outside of loop definition");
+        ReportError(TokenGetLocation(result->continueStmt.continueKeyword), "Invalid 'continue' keyword found outside of loop definition");
     }
-    SyntaxToken semicolonToken = MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
-    ASTNode* result = ASTNodeCreate(ASTNodeKind_ContinueStatement, parser->symbolTable, continueKeyword);
+    result->returnStmt.semicolon = MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
     return result;
 }
 
-static Type ParseType(Parser* parser) {
-    Type type = TypeCreateVoid();
-    SyntaxToken startToken = parser->tokenCur;
-    switch (parser->tokenCur.kind) {
-        case SyntaxKind_VoidKeyword: {
-            type.kind = TypeKind_PrimitiveVoid;
-            break;
-        }
-        case SyntaxKind_CharKeyword: {
-            type.kind = TypeKind_PrimitiveChar;
-            break;
-        }
-        case SyntaxKind_BoolKeyword: {
-            type.kind = TypeKind_PrimitiveBool;
-            break;
-        }
-        case SyntaxKind_ByteKeyword: {
-            type.kind = TypeKind_PrimitiveByte;
-            break;
-        }
-        case SyntaxKind_ShortKeyword: {
-            type.kind = TypeKind_PrimitiveShort;
-            break;
-        }
-        case SyntaxKind_IntKeyword: {
-            type.kind = TypeKind_PrimitiveInt;
-            break;
-        }
-        case SyntaxKind_LongKeyword: {
-            type.kind = TypeKind_PrimitiveLong;
-            break;
-        }
-        case SyntaxKind_CStringKeyword: {
-            type.kind = TypeKind_PrimitiveCString;
-            break;
-        }
-        case SyntaxKind_IdentifierToken: {
-            String name = TokenGetText(parser->tokenCur);
-            Symbol* symbol = GetSymbol(parser->symbolTable, name);
-            if (symbol != NULL) {
-                if (symbol->kind == SymbolKind_Struct) {
-                    type.kind = TypeKind_Struct;
-                    type.name = name;
-                    break;
-                } else {
-                    if (symbol->kind == SymbolKind_Union) {
-                        type.kind = TypeKind_Union;
-                        type.name = name;
-                        break;
-                    } else {
-                        if (symbol->kind == SymbolKind_Enum) {
-                            type.kind = TypeKind_Enum;
-                            type.name = name;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        default: {
-            ReportError(TokenGetLocation(parser->tokenCur), "SyntaxToken '%s' is not a type", TokenGetText(parser->tokenCur).cstr);
-        }
-    }
-    AdvanceToken(parser);
-    while (parser->tokenCur.kind == SyntaxKind_StarToken) {
-        AdvanceToken(parser);
-        type = GetPointerTypeForBaseType(type);
-    }
-    if (type.kind == TypeKind_Struct) {
-        Symbol* symbol = GetSymbol(parser->symbolTable, type.name);
-        if (!symbol->alreadyDefined && type.baseIndirectionLevel == 0) {
-            ReportError(TokenGetLocation(startToken), "Usage of undefined but forward declared type '%s' is only allowed as pointer", type.name.cstr);
-        }
-    }
-    return type;
-}
-
-static ASTNode* ParseBlockStatement(Parser* parser, bool inSwitch) {
-    bool startsWithBrace = false;
-    SyntaxToken leftBrace = parser->tokenCur;
+static SyntaxNode* ParseBlockStatement(Parser* parser, bool inSwitch) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_BlockStatement, parser->tree);
     if (parser->tokenCur.kind == SyntaxKind_LeftBraceToken || !inSwitch) {
-        leftBrace = MatchAndAdvanceToken(parser, SyntaxKind_LeftBraceToken);
-        startsWithBrace = true;
+        result->blockStmt.leftBrace = MatchAndAdvanceToken(parser, SyntaxKind_LeftBraceToken);
+    } else {
+        result->blockStmt.leftBrace = SyntaxTokenCreateEmpty(parser->tree);
     }
-    parser->symbolTable = SymbolTableCreate(parser->symbolTable);
-    ASTNode* result = ASTNodeCreate(ASTNodeKind_BlockStatement, parser->symbolTable, leftBrace);
+    result->blockStmt.statements = SyntaxNodeArrayCreate();
     while (parser->tokenCur.kind != SyntaxKind_RightBraceToken) {
         if (inSwitch && parser->tokenCur.kind == SyntaxKind_CaseKeyword) {
             break;
@@ -3799,399 +3540,77 @@ static ASTNode* ParseBlockStatement(Parser* parser, bool inSwitch) {
         if (inSwitch && parser->tokenCur.kind == SyntaxKind_DefaultKeyword) {
             break;
         }
-        ASTNode* statement = ParseStatement(parser);
-        ASTNodeArrayPush(&result->children, statement);
+        SyntaxNode* statement = ParseStatement(parser);
+        SyntaxNodeArrayPush(&result->blockStmt.statements, statement);
     }
-    parser->symbolTable = parser->symbolTable->parent;
-    if (startsWithBrace) {
-        SyntaxToken rightBrace = MatchAndAdvanceToken(parser, SyntaxKind_RightBraceToken);
+    if (result->blockStmt.leftBrace.kind != SyntaxKind_BadToken) {
+        result->blockStmt.rightBrace = MatchAndAdvanceToken(parser, SyntaxKind_RightBraceToken);
     }
-    return FlattenBlockStatementIfNecessary(parser, result);
-}
-
-static ASTNode* ParseVariableDeclarationWithoutTerminator(Parser* parser, Type type, SyntaxToken identifier, SymbolScopeKind symbolScopeKind) {
-    Symbol* varSymbol = AddSymbol(parser->symbolTable, TokenGetText(identifier), SymbolKind_Variable, symbolScopeKind, type);
-    if (varSymbol == NULL) {
-        ReportError(TokenGetLocation(identifier), "Symbol was '%s' already declared in current scope", TokenGetText(identifier).cstr);
-    }
-    if (IsVoidType(type)) {
-        ReportError(TokenGetLocation(identifier), "'void' not allowed as variables '%s' storage type", TokenGetText(identifier).cstr);
-    }
-    if (parser->tokenCur.kind == SyntaxKind_LeftBracketToken) {
-        int64 arrayElementCount = -1;
-        SyntaxToken leftBracket = MatchAndAdvanceToken(parser, SyntaxKind_LeftBracketToken);
-        if (parser->tokenCur.kind == SyntaxKind_IntegerLiteralToken) {
-            SyntaxToken intLiteral = MatchAndAdvanceToken(parser, SyntaxKind_IntegerLiteralToken);
-            arrayElementCount = intLiteral.intvalue;
-        }
-        SyntaxToken rightBracket = MatchAndAdvanceToken(parser, SyntaxKind_RightBracketToken);
-        if (arrayElementCount == 0) {
-            ReportError(TokenGetLocation(identifier), "Array size cannot be zero for '%s'", TokenGetText(identifier).cstr);
-        }
-        varSymbol->type.isArray = true;
-        varSymbol->type.arrayElementCount = arrayElementCount;
-    }
-    ASTNode* result = ASTNodeCreate(ASTNodeKind_VariableDeclarationStatement, parser->symbolTable, identifier);
-    result->symbol = varSymbol;
     return result;
 }
 
-static ASTNode* ParseUnionOrStructDefinitionStatement(Parser* parser, bool isExternal) {
-    SymbolScopeKind symbolScopeKind = isExternal ? SymbolScopeKind_Extern : SymbolScopeKind_Global;
-    SyntaxToken structKeyword;
-    if (parser->tokenCur.kind == SyntaxKind_StructKeyword) {
-        structKeyword = MatchAndAdvanceToken(parser, SyntaxKind_StructKeyword);
-    } else {
-        structKeyword = MatchAndAdvanceToken(parser, SyntaxKind_UnionKeyword);
+static SyntaxNode* ParseCaseStatement(Parser* parser, SyntaxNode* switchExpression) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_CaseStatement, parser->tree);
+    result->caseStmt.caseKeyword = MatchAndAdvanceToken(parser, SyntaxKind_CaseKeyword);
+    if (parser->switchCaseLevel == 0) {
+        ReportError(TokenGetLocation(result->caseStmt.caseKeyword), "Unexpected 'case' label keyword outside of switch statement");
     }
-    bool isUnion = structKeyword.kind == SyntaxKind_UnionKeyword;
-    SyntaxToken identifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
-    String name = TokenGetText(identifier);
-    if (parser->currentFunctionSymbol != NULL) {
-        ReportError(TokenGetLocation(identifier), "Unexpected struct or union declaration of '%s' while already parsing function", name.cstr);
-    }
-    Symbol* structSymbol = GetSymbol(parser->symbolTable, name);
-    if (structSymbol != NULL) {
-        if (isUnion && structSymbol->kind != SymbolKind_Union) {
-            ReportError(TokenGetLocation(identifier), "Another symbol with the same name '%s' but different type was already declared in current scope", TokenGetText(identifier).cstr);
-        }
-        if (!isUnion && structSymbol->kind != SymbolKind_Struct) {
-            ReportError(TokenGetLocation(identifier), "Another symbol with the same name '%s' but different type was already declared in current scope", TokenGetText(identifier).cstr);
-        }
-        if (structSymbol->scopeKind != symbolScopeKind) {
-            ReportError(TokenGetLocation(identifier), "Struct or union '%s was previously declared but with different scope attribute", TokenGetText(identifier).cstr);
-        }
-    }
-    if (structSymbol == NULL) {
-        Type type = TypeCreate(isUnion ? TypeKind_Union : TypeKind_Struct, 0, name);
-        structSymbol = AddSymbol(parser->symbolTable, name, isUnion ? SymbolKind_Union : SymbolKind_Struct, symbolScopeKind, type);
-    }
-    if (parser->tokenCur.kind == SyntaxKind_SemicolonToken) {
-        MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
-        ASTNode* result = ASTNodeCreate(isUnion ? ASTNodeKind_UnionDeclarationStatement : ASTNodeKind_StructDeclarationStatement, parser->symbolTable, identifier);
-        result->symbol = structSymbol;
-        return result;
-    } else {
-        structSymbol->membersSymbolTable = SymbolTableCreate(parser->symbolTable);
-        parser->symbolTable = structSymbol->membersSymbolTable;
-        SyntaxToken leftBrace = MatchAndAdvanceToken(parser, SyntaxKind_LeftBraceToken);
-        while (parser->tokenCur.kind != SyntaxKind_RightBraceToken) {
-            Type memberType = ParseType(parser);
-            SyntaxToken memberIdent = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
-            ASTNode* memberNode = ParseVariableDeclarationWithoutTerminator(parser, memberType, memberIdent, SymbolScopeKind_Local);
-            memberNode->symbol->kind = SymbolKind_Member;
-            MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
-        }
-        SyntaxToken rightBrace = MatchAndAdvanceToken(parser, SyntaxKind_RightBraceToken);
-        parser->symbolTable = parser->symbolTable->parent;
-        if (structSymbol->membersSymbolTable->count == 0) {
-            ReportError(TokenGetLocation(identifier), "Struct or union '%s' needs at least one member", name.cstr);
-        }
-        MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
-        if (structSymbol->alreadyDefined) {
-            ReportError(TokenGetLocation(identifier), "Duplicate struct or union definition of '%s'", name.cstr);
-        }
-        structSymbol->alreadyDefined = true;
-        ASTNode* result = ASTNodeCreate(isUnion ? ASTNodeKind_UnionDefinitionStatement : ASTNodeKind_StructDefinitionStatement, parser->symbolTable, identifier);
-        result->symbol = structSymbol;
-        return result;
-    }
-}
-
-static ASTNode* ParseEnumDefinitionStatement(Parser* parser, bool isExternal) {
-    SymbolScopeKind symbolScopeKind = isExternal ? SymbolScopeKind_Extern : SymbolScopeKind_Global;
-    SyntaxToken enumKeyword = MatchAndAdvanceToken(parser, SyntaxKind_EnumKeyword);
-    SyntaxToken classKeyword = MatchAndAdvanceToken(parser, SyntaxKind_ClassKeyword);
-    SyntaxToken identifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
-    String name = TokenGetText(identifier);
-    if (parser->currentFunctionSymbol != NULL) {
-        ReportError(TokenGetLocation(identifier), "Unexpected enum declaration of '%s' while already parsing function", name.cstr);
-    }
-    Symbol* enumSymbol = GetSymbol(parser->symbolTable, name);
-    if (enumSymbol != NULL) {
-        if (enumSymbol->kind != SymbolKind_Enum) {
-            ReportError(TokenGetLocation(identifier), "Another symbol with the same name '%s' but different type was already declared in current scope", TokenGetText(identifier).cstr);
-        }
-        if (enumSymbol->scopeKind != symbolScopeKind) {
-            ReportError(TokenGetLocation(identifier), "Enum '%s was previously declared but with different scope attribute", TokenGetText(identifier).cstr);
-        }
-    }
-    if (enumSymbol == NULL) {
-        Type type = TypeCreate(TypeKind_Enum, 0, name);
-        enumSymbol = AddSymbol(parser->symbolTable, name, SymbolKind_Enum, symbolScopeKind, type);
-    }
-    if (parser->tokenCur.kind == SyntaxKind_SemicolonToken) {
-        MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
-        ASTNode* result = ASTNodeCreate(ASTNodeKind_EnumDeclarationStatement, parser->symbolTable, identifier);
-        result->symbol = enumSymbol;
-        return result;
-    } else {
-        enumSymbol->membersSymbolTable = SymbolTableCreate(parser->symbolTable);
-        parser->symbolTable = enumSymbol->membersSymbolTable;
-        int64 valueCounter = 0;
-        SyntaxToken leftBrace = MatchAndAdvanceToken(parser, SyntaxKind_LeftBraceToken);
-        while (parser->tokenCur.kind != SyntaxKind_RightBraceToken) {
-            Type memberType = TypeCreate(TypeKind_Enum, 0, enumSymbol->name);
-            SyntaxToken memberIdent = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
-            ASTNode* memberNode = ParseVariableDeclarationWithoutTerminator(parser, memberType, memberIdent, SymbolScopeKind_Local);
-            if (parser->tokenCur.kind == SyntaxKind_EqualsToken) {
-                SyntaxToken equalsToken = MatchAndAdvanceToken(parser, SyntaxKind_EqualsToken);
-                SyntaxToken valueToken = MatchAndAdvanceToken(parser, SyntaxKind_IntegerLiteralToken);
-                if (valueToken.intvalue < valueCounter) {
-                    ReportError(TokenGetLocation(identifier), "Assigned value of enum value literal '%s' must chosen such that all enum values of '%s' are unique - chosen value '%lld' would lead to duplicates", TokenGetText(memberIdent).cstr, enumSymbol->name.cstr, valueToken.intvalue);
-                }
-                valueCounter = valueToken.intvalue;
-            }
-            memberNode->symbol->kind = SymbolKind_Enumvalue;
-            memberNode->symbol->enumValue = valueCounter;
-            if (parser->tokenCur.kind == SyntaxKind_RightBraceToken) {
-                break;
-            }
-            MatchAndAdvanceToken(parser, SyntaxKind_CommaToken);
-            valueCounter += 1;
-        }
-        SyntaxToken rightBrace = MatchAndAdvanceToken(parser, SyntaxKind_RightBraceToken);
-        parser->symbolTable = parser->symbolTable->parent;
-        if (enumSymbol->membersSymbolTable->count == 0) {
-            ReportError(TokenGetLocation(identifier), "Enum '%s' needs at least one member", name.cstr);
-        }
-        MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
-        if (enumSymbol->alreadyDefined) {
-            ReportError(TokenGetLocation(identifier), "Duplicate enum definition of '%s'", name.cstr);
-        }
-        enumSymbol->alreadyDefined = true;
-        ASTNode* result = ASTNodeCreate(ASTNodeKind_EnumDefinitionStatement, parser->symbolTable, identifier);
-        result->symbol = enumSymbol;
-        return result;
-    }
-}
-
-static Symbol* ParseFunctionDeclarationStatementWithoutTerminator(Parser* parser, Type returnType, SyntaxToken identifier, bool isExternal) {
-    if (parser->currentFunctionSymbol != NULL) {
-        ReportError(TokenGetLocation(identifier), "Unexpected function declaration of '%s' while already parsing function", TokenGetText(identifier).cstr);
-    }
-    SymbolScopeKind symbolScopeKind = isExternal ? SymbolScopeKind_Extern : SymbolScopeKind_Global;
-    Symbol* functionSymbol = GetSymbol(parser->symbolTable, TokenGetText(identifier));
-    if (functionSymbol != NULL) {
-        if (functionSymbol->kind != SymbolKind_Function) {
-            ReportError(TokenGetLocation(identifier), "Another symbol with the same name '%s' but different type was already declared in current scope", TokenGetText(identifier).cstr);
-        }
-        if (functionSymbol->scopeKind != symbolScopeKind) {
-            ReportError(TokenGetLocation(identifier), "Function '%s was previously declared but with different scope attribute", TokenGetText(identifier).cstr);
-        }
-    }
-    if (functionSymbol == NULL) {
-        functionSymbol = AddSymbol(parser->symbolTable, TokenGetText(identifier), SymbolKind_Function, symbolScopeKind, returnType);
-    }
-    SymbolTable* functionParamsSymbolTable = SymbolTableCreate(parser->symbolTable);
-    parser->symbolTable = functionParamsSymbolTable;
-    bool isVariadric = false;
-    SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
-    while (parser->tokenCur.kind != SyntaxKind_RightParenToken) {
-        if (parser->tokenCur.kind == SyntaxKind_DotDotDotToken) {
-            MatchAndAdvanceToken(parser, SyntaxKind_DotDotDotToken);
-            isVariadric = true;
+    result->caseStmt.literalExpression = ParseExpression(parser);
+    switch (result->caseStmt.literalExpression->kind) {
+        case SyntaxKind_IntegerLiteralExpression: // Fallthrough
+        case SyntaxKind_StringLiteralExpression: // Fallthrough
+        case SyntaxKind_CharacterLiteralExpression: // Fallthrough
+        case SyntaxKind_EnumValueLiteralExpression: {
             break;
         }
-        Type paramType = ParseType(parser);
-        SyntaxToken paramIdent = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
-        ASTNode* paramNode = ParseVariableDeclarationWithoutTerminator(parser, paramType, paramIdent, SymbolScopeKind_Local);
-        paramNode->symbol->kind = SymbolKind_Parameter;
-        if (parser->tokenCur.kind == SyntaxKind_CommaToken) {
-            MatchAndAdvanceToken(parser, SyntaxKind_CommaToken);
-        } else {
-            break;
+        default: {
+            ReportError(TokenGetLocation(result->caseStmt.caseKeyword), "Expected literal token in case label but got '%s' instead", "TODO - we need to get the string of an expression");
         }
     }
-    SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
-    parser->symbolTable = parser->symbolTable->parent;
-    if (functionSymbol->membersSymbolTable != NULL) {
-        if (!TypesIdentical(returnType, functionSymbol->type)) {
-            ReportError(TokenGetLocation(identifier), "Return type of function '%s' does not match return type of a previous declaration", TokenGetText(identifier).cstr);
-        }
-        if (functionSymbol->isVariadric != isVariadric) {
-            ReportError(TokenGetLocation(identifier), "Vadriaticity of function '%s' does not match with a previous declaration", TokenGetText(identifier).cstr);
-        }
-        if (functionParamsSymbolTable->count != functionSymbol->membersSymbolTable->count) {
-            ReportError(TokenGetLocation(leftParen), "Function '%s' was previously declared with %d parameters wheras new declaration has %d parameters", functionSymbol->name.cstr, functionSymbol->membersSymbolTable->count, functionParamsSymbolTable->count);
-        }
-        for (int32 paramIndex = 0; paramIndex < functionParamsSymbolTable->count; paramIndex += 1) {
-            Type paramType = functionParamsSymbolTable->symbols[paramIndex]->type;
-            Type previosType = functionSymbol->membersSymbolTable->symbols[paramIndex]->type;
-            if (!TypesIdentical(paramType, previosType)) {
-                ReportError(TokenGetLocation(leftParen), "Previous function '%s' parameter %d declared type differs from current declared type", functionSymbol->name.cstr, paramIndex + 1);
-            }
-        }
-    }
-    functionSymbol->membersSymbolTable = functionParamsSymbolTable;
-    functionSymbol->isVariadric = isVariadric;
-    return functionSymbol;
-}
-
-static ASTNode* ParseFunctionDefinitionStatement(Parser* parser, bool isExternal) {
-    SyntaxToken funKeyword = MatchAndAdvanceToken(parser, SyntaxKind_FunKeyword);
-    Type type = ParseType(parser);
-    SyntaxToken identifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
-    Symbol* functionSymbol = ParseFunctionDeclarationStatementWithoutTerminator(parser, type, identifier, isExternal);
-    ASTNode* body = NULL;
-    if (parser->tokenCur.kind == SyntaxKind_SemicolonToken) {
-        MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
-    } else {
-        if (isExternal) {
-            ReportError(TokenGetLocation(identifier), "Cannot define external function '%s'", TokenGetText(identifier).cstr);
-        }
-        if (functionSymbol->alreadyDefined) {
-            ReportError(TokenGetLocation(identifier), "Duplicate function definition of '%s'", TokenGetText(identifier).cstr);
-        }
-        parser->symbolTable = functionSymbol->membersSymbolTable;
-        parser->currentFunctionSymbol = functionSymbol;
-        body = ParseBlockStatement(parser, false);
-        functionSymbol->alreadyDefined = true;
-        parser->currentFunctionSymbol = NULL;
-        parser->symbolTable = parser->symbolTable->parent;
-    }
-    ASTNode* result = ASTNodeCreate(body == NULL ? ASTNodeKind_FunctionDeclarationStatement : ASTNodeKind_FunctionDefinitionStatement, parser->symbolTable, identifier);
-    result->symbol = functionSymbol;
-    result->left = body;
+    result->caseStmt.colon = MatchAndAdvanceToken(parser, SyntaxKind_ColonToken);
+    result->caseStmt.body = ParseBlockStatement(parser, true);
     return result;
 }
 
-static ASTNode* ParseVariableDefinitionStatement(Parser* parser, bool isExternal) {
-    SyntaxToken letKeyword;
-    bool isLocalPersist = false;
-    if (parser->tokenCur.kind == SyntaxKind_LetLocalPersistKeyword) {
-        letKeyword = MatchAndAdvanceToken(parser, SyntaxKind_LetLocalPersistKeyword);
-        isLocalPersist = true;
-    } else {
-        letKeyword = MatchAndAdvanceToken(parser, SyntaxKind_LetKeyword);
+static SyntaxNode* ParseDefaultStatement(Parser* parser, SyntaxNode* switchExpression) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_DefaultStatement, parser->tree);
+    result->defaultStmt.defaultKeyword = MatchAndAdvanceToken(parser, SyntaxKind_DefaultKeyword);
+    if (parser->switchCaseLevel == 0) {
+        ReportError(TokenGetLocation(result->defaultStmt.defaultKeyword), "Unexpected 'default' case label keyword outside of switch statement");
     }
-    Type type = ParseType(parser);
-    SyntaxToken identifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
-    SymbolScopeKind symbolScopeKind = parser->currentFunctionSymbol == NULL ? SymbolScopeKind_Global : SymbolScopeKind_Local;
-    if (isLocalPersist) {
-        if (symbolScopeKind != SymbolScopeKind_Local) {
-            ReportError(TokenGetLocation(identifier), "Cannot mark global variable as localpersist '%s'", TokenGetText(identifier).cstr);
-        }
-        symbolScopeKind = SymbolScopeKind_LocalPersist;
-    }
-    if (isExternal) {
-        if (symbolScopeKind != SymbolScopeKind_Global) {
-            ReportError(TokenGetLocation(identifier), "Cannot mark local variable as external '%s'", TokenGetText(identifier).cstr);
-        }
-        symbolScopeKind = SymbolScopeKind_Extern;
-    }
-    ASTNode* result = ParseVariableDeclarationWithoutTerminator(parser, type, identifier, symbolScopeKind);
-    if (parser->tokenCur.kind == SyntaxKind_EqualsToken) {
-        SyntaxToken equalsToken = MatchAndAdvanceToken(parser, SyntaxKind_EqualsToken);
-        ASTNode* initializer = NULL;
-        if (result->symbol->type.isArray) {
-            initializer = ParseArrayLiteralExpression(parser, result->symbol);
-        } else {
-            initializer = ParseExpression(parser);
-        }
-        result->left = initializer;
-    }
-    SyntaxToken semicolonToken = MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
+    result->defaultStmt.colon = MatchAndAdvanceToken(parser, SyntaxKind_ColonToken);
+    result->defaultStmt.body = ParseBlockStatement(parser, true);
     return result;
 }
 
-static ASTNode* ParseDefinitionStatement(Parser* parser) {
-    bool isExternal = false;
-    if (parser->tokenCur.kind == SyntaxKind_ExternKeyword) {
-        isExternal = true;
-        AdvanceToken(parser);
-    }
-    if (parser->tokenCur.kind == SyntaxKind_EnumKeyword) {
-        return ParseEnumDefinitionStatement(parser, isExternal);
-    } else {
-        if (parser->tokenCur.kind == SyntaxKind_StructKeyword || parser->tokenCur.kind == SyntaxKind_UnionKeyword) {
-            return ParseUnionOrStructDefinitionStatement(parser, isExternal);
-        } else {
-            if (parser->tokenCur.kind == SyntaxKind_FunKeyword) {
-                return ParseFunctionDefinitionStatement(parser, isExternal);
-            } else {
-                return ParseVariableDefinitionStatement(parser, isExternal);
-            }
-        }
-    }
-}
-
-static ASTNode* ParseCaseStatement(Parser* parser, ASTNode* switchExpression) {
-    SyntaxToken caseLabel = SyntaxTokenCreateEmpty(parser->tree);
-    ASTNode* caseExpression = NULL;
-    if (parser->tokenCur.kind == SyntaxKind_CaseKeyword) {
-        caseLabel = MatchAndAdvanceToken(parser, SyntaxKind_CaseKeyword);
-        if (parser->switchCaseLevel == 0) {
-            ReportError(TokenGetLocation(caseLabel), "Unexpected case label outside of switch statement");
-        }
-        caseExpression = ParseExpression(parser);
-        if (caseExpression->kind != ASTNodeKind_IntegerLiteral && caseExpression->kind != ASTNodeKind_StringLiteral && caseExpression->kind != ASTNodeKind_CharacterLiteral && caseExpression->kind != ASTNodeKind_EnumValueLiteral) {
-            ReportError(TokenGetLocation(caseExpression->token), "Expected literal in case label but got '%s'", TokenKindToString(caseExpression->token.kind).cstr);
-        }
-        TypeConversionResult conversion = CanConvertTypeFromTo(caseExpression->type, switchExpression->type);
-        if (conversion != TypeConversionResult_Identical && conversion != TypeConversionResult_ImplictlyConvertible) {
-            ReportError(TokenGetLocation(caseExpression->token), "Cannot convert type '%s' of case label literal '%s' to its switch expression type '%s'", TypeGetText(caseExpression->type).cstr, TokenGetText(caseExpression->token).cstr, TypeGetText(switchExpression->type).cstr);
-        }
-    } else {
-        caseLabel = MatchAndAdvanceToken(parser, SyntaxKind_DefaultKeyword);
-        if (parser->switchCaseLevel == 0) {
-            ReportError(TokenGetLocation(caseLabel), "Unexpected default case label outside of switch statement");
-        }
-    }
-    SyntaxToken colonToken = MatchAndAdvanceToken(parser, SyntaxKind_ColonToken);
-    ASTNode* body = ParseBlockStatement(parser, true);
-    if (body->children.count == 0) {
-        body = NULL;
-    }
-    ASTNode* result = ASTNodeCreate(caseLabel.kind == SyntaxKind_CaseKeyword ? ASTNodeKind_CaseStatement : ASTNodeKind_DefaultStatement, parser->symbolTable, caseLabel);
-    result->left = body;
-    result->right = caseExpression;
-    return result;
-}
-
-static ASTNode* ParseSwitchStatement(Parser* parser) {
-    SyntaxToken switchKeyword = MatchAndAdvanceToken(parser, SyntaxKind_SwitchKeyword);
-    SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
-    ASTNode* switchExpression = ParseExpression(parser);
-    SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
+static SyntaxNode* ParseSwitchStatement(Parser* parser) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_SwitchStatement, parser->tree);
+    result->switchStmt.switchKeyword = MatchAndAdvanceToken(parser, SyntaxKind_SwitchKeyword);
+    result->switchStmt.leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
+    result->switchStmt.switchExpression = ParseExpression(parser);
+    result->switchStmt.rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
+    result->switchStmt.leftBrace = MatchAndAdvanceToken(parser, SyntaxKind_LeftBraceToken);
     parser->switchCaseLevel += 1;
-    SyntaxToken leftBrace = MatchAndAdvanceToken(parser, SyntaxKind_LeftBraceToken);
-    int32 defaultTokenEncountered = false;
-    ASTNodeArray caseStatements = ASTNodeArrayCreate();
+    result->switchStmt.caseStatements = SyntaxNodeArrayCreate();
     while (parser->tokenCur.kind != SyntaxKind_EndOfFileToken) {
         if (parser->tokenCur.kind == SyntaxKind_RightBraceToken) {
             break;
         }
-        ASTNode* caseStatement = ParseCaseStatement(parser, switchExpression);
-        if (defaultTokenEncountered) {
-            ReportError(TokenGetLocation(caseStatement->token), "Unexpected case statement after default statement was already defined");
+        if (parser->tokenCur.kind == SyntaxKind_CaseKeyword) {
+            SyntaxNode* caseStatement = ParseCaseStatement(parser, result);
+            SyntaxNodeArrayPush(&result->switchStmt.caseStatements, caseStatement);
+        } else {
+            SyntaxNode* defaultStatement = ParseDefaultStatement(parser, result);
+            SyntaxNodeArrayPush(&result->switchStmt.caseStatements, defaultStatement);
         }
-        if (caseStatement->kind == ASTNodeKind_DefaultStatement) {
-            defaultTokenEncountered = true;
-        }
-        ASTNodeArrayPush(&caseStatements, caseStatement);
     }
-    SyntaxToken rightBrace = MatchAndAdvanceToken(parser, SyntaxKind_RightBraceToken);
     parser->switchCaseLevel -= 1;
-    if (caseStatements.count == 0) {
-        ReportError(TokenGetLocation(switchKeyword), "Empty switch statements are not allowed");
-    }
-    for (int32 index = 0; index < caseStatements.count; index += 1) {
-        ASTNode* a = caseStatements.nodes[index];
-        for (int32 inner = index + 1; inner < caseStatements.count; inner += 1) {
-            ASTNode* b = caseStatements.nodes[inner];
-            if (a->right && b->right && AreLiteralsEqual(a->right, b->right)) {
-                ReportError(TokenGetLocation(b->token), "Duplicate switch case literal '%s'", TokenGetText(b->right->token).cstr);
-            }
-        }
-    }
-    ASTNode* result = ASTNodeCreate(ASTNodeKind_SwitchStatement, parser->symbolTable, switchKeyword);
-    result->left = switchExpression;
-    result->children = caseStatements;
+    result->switchStmt.rightBrace = MatchAndAdvanceToken(parser, SyntaxKind_RightBraceToken);
     return result;
 }
 
-static ASTNode* ParseStatement(Parser* parser) {
+static SyntaxNode* ParseStatement(Parser* parser) {
+    assert(parser->functionLevel > 0);
     switch (parser->tokenCur.kind) {
         case SyntaxKind_LeftBraceToken: {
             return ParseBlockStatement(parser, false);
@@ -4220,14 +3639,9 @@ static ASTNode* ParseStatement(Parser* parser) {
         case SyntaxKind_SwitchKeyword: {
             return ParseSwitchStatement(parser);
         }
-        case SyntaxKind_ExternKeyword: // Fallthrough
-        case SyntaxKind_StructKeyword: // Fallthrough
-        case SyntaxKind_UnionKeyword: // Fallthrough
-        case SyntaxKind_EnumKeyword: // Fallthrough
-        case SyntaxKind_FunKeyword: // Fallthrough
         case SyntaxKind_LetKeyword: // Fallthrough
         case SyntaxKind_LetLocalPersistKeyword: {
-            return ParseDefinitionStatement(parser);
+            return ParseVariableDefinitionStatement(parser, false, true, SyntaxKind_SemicolonToken);
         }
         default: {
             return ParseExpressionStatement(parser);
@@ -4235,14 +3649,178 @@ static ASTNode* ParseStatement(Parser* parser) {
     }
 }
 
-static ASTNode* ParseGlobalStatements(Parser* parser) {
-    SyntaxToken root = SyntaxTokenCreateEmpty(parser->tree);
-    ASTNode* result = ASTNodeCreate(ASTNodeKind_Module, parser->symbolTable, root);
+static SyntaxNode* ParseStructOrUnionDefinitionStatement(Parser* parser, SyntaxToken externKeyword) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_StructOrUnionDeclarationStatement, parser->tree);
+    result->structOrUnionDeclarationStmt.externKeyword = externKeyword;
+    if (parser->tokenCur.kind == SyntaxKind_StructKeyword) {
+        result->structOrUnionDeclarationStmt.structOrUnionKeyword = MatchAndAdvanceToken(parser, SyntaxKind_StructKeyword);
+    } else {
+        result->structOrUnionDeclarationStmt.structOrUnionKeyword = MatchAndAdvanceToken(parser, SyntaxKind_UnionKeyword);
+    }
+    result->structOrUnionDeclarationStmt.identifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
+    if (parser->tokenCur.kind == SyntaxKind_SemicolonToken) {
+        result->structOrUnionDeclarationStmt.semicolon = MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
+        return result;
+    } else {
+        result->kind = SyntaxKind_StructOrUniontDefinitionStatement;
+        result->structOrUnionDefinitionStmt.memberDeclarationStatements = SyntaxNodeArrayCreate();
+        result->structOrUnionDefinitionStmt.leftBrace = MatchAndAdvanceToken(parser, SyntaxKind_LeftBraceToken);
+        while (parser->tokenCur.kind != SyntaxKind_RightBraceToken) {
+            SyntaxNode* memberDeclaration = ParseVariableDefinitionStatement(parser, true, false, SyntaxKind_SemicolonToken);
+            SyntaxNodeArrayPush(&result->structOrUnionDefinitionStmt.memberDeclarationStatements, memberDeclaration);
+        }
+        result->structOrUnionDefinitionStmt.rightBrace = MatchAndAdvanceToken(parser, SyntaxKind_RightBraceToken);
+        result->structOrUnionDefinitionStmt.semicolon = MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
+        return result;
+    }
+}
+
+static SyntaxNode* ParseEnumMemberClause(Parser* parser) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_EnumMemberClauseSyntax, parser->tree);
+    result->enumMember.identifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
+    if (parser->tokenCur.kind == SyntaxKind_EqualsToken) {
+        result->enumMember.equals = MatchAndAdvanceToken(parser, SyntaxKind_EqualsToken);
+        result->enumMember.integerLiteral = MatchAndAdvanceToken(parser, SyntaxKind_IntegerLiteralToken);
+    } else {
+        result->enumMember.equals = SyntaxTokenCreateEmpty(parser->tree);
+        result->enumMember.integerLiteral = SyntaxTokenCreateEmpty(parser->tree);
+    }
+    if (parser->tokenCur.kind == SyntaxKind_CommaToken) {
+        result->enumMember.comma = MatchAndAdvanceToken(parser, SyntaxKind_CommaToken);
+    } else {
+        result->enumMember.comma = SyntaxTokenCreateEmpty(parser->tree);
+    }
+    return result;
+}
+
+static SyntaxNode* ParseEnumDefinitionStatement(Parser* parser, SyntaxToken externKeyword) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_EnumDeclarationStatement, parser->tree);
+    result->enumDeclarationStmt.externKeyword = externKeyword;
+    result->enumDeclarationStmt.enumKeyword = MatchAndAdvanceToken(parser, SyntaxKind_EnumKeyword);
+    result->enumDeclarationStmt.classKeyword = MatchAndAdvanceToken(parser, SyntaxKind_ClassKeyword);
+    result->enumDeclarationStmt.identifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
+    if (parser->tokenCur.kind == SyntaxKind_SemicolonToken) {
+        result->enumDeclarationStmt.semicolon = MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
+        return result;
+    } else {
+        result->kind = SyntaxKind_EnumDefinitionStatement;
+        result->enumDefinitionStmt.memberClauses = SyntaxNodeArrayCreate();
+        result->enumDefinitionStmt.leftBrace = MatchAndAdvanceToken(parser, SyntaxKind_LeftBraceToken);
+        while (parser->tokenCur.kind != SyntaxKind_RightBraceToken) {
+            SyntaxNode* memberClause = ParseEnumMemberClause(parser);
+            SyntaxNodeArrayPush(&result->enumDefinitionStmt.memberClauses, memberClause);
+            if (memberClause->enumMember.comma.kind != SyntaxKind_CommaToken) {
+                break;
+            }
+        }
+        result->enumDefinitionStmt.rightBrace = MatchAndAdvanceToken(parser, SyntaxKind_RightBraceToken);
+        result->enumDefinitionStmt.semicolon = MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
+        return result;
+    }
+}
+
+static SyntaxNode* ParseFunctionDefinitionStatement(Parser* parser, SyntaxToken externKeyword) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_FunctionDeclarationStatement, parser->tree);
+    result->functionDeclarationStmt.externKeyword = externKeyword;
+    result->functionDeclarationStmt.funKeyword = MatchAndAdvanceToken(parser, SyntaxKind_FunKeyword);
+    result->functionDeclarationStmt.returnType = ParseTypeExpression(parser);
+    result->functionDeclarationStmt.identifier = MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
+    result->functionDeclarationStmt.leftParen = MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
+    result->functionDeclarationStmt.params = SyntaxNodeArrayCreate();
+    while (parser->tokenCur.kind != SyntaxKind_RightParenToken) {
+        if (parser->tokenCur.kind == SyntaxKind_DotDotDotToken) {
+            SyntaxToken dotdot = MatchAndAdvanceToken(parser, SyntaxKind_DotDotDotToken);
+            SyntaxNode* dotdotWrapper = WrapTokenInNode(parser, dotdot);
+            SyntaxNodeArrayPush(&result->functionDeclarationStmt.params, dotdotWrapper);
+            break;
+        }
+        SyntaxNode* parameter = ParseVariableDefinitionStatement(parser, true, false, SyntaxKind_BadToken);
+        SyntaxNodeArrayPush(&result->functionDeclarationStmt.params, parameter);
+        if (parser->tokenCur.kind == SyntaxKind_CommaToken) {
+            parameter->variableDeclarationStmt.terminatorToken = MatchAndAdvanceToken(parser, SyntaxKind_CommaToken);
+        } else {
+            break;
+        }
+    }
+    result->functionDeclarationStmt.rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
+    if (parser->tokenCur.kind == SyntaxKind_SemicolonToken) {
+        result->functionDeclarationStmt.semicolon = MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
+        return result;
+    } else {
+        result->kind = SyntaxKind_FunctionDefinitionStatement;
+        parser->functionLevel += 1;
+        result->functionDefinitionStmt.body = ParseBlockStatement(parser, false);
+        parser->functionLevel -= 1;
+        return result;
+    }
+}
+
+static SyntaxNode* ParseGlobalVariableDefinitionStatement(Parser* parser, SyntaxToken externKeyword) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_GlobalVariableDeclarationStatement, parser->tree);
+    result->globalVariableStmt.externKeyword = externKeyword;
+    result->globalVariableStmt.variableDeclarationStatement = ParseVariableDefinitionStatement(parser, false, true, SyntaxKind_SemicolonToken);
+    return result;
+}
+
+static SyntaxNode* ParseGlobalDefinitionStatement(Parser* parser) {
+    assert(parser->functionLevel == 0);
+    SyntaxToken externKeyword = SyntaxTokenCreateEmpty(parser->tree);
+    if (parser->tokenCur.kind == SyntaxKind_ExternKeyword) {
+        externKeyword = AdvanceToken(parser);
+    }
+    switch (parser->tokenCur.kind) {
+        case SyntaxKind_EnumKeyword: {
+            return ParseEnumDefinitionStatement(parser, externKeyword);
+        }
+        case SyntaxKind_StructKeyword: // Fallthrough
+        case SyntaxKind_UnionKeyword: {
+            return ParseStructOrUnionDefinitionStatement(parser, externKeyword);
+        }
+        case SyntaxKind_FunKeyword: {
+            return ParseFunctionDefinitionStatement(parser, externKeyword);
+        }
+        default: {
+            return ParseGlobalVariableDefinitionStatement(parser, externKeyword);
+        }
+    }
+}
+
+static SyntaxNode* ParseImportDeclarationStatement(Parser* parser) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ImportDeclarationStatement, parser->tree);
+    result->importStmt.importKeyword = MatchAndAdvanceToken(parser, SyntaxKind_ImportKeyword);
+    result->importStmt.modulenameLiteral = MatchAndAdvanceToken(parser, SyntaxKind_StringLiteralToken);
+    return result;
+}
+
+static SyntaxNode* ParseModuleStatement(Parser* parser) {
+    switch (parser->tokenCur.kind) {
+        case SyntaxKind_ExternKeyword: // Fallthrough
+        case SyntaxKind_StructKeyword: // Fallthrough
+        case SyntaxKind_UnionKeyword: // Fallthrough
+        case SyntaxKind_EnumKeyword: // Fallthrough
+        case SyntaxKind_FunKeyword: // Fallthrough
+        case SyntaxKind_LetKeyword: {
+            return ParseGlobalDefinitionStatement(parser);
+        }
+        case SyntaxKind_IncludeDirectiveKeyword: {
+            return ParseImportDeclarationStatement(parser);
+        }
+        default: {
+            ReportError(TokenGetLocation(parser->tokenCur), "Expected global module definition got unexpected token '%s' instead", TokenGetText(parser->tokenCur).cstr);
+            exit(1);
+        }
+    }
+}
+
+static SyntaxTree* ParseModule(Parser* parser) {
+    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_Module, parser->tree);
+    parser->tree->moduleRoot = (ModuleStatementSyntax*)result;
+    result->moduleStmt.globalStatements = SyntaxNodeArrayCreate();
     while (parser->tokenCur.kind != SyntaxKind_EndOfFileToken) {
-        bool foundDirectives = true;
-        while (foundDirectives) {
+        bool foundDirectives = false;
+        do {
             foundDirectives = false;
-            while (parser->tokenCur.kind == SyntaxKind_TypedefKeyword) {
+            if (parser->tokenCur.kind == SyntaxKind_TypedefKeyword) {
                 MatchAndAdvanceToken(parser, SyntaxKind_TypedefKeyword);
                 while (parser->tokenCur.kind != SyntaxKind_SemicolonToken) {
                     AdvanceToken(parser);
@@ -4250,7 +3828,7 @@ static ASTNode* ParseGlobalStatements(Parser* parser) {
                 MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
                 foundDirectives = true;
             }
-            while (parser->tokenCur.kind == SyntaxKind_IncludeDirectiveKeyword) {
+            if (parser->tokenCur.kind == SyntaxKind_IncludeDirectiveKeyword) {
                 MatchAndAdvanceToken(parser, SyntaxKind_IncludeDirectiveKeyword);
                 if (parser->tokenCur.kind == SyntaxKind_LessToken) {
                     MatchAndAdvanceToken(parser, SyntaxKind_LessToken);
@@ -4263,21 +3841,21 @@ static ASTNode* ParseGlobalStatements(Parser* parser) {
                 }
                 foundDirectives = true;
             }
-            while (parser->tokenCur.kind == SyntaxKind_PragmaDirectiveKeyword) {
+            if (parser->tokenCur.kind == SyntaxKind_PragmaDirectiveKeyword) {
                 MatchAndAdvanceToken(parser, SyntaxKind_PragmaDirectiveKeyword);
                 MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
                 foundDirectives = true;
             }
-            while (parser->tokenCur.kind == SyntaxKind_IfDirectiveKeyword) {
+            if (parser->tokenCur.kind == SyntaxKind_IfDirectiveKeyword) {
                 MatchAndAdvanceToken(parser, SyntaxKind_IfDirectiveKeyword);
                 AdvanceToken(parser);
                 foundDirectives = true;
             }
-            while (parser->tokenCur.kind == SyntaxKind_EndIfDefinedDirectiveKeyword) {
+            if (parser->tokenCur.kind == SyntaxKind_EndIfDefinedDirectiveKeyword) {
                 MatchAndAdvanceToken(parser, SyntaxKind_EndIfDefinedDirectiveKeyword);
                 foundDirectives = true;
             }
-            while (parser->tokenCur.kind == SyntaxKind_DefineDirectiveKeyword) {
+            if (parser->tokenCur.kind == SyntaxKind_DefineDirectiveKeyword) {
                 MatchAndAdvanceToken(parser, SyntaxKind_DefineDirectiveKeyword);
                 if (parser->tokenCur.kind == SyntaxKind_LetKeyword) {
                     MatchAndAdvanceToken(parser, SyntaxKind_LetKeyword);
@@ -4300,840 +3878,8 @@ static ASTNode* ParseGlobalStatements(Parser* parser) {
                 }
                 foundDirectives = true;
             }
-        }
-        ASTNode* statement = ParseDefinitionStatement(parser);
-        ASTNodeArrayPush(&result->children, statement);
-    }
-    return result;
-}
-
-struct Parser2; typedef struct Parser2 Parser2; struct Parser2 {
-    Scanner scanner;
-    SyntaxTree* tree;
-    SyntaxToken tokenPrev;
-    SyntaxToken tokenCur;
-    SyntaxToken tokenNext;
-    SyntaxToken tokenNextAfter;
-    int32 loopLevel;
-    int32 switchCaseLevel;
-    int32 functionLevel;
-};
-
-static Parser2 Parser2Create(Source source) {
-    SyntaxTree* tree = (SyntaxTree*)malloc(sizeof(SyntaxTree));
-    tree->source = source;
-    tree->moduleRoot = NULL;
-    Parser2 result;
-    result.tree = tree;
-    result.scanner = ScannerCreate(tree);
-    result.tokenPrev = SyntaxTokenCreateEmpty(tree);
-    result.tokenCur = NextToken(&result.scanner);
-    result.tokenNext = NextToken(&result.scanner);
-    result.tokenNextAfter = NextToken(&result.scanner);
-    result.loopLevel = 0;
-    result.switchCaseLevel = 0;
-    result.functionLevel = 0;
-    return result;
-}
-
-static SyntaxToken _AdvanceToken(Parser2* parser) {
-    SyntaxToken result = parser->tokenCur;
-    parser->tokenPrev = parser->tokenCur;
-    parser->tokenCur = parser->tokenNext;
-    parser->tokenNext = parser->tokenNextAfter;
-    parser->tokenNextAfter = NextToken(&parser->scanner);
-    return result;
-}
-
-static SyntaxToken _MatchAndAdvanceToken(Parser2* parser, SyntaxKind kind) {
-    if (kind == parser->tokenCur.kind) {
-        return _AdvanceToken(parser);
-    }
-    ReportError(TokenGetLocation(parser->tokenCur), "Expected token '%s' but got token '%s'", TokenKindToString(kind).cstr, TokenKindToString(parser->tokenCur.kind).cstr);
-    exit(1);
-}
-
-static SyntaxNode* WrapTokenInNode(Parser2* parser, SyntaxToken token) {
-    SyntaxNode* wrapper = SyntaxNodeCreate(token.kind, parser->tree);
-    wrapper->token = token;
-    return wrapper;
-}
-
-SyntaxNode* _ParseStatement(Parser2* parser);
-
-SyntaxNode* _ParseExpression(Parser2* parser);
-
-SyntaxNode* _ParseBinaryExpression(Parser2* parser, int32 parentPrecedence);
-
-SyntaxNode* _ParseUnaryExpression(Parser2* parser, int32 parentPrecedence);
-
-static SyntaxNode* _ParseTypeExpression(Parser2* parser) {
-    switch (parser->tokenCur.kind) {
-        case SyntaxKind_VoidKeyword: // Fallthrough
-        case SyntaxKind_CharKeyword: // Fallthrough
-        case SyntaxKind_BoolKeyword: // Fallthrough
-        case SyntaxKind_ByteKeyword: // Fallthrough
-        case SyntaxKind_ShortKeyword: // Fallthrough
-        case SyntaxKind_IntKeyword: // Fallthrough
-        case SyntaxKind_LongKeyword: // Fallthrough
-        case SyntaxKind_CStringKeyword: // Fallthrough
-        case SyntaxKind_IdentifierToken: {
-            break;
-        }
-        default: {
-            ReportError(TokenGetLocation(parser->tokenCur), "Expected primitive type or identifier token - got token '%s'", TokenGetText(parser->tokenCur).cstr);
-        }
-    }
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_TypeExpression, parser->tree);
-    result->typeExpr.typeTokens = SyntaxNodeArrayCreate();
-    SyntaxToken identifier = _AdvanceToken(parser);
-    SyntaxNode* identifierWrapper = WrapTokenInNode(parser, identifier);
-    SyntaxNodeArrayPush(&result->typeExpr.typeTokens, identifierWrapper);
-    while (parser->tokenCur.kind == SyntaxKind_StarToken) {
-        SyntaxToken star = _AdvanceToken(parser);
-        SyntaxNode* starWrapper = WrapTokenInNode(parser, star);
-        SyntaxNodeArrayPush(&result->typeExpr.typeTokens, starWrapper);
-    }
-    return result;
-}
-
-static SyntaxNode* _ParseFunctionCallExpression(Parser2* parser, SyntaxNode* func) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_FuncCallExpression, parser->tree);
-    result->funcCallExpr.func = func;
-    result->funcCallExpr.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
-    result->funcCallExpr.argumentsWithSeparators = SyntaxNodeArrayCreate();
-    while (parser->tokenCur.kind != SyntaxKind_RightParenToken) {
-        SyntaxNode* argument = _ParseExpression(parser);
-        SyntaxNodeArrayPush(&result->funcCallExpr.argumentsWithSeparators, argument);
-        if (parser->tokenCur.kind == SyntaxKind_CommaToken) {
-            SyntaxToken comma = _MatchAndAdvanceToken(parser, SyntaxKind_CommaToken);
-            SyntaxNode* commaWrapper = WrapTokenInNode(parser, comma);
-            SyntaxNodeArrayPush(&result->funcCallExpr.argumentsWithSeparators, commaWrapper);
-        } else {
-            break;
-        }
-    }
-    result->funcCallExpr.rightParen = _MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
-    return result;
-}
-
-static SyntaxNode* _ParseArrayIndexingExpression(Parser2* parser, SyntaxNode* arr) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ArrayIndexExpression, parser->tree);
-    result->arrayIndexExpr.arr = arr;
-    result->arrayIndexExpr.leftBracket = _MatchAndAdvanceToken(parser, SyntaxKind_LeftBracketToken);
-    result->arrayIndexExpr.indexExpression = _ParseExpression(parser);
-    result->arrayIndexExpr.rightBracket = _MatchAndAdvanceToken(parser, SyntaxKind_RightBracketToken);
-    return result;
-}
-
-static SyntaxNode* _ParseMemberAccess(Parser2* parser, SyntaxNode* container) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_MemberAccessExpression, parser->tree);
-    result->memberAccessExpr.container = container;
-    if (parser->tokenCur.kind == SyntaxKind_ArrowToken) {
-        result->memberAccessExpr.accessToken = _MatchAndAdvanceToken(parser, SyntaxKind_ArrowToken);
-    } else {
-        result->memberAccessExpr.accessToken = _MatchAndAdvanceToken(parser, SyntaxKind_DotToken);
-    }
-    result->memberAccessExpr.memberIdentifier = _MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
-    return result;
-}
-
-static SyntaxNode* _ParseEnumLiteralExpression(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_EnumValueLiteralExpression, parser->tree);
-    result->enumLiteralExpr.enumIdentifier = _MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
-    result->enumLiteralExpr.coloncolon = _MatchAndAdvanceToken(parser, SyntaxKind_ColonColonToken);
-    result->enumLiteralExpr.valueIdentifier = _MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
-    return result;
-}
-
-static SyntaxNode* _ParsePrimaryExpression(Parser2* parser) {
-    switch (parser->tokenCur.kind) {
-        case SyntaxKind_LeftParenToken: {
-            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ParenthesizedExpression, parser->tree);
-            result->parenthesizedExpr.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
-            result->parenthesizedExpr.expression = _ParseExpression(parser);
-            result->parenthesizedExpr.rightParen = _MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
-            return result;
-        }
-        case SyntaxKind_SizeOfKeyword: {
-            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_SizeOfExpression, parser->tree);
-            result->sizeofExpr.sizeofKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_SizeOfKeyword);
-            result->sizeofExpr.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
-            result->sizeofExpr.typeExpression = _ParseTypeExpression(parser);
-            result->sizeofExpr.rightParen = _MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
-            return result;
-        }
-        case SyntaxKind_IdentifierToken: {
-            if (parser->tokenNext.kind == SyntaxKind_ColonColonToken) {
-                return _ParseEnumLiteralExpression(parser);
-            }
-            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_NameExpression, parser->tree);
-            result->nameExpr.identifier = _MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
-            return result;
-        }
-        case SyntaxKind_StringLiteralToken: {
-            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_StringLiteralExpression, parser->tree);
-            result->stringLiteralExpr.stringLiteralTokens = SyntaxNodeArrayCreate();
-            while (parser->tokenCur.kind == SyntaxKind_StringLiteralToken) {
-                SyntaxToken literal = _MatchAndAdvanceToken(parser, SyntaxKind_StringLiteralToken);
-                SyntaxNode* literalWrapper = WrapTokenInNode(parser, literal);
-                SyntaxNodeArrayPush(&result->stringLiteralExpr.stringLiteralTokens, literalWrapper);
-            }
-            return result;
-        }
-        case SyntaxKind_NullKeyword: {
-            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_NullLiteralExpression, parser->tree);
-            result->nullLiteralExpr.nullLiteral = _MatchAndAdvanceToken(parser, SyntaxKind_NullKeyword);
-            return result;
-        }
-        case SyntaxKind_CharacterLiteralToken: {
-            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_CharacterLiteralExpression, parser->tree);
-            result->characterLiteralExpr.characterLiteral = _MatchAndAdvanceToken(parser, SyntaxKind_CharacterLiteralToken);
-            return result;
-        }
-        case SyntaxKind_FalseKeyword: // Fallthrough
-        case SyntaxKind_TrueKeyword: {
-            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_BoolLiteralExpression, parser->tree);
-            result->boolLiteralExpr.boolLiteral = _AdvanceToken(parser);
-            return result;
-        }
-        case SyntaxKind_IntegerLiteralToken: // Fallthrough
-        default: {
-            SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_IntegerLiteralExpression, parser->tree);
-            result->integerLiteralExpr.integerLiteral = _MatchAndAdvanceToken(parser, SyntaxKind_IntegerLiteralToken);
-            return result;
-        }
-    }
-}
-
-static SyntaxNode* _ParseArrayLiteralExpression(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ArrayLiteralExpression, parser->tree);
-    result->arrayLiteralExpr.leftBrace = _MatchAndAdvanceToken(parser, SyntaxKind_LeftBraceToken);
-    result->arrayLiteralExpr.elemsWithSeparators = SyntaxNodeArrayCreate();
-    while (parser->tokenCur.kind != SyntaxKind_RightBraceToken) {
-        SyntaxNode* expression = _ParseExpression(parser);
-        SyntaxNodeArrayPush(&result->arrayLiteralExpr.elemsWithSeparators, expression);
-        if (parser->tokenCur.kind == SyntaxKind_CommaToken) {
-            SyntaxToken comma = _MatchAndAdvanceToken(parser, SyntaxKind_CommaToken);
-            SyntaxNode* commaWrapper = WrapTokenInNode(parser, comma);
-            SyntaxNodeArrayPush(&result->arrayLiteralExpr.elemsWithSeparators, commaWrapper);
-        } else {
-            break;
-        }
-    }
-    result->arrayLiteralExpr.rightBrace = _MatchAndAdvanceToken(parser, SyntaxKind_RightBraceToken);
-    return result;
-}
-
-static SyntaxNode* _ParsePostFixExpression(Parser2* parser) {
-    SyntaxNode* left = _ParsePrimaryExpression(parser);
-    bool foundPostfix = false;
-    do {
-        foundPostfix = false;
-        if (parser->tokenCur.kind == SyntaxKind_LeftParenToken) {
-            foundPostfix = true;
-            left = _ParseFunctionCallExpression(parser, left);
-        }
-        if (parser->tokenCur.kind == SyntaxKind_DotToken || parser->tokenCur.kind == SyntaxKind_ArrowToken) {
-            foundPostfix = true;
-            left = _ParseMemberAccess(parser, left);
-        }
-        if (parser->tokenCur.kind == SyntaxKind_LeftBracketToken) {
-            foundPostfix = true;
-            left = _ParseArrayIndexingExpression(parser, left);
-        }
-    } while (foundPostfix);
-    return left;
-}
-
-static SyntaxNode* _ParseCastExpression(Parser2* parser) {
-    if (parser->tokenCur.kind != SyntaxKind_LeftParenToken || parser->tokenNext.kind != SyntaxKind_AsKeyword) {
-        return _ParsePostFixExpression(parser);
-    }
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_TypeCastExpression, parser->tree);
-    result->typeCastExpr.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
-    result->typeCastExpr.asKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_AsKeyword);
-    result->typeCastExpr.targetTypeExpression = _ParseTypeExpression(parser);
-    result->typeCastExpr.rightParen = _MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
-    result->typeCastExpr.expression = _ParseUnaryExpression(parser, 0);
-    return result;
-}
-
-static SyntaxNode* _ParseUnaryExpression(Parser2* parser, int32 parentPrecedence) {
-    SyntaxNode* left = NULL;
-    int32 unaryOperatorPrecedence = GetUnaryOperatorPrecedence(parser->tokenCur.kind);
-    if ((unaryOperatorPrecedence != 0) && (unaryOperatorPrecedence >= parentPrecedence)) {
-        SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_UnaryExpression, parser->tree);
-        result->unaryExpr.operatorToken = _AdvanceToken(parser);
-        result->unaryExpr.operand = _ParseBinaryExpression(parser, unaryOperatorPrecedence);
-        left = result;
-    } else {
-        left = _ParseCastExpression(parser);
-    }
-    return left;
-}
-
-static SyntaxNode* _ParseBinaryExpression(Parser2* parser, int32 parentPrecedence) {
-    SyntaxNode* left = _ParseUnaryExpression(parser, parentPrecedence);
-    while (true) {
-        int32 precedence = GetBinaryOperatorPrecedence(parser->tokenCur.kind);
-        if (precedence == 0 || precedence < parentPrecedence || precedence == parentPrecedence && !IsBinaryOperatorRightAssociative(parser->tokenCur.kind)) {
-            break;
-        }
-        SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_BinaryExpression, parser->tree);
-        result->binaryExpr.left = left;
-        result->binaryExpr.operatorToken = _AdvanceToken(parser);
-        result->binaryExpr.right = _ParseBinaryExpression(parser, precedence);
-        left = result;
-    }
-    return left;
-}
-
-static SyntaxNode* _ParseTernaryConditionExpression(Parser2* parser) {
-    SyntaxNode* left = _ParseBinaryExpression(parser, 0);
-    if (parser->tokenCur.kind == SyntaxKind_QuestionmarkToken) {
-        SyntaxNode* ternary = SyntaxNodeCreate(SyntaxKind_TernaryConditionalExpression, parser->tree);
-        ternary->ternaryConditionalExpr.conditionExpression = left;
-        ternary->ternaryConditionalExpr.questionmark = _MatchAndAdvanceToken(parser, SyntaxKind_QuestionmarkToken);
-        ternary->ternaryConditionalExpr.thenExpression = _ParseTernaryConditionExpression(parser);
-        ternary->ternaryConditionalExpr.colon = _MatchAndAdvanceToken(parser, SyntaxKind_ColonToken);
-        ternary->ternaryConditionalExpr.elseExpression = _ParseTernaryConditionExpression(parser);
-        return ternary;
-    }
-    return left;
-}
-
-static SyntaxNode* _ParseAssignmentExpression(Parser2* parser) {
-    SyntaxNode* left = _ParseTernaryConditionExpression(parser);
-    switch (parser->tokenCur.kind) {
-        case SyntaxKind_EqualsToken: // Fallthrough
-        case SyntaxKind_PlusEqualsToken: // Fallthrough
-        case SyntaxKind_MinusEqualsToken: // Fallthrough
-        case SyntaxKind_StarEqualsToken: // Fallthrough
-        case SyntaxKind_SlashEqualsToken: // Fallthrough
-        case SyntaxKind_PercentEqualsToken: // Fallthrough
-        case SyntaxKind_HatEqualsToken: // Fallthrough
-        case SyntaxKind_AmpersandEqualsToken: // Fallthrough
-        case SyntaxKind_PipeEqualsToken: // Fallthrough
-        case SyntaxKind_LessLessEqualsToken: // Fallthrough
-        case SyntaxKind_GreaterGreaterEqualsToken: {
-            SyntaxNode* assignment = SyntaxNodeCreate(SyntaxKind_BinaryExpression, parser->tree);
-            assignment->binaryExpr.left = left;
-            assignment->binaryExpr.operatorToken = _AdvanceToken(parser);
-            assignment->binaryExpr.right = _ParseAssignmentExpression(parser);
-            return assignment;
-        }
-    }
-    return left;
-}
-
-static SyntaxNode* _ParseExpression(Parser2* parser) {
-    return _ParseAssignmentExpression(parser);
-}
-
-static SyntaxNode* _ParseExpressionStatement(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ExpressionStatement, parser->tree);
-    result->expressionStmt.expression = _ParseExpression(parser);
-    result->expressionStmt.semicolon = _MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
-    return result;
-}
-
-static SyntaxNode* _ParseVariableDefinitionStatement(Parser2* parser, bool skipLet, bool allowInitializer, SyntaxKind terminator) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_VariableDeclarationStatement, parser->tree);
-    if (skipLet) {
-        result->variableDeclarationStmt.letKeyword = SyntaxTokenCreateEmpty(parser->tree);
-    } else {
-        if (parser->tokenCur.kind == SyntaxKind_LetLocalPersistKeyword) {
-            result->variableDeclarationStmt.letKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_LetLocalPersistKeyword);
-        } else {
-            result->variableDeclarationStmt.letKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_LetKeyword);
-        }
-    }
-    result->variableDeclarationStmt.typeExpression = _ParseTypeExpression(parser);
-    result->variableDeclarationStmt.identifier = _MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
-    if (parser->tokenCur.kind == SyntaxKind_LeftBracketToken) {
-        result->variableDeclarationStmt.leftBracket = _MatchAndAdvanceToken(parser, SyntaxKind_LeftBracketToken);
-        if (parser->tokenCur.kind == SyntaxKind_IntegerLiteralToken) {
-            result->variableDeclarationStmt.arraySizeLiteral = _MatchAndAdvanceToken(parser, SyntaxKind_IntegerLiteralToken);
-        }
-        result->variableDeclarationStmt.rightBracket = _MatchAndAdvanceToken(parser, SyntaxKind_RightBracketToken);
-        if (parser->tokenCur.kind == SyntaxKind_EqualsToken && allowInitializer) {
-            result->variableDeclarationStmt.equalsToken = _MatchAndAdvanceToken(parser, SyntaxKind_EqualsToken);
-            result->variableDeclarationStmt.initializerExpression = _ParseArrayLiteralExpression(parser);
-        } else {
-            result->variableDeclarationStmt.equalsToken = SyntaxTokenCreateEmpty(parser->tree);
-            result->variableDeclarationStmt.initializerExpression = NULL;
-        }
-    } else {
-        result->variableDeclarationStmt.leftBracket = SyntaxTokenCreateEmpty(parser->tree);
-        result->variableDeclarationStmt.arraySizeLiteral = SyntaxTokenCreateEmpty(parser->tree);
-        result->variableDeclarationStmt.rightBracket = SyntaxTokenCreateEmpty(parser->tree);
-        if (parser->tokenCur.kind == SyntaxKind_EqualsToken && allowInitializer) {
-            result->variableDeclarationStmt.equalsToken = _MatchAndAdvanceToken(parser, SyntaxKind_EqualsToken);
-            result->variableDeclarationStmt.initializerExpression = _ParseExpression(parser);
-        } else {
-            result->variableDeclarationStmt.equalsToken = SyntaxTokenCreateEmpty(parser->tree);
-            result->variableDeclarationStmt.initializerExpression = NULL;
-        }
-    }
-    if (terminator == SyntaxKind_BadToken) {
-        result->variableDeclarationStmt.terminatorToken = SyntaxTokenCreateEmpty(parser->tree);
-    } else {
-        result->variableDeclarationStmt.terminatorToken = _MatchAndAdvanceToken(parser, terminator);
-    }
-    return result;
-}
-
-static SyntaxNode* _ParseIfStatement(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_IfStatement, parser->tree);
-    result->ifStmt.ifKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_IfKeyword);
-    result->ifStmt.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
-    result->ifStmt.condition = _ParseExpression(parser);
-    result->ifStmt.rightParen = _MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
-    result->ifStmt.thenBlock = _ParseStatement(parser);
-    result->ifStmt.elseBlock = NULL;
-    result->ifStmt.elseKeyword = SyntaxTokenCreateEmpty(parser->tree);
-    if (parser->tokenCur.kind == SyntaxKind_ElseKeyword) {
-        result->ifStmt.elseKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_ElseKeyword);
-        result->ifStmt.elseBlock = _ParseStatement(parser);
-    }
-    return result;
-}
-
-static SyntaxNode* _ParseWhileStatement(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_WhileStatement, parser->tree);
-    result->whileStmt.whileKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_WhileKeyword);
-    result->whileStmt.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
-    result->whileStmt.condition = _ParseExpression(parser);
-    result->whileStmt.rightParen = _MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
-    parser->loopLevel += 1;
-    result->whileStmt.body = _ParseStatement(parser);
-    parser->loopLevel -= 1;
-    return result;
-}
-
-static SyntaxNode* _ParseDoWhileStatement(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_DoWhileStatement, parser->tree);
-    result->doWhileStmt.doKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_DoKeyword);
-    parser->loopLevel += 1;
-    result->doWhileStmt.body = _ParseStatement(parser);
-    parser->loopLevel -= 1;
-    result->doWhileStmt.whileKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_WhileKeyword);
-    result->doWhileStmt.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
-    result->doWhileStmt.condition = _ParseExpression(parser);
-    result->doWhileStmt.rightParen = _MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
-    result->doWhileStmt.semicolon = _MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
-    return result;
-}
-
-static SyntaxNode* _ParseForStatement(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ForStatement, parser->tree);
-    result->forStmt.forKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_ForKeyword);
-    result->forStmt.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
-    if (parser->tokenCur.kind == SyntaxKind_LetKeyword) {
-        result->forStmt.initializerStatement = _ParseVariableDefinitionStatement(parser, false, true, SyntaxKind_SemicolonToken);
-    } else {
-        result->forStmt.initializerStatement = _ParseExpressionStatement(parser);
-    }
-    result->forStmt.conditionStatement = _ParseExpressionStatement(parser);
-    result->forStmt.incrementExpression = _ParseExpression(parser);
-    result->forStmt.rightParen = _MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
-    parser->loopLevel += 1;
-    result->forStmt.body = _ParseStatement(parser);
-    parser->loopLevel -= 1;
-    return result;
-}
-
-static SyntaxNode* _ParseReturnStatement(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ReturnStatement, parser->tree);
-    result->returnStmt.returnKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_ReturnKeyword);
-    if (parser->functionLevel == 0) {
-        ReportError(TokenGetLocation(result->returnStmt.returnKeyword), "Invalid 'return' keyword found outside of function definition");
-    }
-    if (parser->tokenCur.kind != SyntaxKind_SemicolonToken) {
-        result->returnStmt.returnExpression = _ParseExpression(parser);
-    } else {
-        result->returnStmt.returnExpression = NULL;
-    }
-    result->returnStmt.semicolon = _MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
-    return result;
-}
-
-static SyntaxNode* _ParseBreakStatement(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_BreakStatement, parser->tree);
-    result->breakStmt.breakKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_BreakKeyword);
-    if (parser->loopLevel == 0 && parser->switchCaseLevel == 0) {
-        ReportError(TokenGetLocation(result->breakStmt.breakKeyword), "Invalid 'break' keyword found outside of loop or switch-case definition");
-    }
-    result->returnStmt.semicolon = _MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
-    return result;
-}
-
-static SyntaxNode* _ParseContinueStatement(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ContinueStatement, parser->tree);
-    result->continueStmt.continueKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_ContinueKeyword);
-    if (parser->loopLevel == 0) {
-        ReportError(TokenGetLocation(result->continueStmt.continueKeyword), "Invalid 'continue' keyword found outside of loop definition");
-    }
-    result->returnStmt.semicolon = _MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
-    return result;
-}
-
-static SyntaxNode* _ParseBlockStatement(Parser2* parser, bool inSwitch) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_BlockStatement, parser->tree);
-    if (parser->tokenCur.kind == SyntaxKind_LeftBraceToken || !inSwitch) {
-        result->blockStmt.leftBrace = _MatchAndAdvanceToken(parser, SyntaxKind_LeftBraceToken);
-    } else {
-        result->blockStmt.leftBrace = SyntaxTokenCreateEmpty(parser->tree);
-    }
-    result->blockStmt.statements = SyntaxNodeArrayCreate();
-    while (parser->tokenCur.kind != SyntaxKind_RightBraceToken) {
-        if (inSwitch && parser->tokenCur.kind == SyntaxKind_CaseKeyword) {
-            break;
-        }
-        if (inSwitch && parser->tokenCur.kind == SyntaxKind_DefaultKeyword) {
-            break;
-        }
-        SyntaxNode* statement = _ParseStatement(parser);
-        SyntaxNodeArrayPush(&result->blockStmt.statements, statement);
-    }
-    if (result->blockStmt.leftBrace.kind != SyntaxKind_BadToken) {
-        result->blockStmt.rightBrace = _MatchAndAdvanceToken(parser, SyntaxKind_RightBraceToken);
-    }
-    return result;
-}
-
-static SyntaxNode* _ParseCaseStatement(Parser2* parser, SyntaxNode* switchExpression) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_CaseStatement, parser->tree);
-    result->caseStmt.caseKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_CaseKeyword);
-    if (parser->switchCaseLevel == 0) {
-        ReportError(TokenGetLocation(result->caseStmt.caseKeyword), "Unexpected 'case' label keyword outside of switch statement");
-    }
-    result->caseStmt.literalExpression = _ParseExpression(parser);
-    switch (result->caseStmt.literalExpression->kind) {
-        case SyntaxKind_IntegerLiteralExpression: // Fallthrough
-        case SyntaxKind_StringLiteralExpression: // Fallthrough
-        case SyntaxKind_CharacterLiteralExpression: // Fallthrough
-        case SyntaxKind_EnumValueLiteralExpression: {
-            break;
-        }
-        default: {
-            ReportError(TokenGetLocation(result->caseStmt.caseKeyword), "Expected literal token in case label but got '%s' instead", "TODO - we need to get the string of an expression");
-        }
-    }
-    result->caseStmt.colon = _MatchAndAdvanceToken(parser, SyntaxKind_ColonToken);
-    result->caseStmt.body = _ParseBlockStatement(parser, true);
-    return result;
-}
-
-static SyntaxNode* _ParseDefaultStatement(Parser2* parser, SyntaxNode* switchExpression) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_DefaultStatement, parser->tree);
-    result->defaultStmt.defaultKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_DefaultKeyword);
-    if (parser->switchCaseLevel == 0) {
-        ReportError(TokenGetLocation(result->defaultStmt.defaultKeyword), "Unexpected 'default' case label keyword outside of switch statement");
-    }
-    result->defaultStmt.colon = _MatchAndAdvanceToken(parser, SyntaxKind_ColonToken);
-    result->defaultStmt.body = _ParseBlockStatement(parser, true);
-    return result;
-}
-
-static SyntaxNode* _ParseSwitchStatement(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_SwitchStatement, parser->tree);
-    result->switchStmt.switchKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_SwitchKeyword);
-    result->switchStmt.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
-    result->switchStmt.switchExpression = _ParseExpression(parser);
-    result->switchStmt.rightParen = _MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
-    result->switchStmt.leftBrace = _MatchAndAdvanceToken(parser, SyntaxKind_LeftBraceToken);
-    parser->switchCaseLevel += 1;
-    result->switchStmt.caseStatements = SyntaxNodeArrayCreate();
-    while (parser->tokenCur.kind != SyntaxKind_EndOfFileToken) {
-        if (parser->tokenCur.kind == SyntaxKind_RightBraceToken) {
-            break;
-        }
-        if (parser->tokenCur.kind == SyntaxKind_CaseKeyword) {
-            SyntaxNode* caseStatement = _ParseCaseStatement(parser, result);
-            SyntaxNodeArrayPush(&result->switchStmt.caseStatements, caseStatement);
-        } else {
-            SyntaxNode* defaultStatement = _ParseDefaultStatement(parser, result);
-            SyntaxNodeArrayPush(&result->switchStmt.caseStatements, defaultStatement);
-        }
-    }
-    parser->switchCaseLevel -= 1;
-    result->switchStmt.rightBrace = _MatchAndAdvanceToken(parser, SyntaxKind_RightBraceToken);
-    return result;
-}
-
-static SyntaxNode* _ParseStatement(Parser2* parser) {
-    assert(parser->functionLevel > 0);
-    switch (parser->tokenCur.kind) {
-        case SyntaxKind_LeftBraceToken: {
-            return _ParseBlockStatement(parser, false);
-        }
-        case SyntaxKind_IfKeyword: {
-            return _ParseIfStatement(parser);
-        }
-        case SyntaxKind_DoKeyword: {
-            return _ParseDoWhileStatement(parser);
-        }
-        case SyntaxKind_WhileKeyword: {
-            return _ParseWhileStatement(parser);
-        }
-        case SyntaxKind_ForKeyword: {
-            return _ParseForStatement(parser);
-        }
-        case SyntaxKind_ReturnKeyword: {
-            return _ParseReturnStatement(parser);
-        }
-        case SyntaxKind_BreakKeyword: {
-            return _ParseBreakStatement(parser);
-        }
-        case SyntaxKind_ContinueKeyword: {
-            return _ParseContinueStatement(parser);
-        }
-        case SyntaxKind_SwitchKeyword: {
-            return _ParseSwitchStatement(parser);
-        }
-        case SyntaxKind_LetKeyword: // Fallthrough
-        case SyntaxKind_LetLocalPersistKeyword: {
-            return _ParseVariableDefinitionStatement(parser, false, true, SyntaxKind_SemicolonToken);
-        }
-        default: {
-            return _ParseExpressionStatement(parser);
-        }
-    }
-}
-
-static SyntaxNode* _ParseStructOrUnionDefinitionStatement(Parser2* parser, SyntaxToken externKeyword) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_StructOrUnionDeclarationStatement, parser->tree);
-    result->structOrUnionDeclarationStmt.externKeyword = externKeyword;
-    if (parser->tokenCur.kind == SyntaxKind_StructKeyword) {
-        result->structOrUnionDeclarationStmt.structOrUnionKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_StructKeyword);
-    } else {
-        result->structOrUnionDeclarationStmt.structOrUnionKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_UnionKeyword);
-    }
-    result->structOrUnionDeclarationStmt.identifier = _MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
-    if (parser->tokenCur.kind == SyntaxKind_SemicolonToken) {
-        result->structOrUnionDeclarationStmt.semicolon = _MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
-        return result;
-    } else {
-        result->kind = SyntaxKind_StructOrUniontDefinitionStatement;
-        result->structOrUnionDefinitionStmt.memberDeclarationStatements = SyntaxNodeArrayCreate();
-        result->structOrUnionDefinitionStmt.leftBrace = _MatchAndAdvanceToken(parser, SyntaxKind_LeftBraceToken);
-        while (parser->tokenCur.kind != SyntaxKind_RightBraceToken) {
-            SyntaxNode* memberDeclaration = _ParseVariableDefinitionStatement(parser, true, false, SyntaxKind_SemicolonToken);
-            SyntaxNodeArrayPush(&result->structOrUnionDefinitionStmt.memberDeclarationStatements, memberDeclaration);
-        }
-        result->structOrUnionDefinitionStmt.rightBrace = _MatchAndAdvanceToken(parser, SyntaxKind_RightBraceToken);
-        result->structOrUnionDefinitionStmt.semicolon = _MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
-        return result;
-    }
-}
-
-static SyntaxNode* _ParseEnumMemberClause(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_EnumMemberClauseSyntax, parser->tree);
-    result->enumMember.identifier = _MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
-    if (parser->tokenCur.kind == SyntaxKind_EqualsToken) {
-        result->enumMember.equals = _MatchAndAdvanceToken(parser, SyntaxKind_EqualsToken);
-        result->enumMember.integerLiteral = _MatchAndAdvanceToken(parser, SyntaxKind_IntegerLiteralToken);
-    } else {
-        result->enumMember.equals = SyntaxTokenCreateEmpty(parser->tree);
-        result->enumMember.integerLiteral = SyntaxTokenCreateEmpty(parser->tree);
-    }
-    if (parser->tokenCur.kind == SyntaxKind_CommaToken) {
-        result->enumMember.comma = _MatchAndAdvanceToken(parser, SyntaxKind_CommaToken);
-    } else {
-        result->enumMember.comma = SyntaxTokenCreateEmpty(parser->tree);
-    }
-    return result;
-}
-
-static SyntaxNode* _ParseEnumDefinitionStatement(Parser2* parser, SyntaxToken externKeyword) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_EnumDeclarationStatement, parser->tree);
-    result->enumDeclarationStmt.externKeyword = externKeyword;
-    result->enumDeclarationStmt.enumKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_EnumKeyword);
-    result->enumDeclarationStmt.classKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_ClassKeyword);
-    result->enumDeclarationStmt.identifier = _MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
-    if (parser->tokenCur.kind == SyntaxKind_SemicolonToken) {
-        result->enumDeclarationStmt.semicolon = _MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
-        return result;
-    } else {
-        result->kind = SyntaxKind_EnumDefinitionStatement;
-        result->enumDefinitionStmt.memberClauses = SyntaxNodeArrayCreate();
-        result->enumDefinitionStmt.leftBrace = _MatchAndAdvanceToken(parser, SyntaxKind_LeftBraceToken);
-        while (parser->tokenCur.kind != SyntaxKind_RightBraceToken) {
-            SyntaxNode* memberClause = _ParseEnumMemberClause(parser);
-            SyntaxNodeArrayPush(&result->enumDefinitionStmt.memberClauses, memberClause);
-            if (memberClause->enumMember.comma.kind != SyntaxKind_CommaToken) {
-                break;
-            }
-        }
-        result->enumDefinitionStmt.rightBrace = _MatchAndAdvanceToken(parser, SyntaxKind_RightBraceToken);
-        result->enumDefinitionStmt.semicolon = _MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
-        return result;
-    }
-}
-
-static SyntaxNode* _ParseFunctionDefinitionStatement(Parser2* parser, SyntaxToken externKeyword) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_FunctionDeclarationStatement, parser->tree);
-    result->functionDeclarationStmt.externKeyword = externKeyword;
-    result->functionDeclarationStmt.funKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_FunKeyword);
-    result->functionDeclarationStmt.returnType = _ParseTypeExpression(parser);
-    result->functionDeclarationStmt.identifier = _MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
-    result->functionDeclarationStmt.leftParen = _MatchAndAdvanceToken(parser, SyntaxKind_LeftParenToken);
-    result->functionDeclarationStmt.params = SyntaxNodeArrayCreate();
-    while (parser->tokenCur.kind != SyntaxKind_RightParenToken) {
-        if (parser->tokenCur.kind == SyntaxKind_DotDotDotToken) {
-            SyntaxToken dotdot = _MatchAndAdvanceToken(parser, SyntaxKind_DotDotDotToken);
-            SyntaxNode* dotdotWrapper = WrapTokenInNode(parser, dotdot);
-            SyntaxNodeArrayPush(&result->functionDeclarationStmt.params, dotdotWrapper);
-            break;
-        }
-        SyntaxNode* parameter = _ParseVariableDefinitionStatement(parser, true, false, SyntaxKind_BadToken);
-        SyntaxNodeArrayPush(&result->functionDeclarationStmt.params, parameter);
-        if (parser->tokenCur.kind == SyntaxKind_CommaToken) {
-            parameter->variableDeclarationStmt.terminatorToken = _MatchAndAdvanceToken(parser, SyntaxKind_CommaToken);
-        } else {
-            break;
-        }
-    }
-    result->functionDeclarationStmt.rightParen = _MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
-    if (parser->tokenCur.kind == SyntaxKind_SemicolonToken) {
-        result->functionDeclarationStmt.semicolon = _MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
-        return result;
-    } else {
-        result->kind = SyntaxKind_FunctionDefinitionStatement;
-        parser->functionLevel += 1;
-        result->functionDefinitionStmt.body = _ParseBlockStatement(parser, false);
-        parser->functionLevel -= 1;
-        return result;
-    }
-}
-
-static SyntaxNode* _ParseGlobalVariableDefinitionStatement(Parser2* parser, SyntaxToken externKeyword) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_GlobalVariableDeclarationStatement, parser->tree);
-    result->globalVariableStmt.externKeyword = externKeyword;
-    result->globalVariableStmt.variableDeclarationStatement = _ParseVariableDefinitionStatement(parser, false, true, SyntaxKind_SemicolonToken);
-    return result;
-}
-
-static SyntaxNode* _ParseGlobalDefinitionStatement(Parser2* parser) {
-    assert(parser->functionLevel == 0);
-    SyntaxToken externKeyword = SyntaxTokenCreateEmpty(parser->tree);
-    if (parser->tokenCur.kind == SyntaxKind_ExternKeyword) {
-        externKeyword = _AdvanceToken(parser);
-    }
-    switch (parser->tokenCur.kind) {
-        case SyntaxKind_EnumKeyword: {
-            return _ParseEnumDefinitionStatement(parser, externKeyword);
-        }
-        case SyntaxKind_StructKeyword: // Fallthrough
-        case SyntaxKind_UnionKeyword: {
-            return _ParseStructOrUnionDefinitionStatement(parser, externKeyword);
-        }
-        case SyntaxKind_FunKeyword: {
-            return _ParseFunctionDefinitionStatement(parser, externKeyword);
-        }
-        default: {
-            return _ParseGlobalVariableDefinitionStatement(parser, externKeyword);
-        }
-    }
-}
-
-static SyntaxNode* _ParseImportDeclarationStatement(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ImportDeclarationStatement, parser->tree);
-    result->importStmt.importKeyword = _MatchAndAdvanceToken(parser, SyntaxKind_ImportKeyword);
-    result->importStmt.modulenameLiteral = _MatchAndAdvanceToken(parser, SyntaxKind_StringLiteralToken);
-    return result;
-}
-
-static SyntaxNode* _ParseModuleStatement(Parser2* parser) {
-    switch (parser->tokenCur.kind) {
-        case SyntaxKind_ExternKeyword: // Fallthrough
-        case SyntaxKind_StructKeyword: // Fallthrough
-        case SyntaxKind_UnionKeyword: // Fallthrough
-        case SyntaxKind_EnumKeyword: // Fallthrough
-        case SyntaxKind_FunKeyword: // Fallthrough
-        case SyntaxKind_LetKeyword: {
-            return _ParseGlobalDefinitionStatement(parser);
-        }
-        case SyntaxKind_IncludeDirectiveKeyword: {
-            return _ParseImportDeclarationStatement(parser);
-        }
-        default: {
-            ReportError(TokenGetLocation(parser->tokenCur), "Expected global module definition got unexpected token '%s' instead", TokenGetText(parser->tokenCur).cstr);
-            exit(1);
-        }
-    }
-}
-
-static SyntaxTree* _ParseModule(Parser2* parser) {
-    SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_Module, parser->tree);
-    parser->tree->moduleRoot = (ModuleStatementSyntax*)result;
-    result->moduleStmt.globalStatements = SyntaxNodeArrayCreate();
-    while (parser->tokenCur.kind != SyntaxKind_EndOfFileToken) {
-        bool foundDirectives = false;
-        do {
-            foundDirectives = false;
-            if (parser->tokenCur.kind == SyntaxKind_TypedefKeyword) {
-                _MatchAndAdvanceToken(parser, SyntaxKind_TypedefKeyword);
-                while (parser->tokenCur.kind != SyntaxKind_SemicolonToken) {
-                    _AdvanceToken(parser);
-                }
-                _MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
-                foundDirectives = true;
-            }
-            if (parser->tokenCur.kind == SyntaxKind_IncludeDirectiveKeyword) {
-                _MatchAndAdvanceToken(parser, SyntaxKind_IncludeDirectiveKeyword);
-                if (parser->tokenCur.kind == SyntaxKind_LessToken) {
-                    _MatchAndAdvanceToken(parser, SyntaxKind_LessToken);
-                    _AdvanceToken(parser);
-                    _MatchAndAdvanceToken(parser, SyntaxKind_DotToken);
-                    _AdvanceToken(parser);
-                    _MatchAndAdvanceToken(parser, SyntaxKind_GreaterToken);
-                } else {
-                    _MatchAndAdvanceToken(parser, SyntaxKind_StringLiteralToken);
-                }
-                foundDirectives = true;
-            }
-            if (parser->tokenCur.kind == SyntaxKind_PragmaDirectiveKeyword) {
-                _MatchAndAdvanceToken(parser, SyntaxKind_PragmaDirectiveKeyword);
-                _MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
-                foundDirectives = true;
-            }
-            if (parser->tokenCur.kind == SyntaxKind_IfDirectiveKeyword) {
-                _MatchAndAdvanceToken(parser, SyntaxKind_IfDirectiveKeyword);
-                _AdvanceToken(parser);
-                foundDirectives = true;
-            }
-            if (parser->tokenCur.kind == SyntaxKind_EndIfDefinedDirectiveKeyword) {
-                _MatchAndAdvanceToken(parser, SyntaxKind_EndIfDefinedDirectiveKeyword);
-                foundDirectives = true;
-            }
-            if (parser->tokenCur.kind == SyntaxKind_DefineDirectiveKeyword) {
-                _MatchAndAdvanceToken(parser, SyntaxKind_DefineDirectiveKeyword);
-                if (parser->tokenCur.kind == SyntaxKind_LetKeyword) {
-                    _MatchAndAdvanceToken(parser, SyntaxKind_LetKeyword);
-                } else {
-                    if (parser->tokenCur.kind == SyntaxKind_AsKeyword) {
-                        _MatchAndAdvanceToken(parser, SyntaxKind_AsKeyword);
-                    } else {
-                        if (parser->tokenCur.kind == SyntaxKind_ByteKeyword) {
-                            _MatchAndAdvanceToken(parser, SyntaxKind_ByteKeyword);
-                            _MatchAndAdvanceToken(parser, SyntaxKind_CharKeyword);
-                        } else {
-                            if (parser->tokenCur.kind == SyntaxKind_LetLocalPersistKeyword) {
-                                _MatchAndAdvanceToken(parser, SyntaxKind_LetLocalPersistKeyword);
-                                _MatchAndAdvanceToken(parser, SyntaxKind_IdentifierToken);
-                            } else {
-                                _MatchAndAdvanceToken(parser, SyntaxKind_FunKeyword);
-                            }
-                        }
-                    }
-                }
-                foundDirectives = true;
-            }
         } while (foundDirectives);
-        SyntaxNode* statement = _ParseModuleStatement(parser);
+        SyntaxNode* statement = ParseModuleStatement(parser);
         SyntaxNodeArrayPush(&result->moduleStmt.globalStatements, statement);
     }
     if (parser->tokenCur.kind != SyntaxKind_EndOfFileToken) {
@@ -7032,21 +5778,13 @@ static ASTNode* BindModule(Binder* binder, ModuleStatementSyntax* syntax) {
 
 static void Compile(String inputFilepath, String outputFilepath) {
     Source source = PreprocessFile(inputFilepath);
+    Parser parser = ParserCreate(source);
+    SyntaxTree* syntaxTree = ParseModule(&parser);
     SymbolTable* symbolTable = SymbolTableCreate(NULL);
-    Parser parser = ParserCreate(source, symbolTable);
-    ASTNode* syntaxTree = ParseGlobalStatements(&parser);
-    if (parser.tokenCur.kind != SyntaxKind_EndOfFileToken) {
-        ReportError(TokenGetLocation(parser.tokenCur), "Expected EOF token after parsing file, instead got '%s'", TokenKindToString(parser.tokenCur.kind).cstr);
-    }
-    Emitter emitter = EmitterCreate(StringAppend(outputFilepath, StringCreateFromCStr("old")));
-    EmitRoot(&emitter, syntaxTree);
-    Parser2 parser2 = Parser2Create(source);
-    SyntaxTree* syntaxTree2 = _ParseModule(&parser2);
-    SymbolTable* symbolTable2 = SymbolTableCreate(NULL);
-    Binder binder = BinderCreate(source, symbolTable2);
-    ASTNode* boundTree = BindModule(&binder, syntaxTree2->moduleRoot);
-    Emitter emitter2 = EmitterCreate(outputFilepath);
-    EmitRoot(&emitter2, boundTree);
+    Binder binder = BinderCreate(source, symbolTable);
+    ASTNode* boundTree = BindModule(&binder, syntaxTree->moduleRoot);
+    Emitter emitter = EmitterCreate(outputFilepath);
+    EmitRoot(&emitter, boundTree);
 }
 
 static void main(int32 argc, char** argv) {

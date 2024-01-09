@@ -1,16 +1,13 @@
-#include "scanner.cpp"
 #include "definitions.hpp"
+#include "scanner.cpp"
 // #if 0
 // import "definitions.hpp"
 // import "scanner.cpp"
 // #endif
 
 struct Parser {
-    SymbolTable* symbolTable;
-    SyntaxTree* tree;
-
-    Source source;
     Scanner scanner;
+    SyntaxTree* tree;
     SyntaxToken tokenPrev;
     SyntaxToken tokenCur;
     SyntaxToken tokenNext;
@@ -18,19 +15,16 @@ struct Parser {
 
     int loopLevel;
     int switchCaseLevel;
-    Symbol* currentFunctionSymbol;
+    int functionLevel;
 };
 
-fun Parser ParserCreate(Source source, SymbolTable* symbolTable) {
+fun Parser ParserCreate(Source source) {
     let SyntaxTree* tree = (as SyntaxTree*)malloc(sizeof(SyntaxTree));
     tree->source = source;
     tree->moduleRoot = nullptr; // Will be set `_ParseModule(..)`
 
     let Parser result;
-    result.symbolTable = symbolTable;
     result.tree = tree;
-
-    result.source = source;
     result.scanner = ScannerCreate(tree);
     result.tokenPrev = SyntaxTokenCreateEmpty(tree);
     result.tokenCur = NextToken(&result.scanner);
@@ -38,9 +32,12 @@ fun Parser ParserCreate(Source source, SymbolTable* symbolTable) {
     result.tokenNextAfter = NextToken(&result.scanner);
     result.loopLevel = 0;
     result.switchCaseLevel = 0;
-    result.currentFunctionSymbol = nullptr;
+    result.functionLevel = 0;
     return result;
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Basics
 
 fun SyntaxToken AdvanceToken(Parser* parser) {
     let SyntaxToken result = parser->tokenCur;
@@ -64,415 +61,188 @@ fun SyntaxToken MatchAndAdvanceToken(Parser* parser, SyntaxKind kind) {
     exit(1);
 }
 
-fun ASTNode* ParseStatement(Parser* parser);
-fun ASTNode* ParseExpression(Parser* parser);
-fun ASTNode* ParseVariableDefinitionStatement(Parser* parser, bool isExternal);
-fun Type ParseType(Parser* parser);
-
-fun ASTNode* WrapInBlockStatementIfNecessary(Parser* parser, ASTNode* node) {
-    if (node->kind != ASTNodeKind::BlockStatement) {
-        let ASTNode* block = ASTNodeCreate(ASTNodeKind::BlockStatement, parser->symbolTable, node->token);
-        ASTNodeArrayPush(&block->children, node);
-        node = block;
-    }
-    return node;
+fun SyntaxNode* WrapTokenInNode(Parser* parser, SyntaxToken token) {
+    let SyntaxNode* wrapper = SyntaxNodeCreate(token.kind, parser->tree);
+    wrapper->token = token;
+    return wrapper;
 }
 
-// Turns {{{ a; {b c} d; e; }}} -> { a; {b c} d; e; }
-fun ASTNode* FlattenBlockStatementIfNecessary(Parser* parser, ASTNode* node) {
-    if (node->kind == ASTNodeKind::BlockStatement) {
-        if (node->children.count == 1 && node->children.nodes[0]->kind == ASTNodeKind::BlockStatement) {
-            let ASTNode* result = node->children.nodes[0];
-            result->symbolTable->parent = node->symbolTable->parent;
-            return FlattenBlockStatementIfNecessary(parser, result);
-        }
-    }
-    return node;
-}
+fun SyntaxNode* ParseStatement(Parser* parser);
+fun SyntaxNode* ParseExpression(Parser* parser);
+fun SyntaxNode* ParseBinaryExpression(Parser* parser, int parentPrecedence);
+fun SyntaxNode* ParseUnaryExpression(Parser* parser, int parentPrecedence);
 
-fun ASTNode* ParseFunctionCallExpression(Parser* parser, ASTNode* left) {
-    let SyntaxToken identifier = left->token;
-    let String identifierText = TokenGetText(identifier);
-    let Symbol* funcSymbol = GetSymbol(parser->symbolTable, identifierText);
-    if (funcSymbol == nullptr) {
-        ReportError(
-            TokenGetLocation(identifier),
-            "Undeclared function '%s'", 
-            identifierText.cstr
-        );
-    }
-    if (funcSymbol->kind != SymbolKind::Function) {
-        ReportError(
-            TokenGetLocation(identifier),
-            "Identifier '%s' is not a callable function", 
-            identifierText.cstr
-        );
-    }
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Expressions
 
-    let SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
-    let ASTNodeArray argumentList = ASTNodeArrayCreate();
-    while (parser->tokenCur.kind != SyntaxKind::RightParenToken) {
-        let ASTNode* argument = ParseExpression(parser);
-        ASTNodeArrayPush(&argumentList, argument);
-        if (parser->tokenCur.kind == SyntaxKind::CommaToken)
-            MatchAndAdvanceToken(parser, SyntaxKind::CommaToken);
-        else
+fun SyntaxNode* ParseTypeExpression(Parser* parser) {
+    switch (parser->tokenCur.kind) {
+        case SyntaxKind::VoidKeyword:
+        case SyntaxKind::CharKeyword:
+        case SyntaxKind::BoolKeyword:
+        case SyntaxKind::ByteKeyword:
+        case SyntaxKind::ShortKeyword:
+        case SyntaxKind::IntKeyword:
+        case SyntaxKind::LongKeyword:
+        case SyntaxKind::CStringKeyword:
+        case SyntaxKind::IdentifierToken:
             break;
-    }
-    let SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind::RightParenToken);
-
-    if (funcSymbol->isVariadric) {
-        if (argumentList.count < funcSymbol->membersSymbolTable->count) {
+        default: 
             ReportError(
-                TokenGetLocation(leftParen),
-                "Function '%s' expects at least %d arguments but %d arguments were provided", 
-                funcSymbol->name.cstr, funcSymbol->membersSymbolTable->count, argumentList.count
+                TokenGetLocation(parser->tokenCur),
+                "Expected primitive type or identifier token - got token '%s'", 
+                TokenGetText(parser->tokenCur).cstr
             );
-        }
-    } else {
-        if (argumentList.count != funcSymbol->membersSymbolTable->count) {
-            ReportError(
-                TokenGetLocation(leftParen),
-                "Function '%s' expects %d arguments but %d arguments were provided", 
-                funcSymbol->name.cstr, funcSymbol->membersSymbolTable->count, argumentList.count
-            );
-        }
     }
 
-    for (let int argumentIndex = 0; argumentIndex < funcSymbol->membersSymbolTable->count; argumentIndex += 1) {
-        let Type argumentType = argumentList.nodes[argumentIndex]->type;
-        let Type expectedType = funcSymbol->membersSymbolTable->symbols[argumentIndex]->type;
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::TypeExpression, parser->tree);
+    result->typeExpr.typeTokens = SyntaxNodeArrayCreate();
 
-        let TypeConversionResult conversion = CanConvertTypeFromTo(argumentType, expectedType);
-        if (conversion == TypeConversionResult::NonConvertible) {
-            ReportError(
-                TokenGetLocation(leftParen),
-                "Passed incompatible type '%s' for argument %d to function '%s' - expected type '%s'", 
-                TypeGetText(argumentType).cstr, argumentIndex + 1, funcSymbol->name.cstr, TypeGetText(expectedType).cstr 
-            );
-        }
-        if (conversion == TypeConversionResult::ExplicitlyConvertible) {
-            ReportError(
-                TokenGetLocation(leftParen),
-                "Cannot implicitly convert type '%s' of argument %d  to expected type '%s' in function call of '%s'", 
-                TypeGetText(argumentType).cstr, argumentIndex + 1, TypeGetText(expectedType).cstr, funcSymbol->name.cstr
-            );
-        }
+    let SyntaxToken identifier = AdvanceToken(parser);
+    let SyntaxNode* identifierWrapper = WrapTokenInNode(parser, identifier);
+    SyntaxNodeArrayPush(&result->typeExpr.typeTokens, identifierWrapper);
+
+    while (parser->tokenCur.kind == SyntaxKind::StarToken) {
+        let SyntaxToken star = AdvanceToken(parser);
+        let SyntaxNode* starWrapper = WrapTokenInNode(parser, star);
+        SyntaxNodeArrayPush(&result->typeExpr.typeTokens, starWrapper);
     }
 
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::FunccallExpression, parser->symbolTable, identifier);
-    result->symbol = funcSymbol;
-    result->type = funcSymbol->type;
-    result->children = argumentList;
     return result;
 }
 
-fun ASTNode* ParseArrayIndexingExpression(Parser* parser, ASTNode* left) {
-    let SyntaxToken leftBracket = MatchAndAdvanceToken(parser, SyntaxKind::LeftBracketToken);
-    let ASTNode* index = ParseExpression(parser);
-    let SyntaxToken rightBracket = MatchAndAdvanceToken(parser, SyntaxKind::RightBracketToken);
+fun SyntaxNode* ParseFunctionCallExpression(Parser* parser, SyntaxNode* func) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::FuncCallExpression, parser->tree);
+    result->funcCallExpr.func = func;
+    result->funcCallExpr.leftParen = MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
 
-    if (!IsNumberType(index->type)) {
-        ReportError(
-            TokenGetLocation(leftBracket),
-            "Array index after '%s' must be number type", 
-            TokenKindToString(leftBracket.kind).cstr
-        );
+    result->funcCallExpr.argumentsWithSeparators = SyntaxNodeArrayCreate();
+    while (parser->tokenCur.kind != SyntaxKind::RightParenToken) {
+        let SyntaxNode* argument = ParseExpression(parser);
+        SyntaxNodeArrayPush(&result->funcCallExpr.argumentsWithSeparators, argument);
+        
+        if (parser->tokenCur.kind == SyntaxKind::CommaToken) {
+            let SyntaxToken comma = MatchAndAdvanceToken(parser, SyntaxKind::CommaToken);
+            let SyntaxNode* commaWrapper = WrapTokenInNode(parser, comma);
+            SyntaxNodeArrayPush(&result->funcCallExpr.argumentsWithSeparators, commaWrapper);
+        } else {
+            break;
+        }
     }
-    if (left->symbol == nullptr || TypeGetIndirectionLevel(left->symbol->type) == 0) {
-        ReportError(
-            TokenGetLocation(leftBracket),
-            "Left hand side of array index operator '%s' is not a known array or pointer", 
-            TokenKindToString(leftBracket.kind).cstr
-        );
-    }
+    result->funcCallExpr.rightParen = MatchAndAdvanceToken(parser, SyntaxKind::RightParenToken);
+    return result;
+}
 
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::Arrayindexing, parser->symbolTable, left->token);
-    result->type = left->symbol->type;
-    if (result->type.isArray)
-        result->type.isArray = false; // Because we index it
+fun SyntaxNode* ParseArrayIndexingExpression(Parser* parser, SyntaxNode* arr) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::ArrayIndexExpression, parser->tree);
+    result->arrayIndexExpr.arr = arr;
+    result->arrayIndexExpr.leftBracket = MatchAndAdvanceToken(parser, SyntaxKind::LeftBracketToken);
+    result->arrayIndexExpr.indexExpression = ParseExpression(parser);
+    result->arrayIndexExpr.rightBracket = MatchAndAdvanceToken(parser, SyntaxKind::RightBracketToken);
+    return result;
+}
+
+fun SyntaxNode* ParseMemberAccess(Parser* parser, SyntaxNode* container) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::MemberAccessExpression, parser->tree);
+    result->memberAccessExpr.container = container;
+    if (parser->tokenCur.kind == SyntaxKind::ArrowToken) 
+        result->memberAccessExpr.accessToken = MatchAndAdvanceToken(parser, SyntaxKind::ArrowToken);
     else
-        result->type = GetBaseTypeForPointerType(result->type); // Because we index it
-    result->left = left;
-    result->right = index;
+        result->memberAccessExpr.accessToken = MatchAndAdvanceToken(parser, SyntaxKind::DotToken);
+    result->memberAccessExpr.memberIdentifier = MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
     return result;
 }
 
-fun ASTNode* ParseMemberAccess(Parser* parser, ASTNode* left, bool isArrow) {
-    let SyntaxToken accessorToken;
-    if (isArrow) 
-        accessorToken = MatchAndAdvanceToken(parser, SyntaxKind::ArrowToken);
-    else
-        accessorToken = MatchAndAdvanceToken(parser, SyntaxKind::DotToken);
-
-    if (left->type.kind != TypeKind::Struct && left->type.kind != TypeKind::Union) {
-        ReportError(
-            TokenGetLocation(accessorToken),
-            "Attempt to access member of non union or struct identifier '%s'", 
-            left->symbol->name.cstr
-        );
-    }
-
-    let Symbol* containerSymbol = GetSymbol(parser->symbolTable, left->type.name);
-    assert(containerSymbol != nullptr);
-    if (containerSymbol->kind != SymbolKind::Struct && containerSymbol->kind != SymbolKind::Union) {
-        ReportError(
-            TokenGetLocation(accessorToken),
-            "Attempt to access member of non union or struct identifier '%s'", 
-            containerSymbol->name.cstr
-        );
-    }
-    if (!containerSymbol->alreadyDefined) {
-        ReportError(
-            TokenGetLocation(accessorToken),
-            "Attempt to access member of forward declared but undefined union or struct '%s'", 
-            containerSymbol->name.cstr
-        );
-    }
-    if (isArrow && TypeGetIndirectionLevel(left->type) == 0) {
-        ReportError(
-            TokenGetLocation(accessorToken),
-            "Member access of '%s' with '->' is only allowed for pointer types", 
-            containerSymbol->name.cstr
-        );
-    }
-    if (!isArrow && TypeGetIndirectionLevel(left->type) > 0) {
-        ReportError(
-            TokenGetLocation(accessorToken),
-            "Member access of '%s' with '.' is only allowed for non-pointer types", 
-            containerSymbol->name.cstr
-        );
-    }
-    
-    let SyntaxToken memberIdentifier = MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
-    let String identifierText = TokenGetText(memberIdentifier);
-    let Symbol* memberSymbol = GetSymbol(containerSymbol->membersSymbolTable, identifierText);
-    if (memberSymbol == nullptr) {
-        ReportError(
-            TokenGetLocation(memberIdentifier),
-            "Undeclared struct or union member '%s'", 
-            identifierText.cstr
-        );
-    }
-    assert(memberSymbol->kind == SymbolKind::Member);
-
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::Memberaccess, parser->symbolTable, accessorToken);
-    result->symbol = memberSymbol;
-    result->type = memberSymbol->type;
-    result->left = left;
+fun SyntaxNode* ParseEnumLiteralExpression(Parser* parser) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::EnumValueLiteralExpression, parser->tree);
+    result->enumLiteralExpr.enumIdentifier = MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
+    result->enumLiteralExpr.coloncolon = MatchAndAdvanceToken(parser, SyntaxKind::ColonColonToken);
+    result->enumLiteralExpr.valueIdentifier = MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
     return result;
 }
 
-fun ASTNode* ParseEnumLiteralExpression(Parser* parser) {
-    let SyntaxToken enumIdentifier = MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
-    let SyntaxToken coloncolon = MatchAndAdvanceToken(parser, SyntaxKind::ColonColonToken);
-    let SyntaxToken valueIdentifier = MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
-
-    let String enumText = TokenGetText(enumIdentifier);
-    let Symbol* enumSymbol = GetSymbol(parser->symbolTable, enumText);
-    if (enumSymbol == nullptr) {
-        ReportError(
-            TokenGetLocation(enumIdentifier),
-            "Undeclared identifier '%s'", 
-            enumText.cstr
-        );
-    }
-    if (enumSymbol->kind != SymbolKind::Enum) {
-        ReportError(
-            TokenGetLocation(enumIdentifier),
-            "Identifier '%s' is not an enum", 
-            enumText.cstr
-        );
-    }
-
-    let String valueText = TokenGetText(valueIdentifier);
-    let Symbol* valueSymbol = GetSymbol(enumSymbol->membersSymbolTable, valueText);
-    if (valueSymbol == nullptr) {
-        ReportError(
-            TokenGetLocation(enumIdentifier),
-            "Identifier '%s' is not a member of enum '%s'", 
-            valueText.cstr, enumText.cstr
-        );
-    }
-    assert (valueSymbol->kind == SymbolKind::Enumvalue);
-
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::EnumValueLiteral, parser->symbolTable, valueIdentifier);
-    result->symbol = valueSymbol;
-    result->type = valueSymbol->type;
-    return result;
-}
-
-fun ASTNode* ParseTypeExpression(Parser* parser) {
-    let SyntaxToken startToken = parser->tokenCur;
-    let Type type = ParseType(parser);
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::TypeExpression, parser->symbolTable, startToken);
-    result->type = type;
-    return result;
-}
-
-fun ASTNode* ParsePrimaryExpression(Parser* parser) {
+fun SyntaxNode* ParsePrimaryExpression(Parser* parser) {
     switch (parser->tokenCur.kind) {
         case SyntaxKind::LeftParenToken: {
-            let SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
-            let ASTNode* inner = ParseExpression(parser);
-            let SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind::RightParenToken);
-
-            let ASTNode* result = ASTNodeCreate(ASTNodeKind::ParenthesizedExpression, parser->symbolTable, leftParen);
-            result->type = inner->type;
-            result->left = inner;
+            let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::ParenthesizedExpression, parser->tree);
+            result->parenthesizedExpr.leftParen = MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
+            result->parenthesizedExpr.expression = ParseExpression(parser);
+            result->parenthesizedExpr.rightParen = MatchAndAdvanceToken(parser, SyntaxKind::RightParenToken);
             return result;
         }
         case SyntaxKind::SizeOfKeyword: {
-            let SyntaxToken sizeofKeyword = MatchAndAdvanceToken(parser, SyntaxKind::SizeOfKeyword);
-            let SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
-            let ASTNode* typeExpr = ParseTypeExpression(parser);
-            let SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind::RightParenToken);
-
-            let ASTNode* result = ASTNodeCreate(ASTNodeKind::SizeOfExpression, parser->symbolTable, sizeofKeyword);
-            result->type = TypeCreatePrimitive(TypeKind::PrimitiveInt);
-            result->left = typeExpr;
-            result->isRValue = true;
+            let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::SizeOfExpression, parser->tree);
+            result->sizeofExpr.sizeofKeyword = MatchAndAdvanceToken(parser, SyntaxKind::SizeOfKeyword);
+            result->sizeofExpr.leftParen = MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
+            result->sizeofExpr.typeExpression = ParseTypeExpression(parser);
+            result->sizeofExpr.rightParen = MatchAndAdvanceToken(parser, SyntaxKind::RightParenToken);
             return result;
         }
         case SyntaxKind::IdentifierToken: {
             if (parser->tokenNext.kind == SyntaxKind::ColonColonToken)
                 return ParseEnumLiteralExpression(parser);
 
-            let SyntaxToken identifier = MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
-            let String identifierText = TokenGetText(identifier);
-            let Symbol* symbol = GetSymbol(parser->symbolTable, identifierText);
-            if (symbol == nullptr) {
-                ReportError(
-                    TokenGetLocation(identifier),
-                    "Undeclared identifier '%s'", 
-                    identifierText.cstr
-                );
-            }
-
-            let ASTNode* result = ASTNodeCreate(ASTNodeKind::NameExpression, parser->symbolTable, identifier);
-            result->symbol = symbol;
-            result->type = symbol->type;
+            let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::NameExpression, parser->tree);
+            result->nameExpr.identifier = MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
             return result;
         }
         case SyntaxKind::StringLiteralToken: {
-            let SyntaxToken token = MatchAndAdvanceToken(parser, SyntaxKind::StringLiteralToken);
-
+            let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::StringLiteralExpression, parser->tree);
+            result->stringLiteralExpr.stringLiteralTokens = SyntaxNodeArrayCreate();
             while (parser->tokenCur.kind == SyntaxKind::StringLiteralToken) {
-                let SyntaxToken next = MatchAndAdvanceToken(parser, SyntaxKind::StringLiteralToken);
-                token.location.end = next.location.end;
-                token.debugString = TokenGetText(token);
-                token.stringValueWithoutQuotes = StringAppend(token.stringValueWithoutQuotes, next.stringValueWithoutQuotes);
+                let SyntaxToken literal = MatchAndAdvanceToken(parser, SyntaxKind::StringLiteralToken);
+                let SyntaxNode* literalWrapper = WrapTokenInNode(parser, literal);
+                SyntaxNodeArrayPush(&result->stringLiteralExpr.stringLiteralTokens, literalWrapper);
             }
-
-            let ASTNode* result = ASTNodeCreate(ASTNodeKind::StringLiteral, parser->symbolTable, token);
-            result->isRValue = true;
-            result->stringvalue = token.stringValueWithoutQuotes;
-            result->type = TypeCreate(TypeKind::PrimitiveChar, 1, StringCreateEmpty());
             return result;
         }
         case SyntaxKind::NullKeyword: {
-            let SyntaxToken token = MatchAndAdvanceToken(parser, SyntaxKind::NullKeyword);
-            let ASTNode* result = ASTNodeCreate(ASTNodeKind::NullLiteral, parser->symbolTable, token);
-            result->isRValue = true;
-            result->type = TypeCreate(TypeKind::PrimitiveNull, 1, StringCreateEmpty());
+            let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::NullLiteralExpression, parser->tree);
+            result->nullLiteralExpr.nullLiteral = MatchAndAdvanceToken(parser, SyntaxKind::NullKeyword);
             return result;
         }
         case SyntaxKind::CharacterLiteralToken: {
-            let SyntaxToken token = MatchAndAdvanceToken(parser, SyntaxKind::CharacterLiteralToken);
-            let ASTNode* result = ASTNodeCreate(ASTNodeKind::CharacterLiteral, parser->symbolTable, token);
-            result->isRValue = true;
-            result->intvalue = token.intvalue;
-            result->stringvalue = token.stringValueWithoutQuotes;
-            result->type = TypeCreatePrimitive(TypeKind::PrimitiveChar);
+            let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::CharacterLiteralExpression, parser->tree);
+            result->characterLiteralExpr.characterLiteral = MatchAndAdvanceToken(parser, SyntaxKind::CharacterLiteralToken);
             return result;
         }
+        case SyntaxKind::FalseKeyword:
         case SyntaxKind::TrueKeyword: {
-            let SyntaxToken token = MatchAndAdvanceToken(parser, SyntaxKind::TrueKeyword);
-            let ASTNode* result = ASTNodeCreate(ASTNodeKind::BoolLiteral, parser->symbolTable, token);
-            result->isRValue = true;
-            result->intvalue = 1;
-            result->type = TypeCreatePrimitive(TypeKind::PrimitiveBool);
-            return result;
-        }
-        case SyntaxKind::FalseKeyword: {
-            let SyntaxToken token = MatchAndAdvanceToken(parser, SyntaxKind::FalseKeyword);
-            let ASTNode* result = ASTNodeCreate(ASTNodeKind::BoolLiteral, parser->symbolTable, token);
-            result->isRValue = true;
-            result->intvalue = 0;
-            result->type = TypeCreatePrimitive(TypeKind::PrimitiveBool);
+            let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::BoolLiteralExpression, parser->tree);
+            result->boolLiteralExpr.boolLiteral = AdvanceToken(parser);
             return result;
         }
         case SyntaxKind::IntegerLiteralToken:
         default: {
-            let SyntaxToken token = MatchAndAdvanceToken(parser, SyntaxKind::IntegerLiteralToken);
-            let ASTNode* result = ASTNodeCreate(ASTNodeKind::IntegerLiteral, parser->symbolTable, token);
-            result->isRValue = true;
-            result->intvalue = token.intvalue;
-            if (CHAR_MIN <= token.intvalue && token.intvalue <= CHAR_MAX)
-                result->type = TypeCreatePrimitive(TypeKind::PrimitiveByte);
-            else if (SHRT_MIN <= token.intvalue && token.intvalue <= SHRT_MAX)
-                result->type = TypeCreatePrimitive(TypeKind::PrimitiveShort);
-            else if (INT_MIN <= token.intvalue && token.intvalue <= INT_MAX)
-                result->type = TypeCreatePrimitive(TypeKind::PrimitiveInt);
-            else
-                result->type = TypeCreatePrimitive(TypeKind::PrimitiveLong);
+            let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::IntegerLiteralExpression, parser->tree);
+            result->integerLiteralExpr.integerLiteral = MatchAndAdvanceToken(parser, SyntaxKind::IntegerLiteralToken);
             return result;
         }
     }
 }
 
-fun ASTNode* ParseArrayLiteralExpression(Parser* parser, Symbol* arraySymbol) { 
-    assert(arraySymbol->type.isArray);
+fun SyntaxNode* ParseArrayLiteralExpression(Parser* parser) { 
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::ArrayLiteralExpression, parser->tree);
+    result->arrayLiteralExpr.leftBrace = MatchAndAdvanceToken(parser, SyntaxKind::LeftBraceToken);
 
-    let SyntaxToken leftBrace = MatchAndAdvanceToken(parser, SyntaxKind::LeftBraceToken);
-
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::ArrayLiteral, parser->symbolTable, leftBrace);
-
-    let int elementCount = 0;
+    result->arrayLiteralExpr.elemsWithSeparators = SyntaxNodeArrayCreate();
     while (parser->tokenCur.kind != SyntaxKind::RightBraceToken) {
-        let ASTNode* expression = ParseExpression(parser);
-        elementCount += 1;
-        let Type arrayElemType = GetElementTypeForArrayType(arraySymbol->type);
-        let TypeConversionResult conversion = CanConvertTypeFromTo(expression->type, arrayElemType);
-        if (conversion == TypeConversionResult::NonConvertible 
-         || conversion == TypeConversionResult::ExplicitlyConvertible) {
-            ReportError(
-                TokenGetLocation(expression->token),
-                "Cannot convert type '%s' of element %d in array initializer to array type '%s'",
-                TypeGetText(expression->type).cstr, elementCount, TypeGetText(arrayElemType).cstr
-            );
-        } 
-        ASTNodeArrayPush(&result->children, expression);
-        if (parser->tokenCur.kind == SyntaxKind::RightBraceToken)
+        let SyntaxNode* expression = ParseExpression(parser);
+        SyntaxNodeArrayPush(&result->arrayLiteralExpr.elemsWithSeparators, expression);
+        if (parser->tokenCur.kind == SyntaxKind::CommaToken) {
+            let SyntaxToken comma = MatchAndAdvanceToken(parser, SyntaxKind::CommaToken);
+            let SyntaxNode* commaWrapper = WrapTokenInNode(parser, comma);
+            SyntaxNodeArrayPush(&result->arrayLiteralExpr.elemsWithSeparators, commaWrapper);
+        } else {
             break;
-        else
-            MatchAndAdvanceToken(parser, SyntaxKind::CommaToken);
+        }
     }
-    let SyntaxToken rightBrace = MatchAndAdvanceToken(parser, SyntaxKind::RightBraceToken);
-
-    if (arraySymbol->type.arrayElementCount == -1)
-        arraySymbol->type.arrayElementCount = elementCount;
-    if (elementCount == 0) {
-        ReportError(
-            TokenGetLocation(leftBrace),
-            "Element count cannot be zero in array initializer of array '%s'",
-            arraySymbol->name.cstr
-        );
-    }
-    if (arraySymbol->type.arrayElementCount != elementCount) {
-        ReportError(
-            TokenGetLocation(leftBrace),
-            "Element count %d of array initializer does not match element count %d of array '%s'",
-            elementCount, arraySymbol->type.arrayElementCount, arraySymbol->name.cstr
-        );
-    }
-    
+    result->arrayLiteralExpr.rightBrace = MatchAndAdvanceToken(parser, SyntaxKind::RightBraceToken);
     return result;
 }
 
-
-fun ASTNode* ParsePostFixExpression(Parser* parser) {
-    let ASTNode* left = ParsePrimaryExpression(parser);
+fun SyntaxNode* ParsePostFixExpression(Parser* parser) {
+    let SyntaxNode* left = ParsePrimaryExpression(parser);
 
     let bool foundPostfix = false;
     do {
@@ -481,13 +251,9 @@ fun ASTNode* ParsePostFixExpression(Parser* parser) {
             foundPostfix = true;
             left =  ParseFunctionCallExpression(parser, left);
         }
-        if (parser->tokenCur.kind == SyntaxKind::DotToken) {
+        if (parser->tokenCur.kind == SyntaxKind::DotToken || parser->tokenCur.kind == SyntaxKind::ArrowToken) {
             foundPostfix = true;
-            left = ParseMemberAccess(parser, left, false);
-        }
-        if (parser->tokenCur.kind == SyntaxKind::ArrowToken) {
-            foundPostfix = true;
-            left = ParseMemberAccess(parser, left, true);
+            left = ParseMemberAccess(parser, left);
         }
         if (parser->tokenCur.kind == SyntaxKind::LeftBracketToken) {
             foundPostfix = true;
@@ -495,62 +261,29 @@ fun ASTNode* ParsePostFixExpression(Parser* parser) {
         }
     } while(foundPostfix);
 
-    if (left->type.isArray) {
-        left->isRValue = true; // Arrays cannot be assigned to without indexing
-    }
-
     return left;
 }
 
-fun ASTNode* ParseBinaryExpression(Parser* parser, int parentPrecedence);
-fun ASTNode* ParseUnaryExpression(Parser* parser, int parentPrecedence);
-
-fun ASTNode* ParseCastExpression(Parser* parser) {
+fun SyntaxNode* ParseCastExpression(Parser* parser) {
     if (parser->tokenCur.kind != SyntaxKind::LeftParenToken || parser->tokenNext.kind != SyntaxKind::AsKeyword)
         return ParsePostFixExpression(parser);
-    
-    let SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
-    let SyntaxToken asKeyword = MatchAndAdvanceToken(parser, SyntaxKind::AsKeyword);
-    let Type targetType = ParseType(parser);
-    let SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind::RightParenToken);
 
-    let ASTNode* expression = ParseUnaryExpression(parser, 0);
-
-    let TypeConversionResult conversion = CanConvertTypeFromTo(expression->type, targetType);
-    if (conversion == TypeConversionResult::NonConvertible) {
-        ReportError(
-            TokenGetLocation(asKeyword),
-            "Cast from type '%s' to type '%s' is impossible",
-            TypeGetText(expression->type).cstr, TypeGetText(targetType).cstr
-        );
-    }
-
-    let ASTNode* result =  ASTNodeCreate(ASTNodeKind::CastExpression, parser->symbolTable, asKeyword);
-    result->type = targetType;
-    result->left = expression;
+    let SyntaxNode* result =  SyntaxNodeCreate(SyntaxKind::TypeCastExpression, parser->tree);
+    result->typeCastExpr.leftParen = MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
+    result->typeCastExpr.asKeyword = MatchAndAdvanceToken(parser, SyntaxKind::AsKeyword);
+    result->typeCastExpr.targetTypeExpression = ParseTypeExpression(parser);
+    result->typeCastExpr.rightParen = MatchAndAdvanceToken(parser, SyntaxKind::RightParenToken);
+    result->typeCastExpr.expression = ParseUnaryExpression(parser, 0);
     return result;
 }
 
-fun ASTNode* ParseUnaryExpression(Parser* parser, int parentPrecedence) {
-    let ASTNode* left = nullptr;
+fun SyntaxNode* ParseUnaryExpression(Parser* parser, int parentPrecedence) {
+    let SyntaxNode* left = nullptr;
     let int unaryOperatorPrecedence = GetUnaryOperatorPrecedence(parser->tokenCur.kind);
     if ((unaryOperatorPrecedence != 0) && (unaryOperatorPrecedence >= parentPrecedence)) {
-        let SyntaxToken operatorToken = AdvanceToken(parser);
-        let ASTNode* operand = ParseBinaryExpression(parser, unaryOperatorPrecedence);
-
-        let UnaryOperator op = GetUnaryOperationForToken(operatorToken, operand->type);
-        if (op.operandMustBeLValue && operand->isRValue) {
-            ReportError(
-                TokenGetLocation(operatorToken),
-                "Operand of operator '%s' must be an storage location", 
-                TokenKindToString(operatorToken.kind).cstr
-            );
-        }
-
-        let ASTNode* result = ASTNodeCreate(op.operatorKind, parser->symbolTable, operatorToken);
-        result->isRValue = op.resultIsRValue;
-        result->type = op.resultType;
-        result->left = operand;
+        let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::UnaryExpression, parser->tree);
+        result->unaryExpr.operatorToken = AdvanceToken(parser);
+        result->unaryExpr.operand = ParseBinaryExpression(parser, unaryOperatorPrecedence);
         left = result;
     } else {
       left = ParseCastExpression(parser);
@@ -558,82 +291,43 @@ fun ASTNode* ParseUnaryExpression(Parser* parser, int parentPrecedence) {
     return left;
 }
 
-fun ASTNode* ParseBinaryExpression(Parser* parser, int parentPrecedence) {
-    let ASTNode* left = ParseUnaryExpression(parser, parentPrecedence);
+fun SyntaxNode* ParseBinaryExpression(Parser* parser, int parentPrecedence) {
+    let SyntaxNode* left = ParseUnaryExpression(parser, parentPrecedence);
 
     while (true) {
         let int precedence = GetBinaryOperatorPrecedence(parser->tokenCur.kind);
         if (precedence == 0
          || precedence < parentPrecedence 
-         || precedence == parentPrecedence && !IsBinaryOperatorRightAssociative(parser->tokenCur.kind))
+         || precedence == parentPrecedence && !IsBinaryOperatorRightAssociative(parser->tokenCur.kind)) {
             break;
-
-        let SyntaxToken operatorToken = AdvanceToken(parser);
-        let ASTNode* right = ParseBinaryExpression(parser, precedence);
-
-        let BinaryOperator op = GetBinaryOperationForToken(operatorToken, left->type, right->type);
-        if (op.leftMustBeLValue && left->isRValue) {
-            ReportError(
-                TokenGetLocation(operatorToken),
-                "Left argument of operator '%s' must be an storage location", 
-                TokenKindToString(operatorToken.kind).cstr
-            );
         }
-        if (op.rightMustBeLValue && right->isRValue) {
-            ReportError(
-                TokenGetLocation(operatorToken),
-                "Right argument of operator '%s' must be a storage location", 
-                TokenKindToString(operatorToken.kind).cstr
-            );
-        }
-
-        let ASTNode* result = ASTNodeCreate(op.operatorKind, parser->symbolTable, operatorToken);
-        result->isRValue = op.resultIsRValue;
-        result->type = op.resultType;
-        result->left = left;
-        result->right = right;
+        let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::BinaryExpression, parser->tree);
+        result->binaryExpr.left = left;
+        result->binaryExpr.operatorToken = AdvanceToken(parser);
+        result->binaryExpr.right = ParseBinaryExpression(parser, precedence);
         left = result;
     }
     return left;
 }
 
-fun ASTNode* ParseTernaryConditionExpression(Parser* parser) {
-    let ASTNode* condition = ParseBinaryExpression(parser, 0);
+fun SyntaxNode* ParseTernaryConditionExpression(Parser* parser) {
+    let SyntaxNode* left = ParseBinaryExpression(parser, 0);
 
     if (parser->tokenCur.kind == SyntaxKind::QuestionmarkToken) {
-        // TODO: check truthyness of condition
-        let SyntaxToken questionmark = MatchAndAdvanceToken(parser, SyntaxKind::QuestionmarkToken);
-        let ASTNode* thenExpression = ParseTernaryConditionExpression(parser);
-        let SyntaxToken colon = MatchAndAdvanceToken(parser, SyntaxKind::ColonToken);
-        let ASTNode* elseExpression = ParseTernaryConditionExpression(parser);
-
-        let Type type = GetTypeThatFitsBothTypes(thenExpression->type, elseExpression->type);
-        if (IsVoidType(type)) {
-            ReportError(
-                TokenGetLocation(questionmark),
-                "Incompatible expression types in ternary operator - then branch: '%s', else branch: '%s'",
-                TypeGetText(thenExpression->type).cstr, TypeGetText(elseExpression->type).cstr
-            );
-        }
-
-        let ASTNode* ternary = ASTNodeCreate(ASTNodeKind::TernaryConditionalExpression, parser->symbolTable, questionmark);
-        ternary->left = condition;
-        ternary->right = thenExpression;
-        ternary->extra1 = elseExpression;
-        ternary->type = type;
-        ternary->isRValue = true;
-        condition = ternary;
+        let SyntaxNode* ternary = SyntaxNodeCreate(SyntaxKind::TernaryConditionalExpression, parser->tree);
+        ternary->ternaryConditionalExpr.conditionExpression = left;
+        ternary->ternaryConditionalExpr.questionmark = MatchAndAdvanceToken(parser, SyntaxKind::QuestionmarkToken);
+        ternary->ternaryConditionalExpr.thenExpression = ParseTernaryConditionExpression(parser);
+        ternary->ternaryConditionalExpr.colon = MatchAndAdvanceToken(parser, SyntaxKind::ColonToken);
+        ternary->ternaryConditionalExpr.elseExpression = ParseTernaryConditionExpression(parser);
+        return ternary;
     }
-    return condition;
+    return left;
 }
 
-fun ASTNode* ParseAssignmentExpression(Parser* parser) {
-    let ASTNode* left = ParseTernaryConditionExpression(parser);
+fun SyntaxNode* ParseAssignmentExpression(Parser* parser) {
+    let SyntaxNode* left = ParseTernaryConditionExpression(parser);
 
-    // NOTE: The following is basically a duplicate of what the ParseBinaryExpression does.
-    // We need to do this here though to support ternary conditionals more easily.
-    // Note that we still keep the GetBinaryOperationForToken(..) call so that we later 
-    // can accept custom operator overloadings.
     switch (parser->tokenCur.kind) {
         case SyntaxKind::EqualsToken: 
         case SyntaxKind::PlusEqualsToken: 
@@ -647,919 +341,291 @@ fun ASTNode* ParseAssignmentExpression(Parser* parser) {
         case SyntaxKind::LessLessEqualsToken:
         case SyntaxKind::GreaterGreaterEqualsToken:
         {
-            let SyntaxToken assignmentToken = AdvanceToken(parser);
-            let ASTNode* right = ParseAssignmentExpression(parser);
-            let BinaryOperator op = GetBinaryOperationForToken(assignmentToken, left->type, right->type);
-            if (left->isRValue) {
-                ReportError(
-                    TokenGetLocation(assignmentToken),
-                    "Left argument of operator '%s' must be an storage location", 
-                    TokenKindToString(assignmentToken.kind).cstr
-                );
-            }
-
-            let ASTNode* assignment = ASTNodeCreate(op.operatorKind, parser->symbolTable, assignmentToken);
-            assignment->isRValue = op.resultIsRValue;
-            assignment->type = op.resultType;
-            assignment->left = left;
-            assignment->right = right;
-            left = assignment;
-            break;
+            let SyntaxNode* assignment = SyntaxNodeCreate(SyntaxKind::BinaryExpression, parser->tree);
+            assignment->binaryExpr.left = left;
+            assignment->binaryExpr.operatorToken = AdvanceToken(parser);
+            assignment->binaryExpr.right = ParseAssignmentExpression(parser);
+            return assignment;
         } 
-        default:
-            break;
     }
-    
     return left;
 }
 
-fun ASTNode* ParseExpression(Parser* parser) {
+fun SyntaxNode* ParseExpression(Parser* parser) {
     return ParseAssignmentExpression(parser);
 }
 
-fun ASTNode* ParseExpressionStatement(Parser* parser) {
-    let ASTNode* expression = ParseExpression(parser);
-    let SyntaxToken semicolonToken = MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Statements
 
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::ExpressionStatement, parser->symbolTable, expression->token);
-    result->left = expression;
+fun SyntaxNode* ParseExpressionStatement(Parser* parser) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::ExpressionStatement, parser->tree);
+    result->expressionStmt.expression = ParseExpression(parser);
+    result->expressionStmt.semicolon = MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
     return result;
 }
 
-fun ASTNode* ParseIfStatement(Parser* parser) {
-    let SyntaxToken ifKeyword = MatchAndAdvanceToken(parser, SyntaxKind::IfKeyword);
+fun SyntaxNode* ParseVariableDefinitionStatement(Parser* parser, bool skipLet, bool allowInitializer, SyntaxKind terminator) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::VariableDeclarationStatement, parser->tree);
 
-    let SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
-    let ASTNode* condition = ParseExpression(parser);
-    // TODO we should check that conditions is truthy
-    let SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind::RightParenToken);
+    if (skipLet) {
+        result->variableDeclarationStmt.letKeyword = SyntaxTokenCreateEmpty(parser->tree);
+    } else {
+        if (parser->tokenCur.kind == SyntaxKind::LetLocalPersistKeyword) 
+            result->variableDeclarationStmt.letKeyword = MatchAndAdvanceToken(parser, SyntaxKind::LetLocalPersistKeyword);
+        else
+            result->variableDeclarationStmt.letKeyword = MatchAndAdvanceToken(parser, SyntaxKind::LetKeyword);
+    }
 
-    let ASTNode* thenBranch = ParseStatement(parser);
-    thenBranch = WrapInBlockStatementIfNecessary(parser, thenBranch);
+    result->variableDeclarationStmt.typeExpression = ParseTypeExpression(parser);
+    result->variableDeclarationStmt.identifier = MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
 
-    let ASTNode* elseBranch = nullptr;
+    if (parser->tokenCur.kind == SyntaxKind::LeftBracketToken) {
+        // Array definition
+        result->variableDeclarationStmt.leftBracket = MatchAndAdvanceToken(parser, SyntaxKind::LeftBracketToken);
+        if (parser->tokenCur.kind == SyntaxKind::IntegerLiteralToken)
+            result->variableDeclarationStmt.arraySizeLiteral = MatchAndAdvanceToken(parser, SyntaxKind::IntegerLiteralToken);
+        result->variableDeclarationStmt.rightBracket = MatchAndAdvanceToken(parser, SyntaxKind::RightBracketToken);
+
+        if (parser->tokenCur.kind == SyntaxKind::EqualsToken && allowInitializer) {
+            result->variableDeclarationStmt.equalsToken = MatchAndAdvanceToken(parser, SyntaxKind::EqualsToken);
+            result->variableDeclarationStmt.initializerExpression = ParseArrayLiteralExpression(parser);
+        } else {
+            result->variableDeclarationStmt.equalsToken = SyntaxTokenCreateEmpty(parser->tree);
+            result->variableDeclarationStmt.initializerExpression = nullptr;
+        }
+    } else {
+        // Regular non-array variable
+        result->variableDeclarationStmt.leftBracket = SyntaxTokenCreateEmpty(parser->tree);
+        result->variableDeclarationStmt.arraySizeLiteral = SyntaxTokenCreateEmpty(parser->tree);
+        result->variableDeclarationStmt.rightBracket = SyntaxTokenCreateEmpty(parser->tree);
+
+        if (parser->tokenCur.kind == SyntaxKind::EqualsToken && allowInitializer) {
+            result->variableDeclarationStmt.equalsToken = MatchAndAdvanceToken(parser, SyntaxKind::EqualsToken);
+            result->variableDeclarationStmt.initializerExpression = ParseExpression(parser);
+        } else {
+            result->variableDeclarationStmt.equalsToken = SyntaxTokenCreateEmpty(parser->tree);
+            result->variableDeclarationStmt.initializerExpression = nullptr;
+        }
+    }
+
+    if (terminator == SyntaxKind::BadToken) 
+        result->variableDeclarationStmt.terminatorToken = SyntaxTokenCreateEmpty(parser->tree);
+    else
+        result->variableDeclarationStmt.terminatorToken = MatchAndAdvanceToken(parser, terminator);
+
+    return result;
+}
+
+fun SyntaxNode* ParseIfStatement(Parser* parser) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::IfStatement, parser->tree);
+    result->ifStmt.ifKeyword = MatchAndAdvanceToken(parser, SyntaxKind::IfKeyword);
+    result->ifStmt.leftParen = MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
+    result->ifStmt.condition = ParseExpression(parser);
+    result->ifStmt.rightParen = MatchAndAdvanceToken(parser, SyntaxKind::RightParenToken);
+
+    result->ifStmt.thenBlock = ParseStatement(parser);
+    result->ifStmt.elseBlock = nullptr;
+    result->ifStmt.elseKeyword = SyntaxTokenCreateEmpty(parser->tree);
     if (parser->tokenCur.kind == SyntaxKind::ElseKeyword) {
-        let SyntaxToken elseKeyword = MatchAndAdvanceToken(parser, SyntaxKind::ElseKeyword);
-        elseBranch = ParseStatement(parser);
-        elseBranch = WrapInBlockStatementIfNecessary(parser, elseBranch);
+        result->ifStmt.elseKeyword = MatchAndAdvanceToken(parser, SyntaxKind::ElseKeyword);
+        result->ifStmt.elseBlock = ParseStatement(parser);
     }
-
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::IfStatement, parser->symbolTable, ifKeyword);
-    result->left = condition;
-    result->right = thenBranch;
-    result->extra1 = elseBranch;
     return result;
 }
 
-fun ASTNode* ParseWhileStatement(Parser* parser) {
-    let SyntaxToken whileKeyword = MatchAndAdvanceToken(parser, SyntaxKind::WhileKeyword);
-
-    let SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
-    let ASTNode* condition = ParseExpression(parser);
-    // TODO we should check that conditions is truthy
-    let SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind::RightParenToken);
+fun SyntaxNode* ParseWhileStatement(Parser* parser) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::WhileStatement, parser->tree);
+    result->whileStmt.whileKeyword = MatchAndAdvanceToken(parser, SyntaxKind::WhileKeyword);
+    result->whileStmt.leftParen = MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
+    result->whileStmt.condition = ParseExpression(parser);
+    result->whileStmt.rightParen = MatchAndAdvanceToken(parser, SyntaxKind::RightParenToken);
 
     parser->loopLevel += 1;
-    let ASTNode* body = ParseStatement(parser);
-    body = WrapInBlockStatementIfNecessary(parser, body);
+    result->whileStmt.body = ParseStatement(parser);
     parser->loopLevel -= 1;
-
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::WhileStatement, parser->symbolTable, whileKeyword);
-    result->left = condition;
-    result->right = body;
     return result;
 }
 
-fun ASTNode* ParseDoWhileStatement(Parser* parser) {
-    let SyntaxToken doKeyword = MatchAndAdvanceToken(parser, SyntaxKind::DoKeyword);
+fun SyntaxNode* ParseDoWhileStatement(Parser* parser) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::DoWhileStatement, parser->tree);
+    result->doWhileStmt.doKeyword = MatchAndAdvanceToken(parser, SyntaxKind::DoKeyword);
     parser->loopLevel += 1;
-    let ASTNode* body = ParseStatement(parser);
-    body = WrapInBlockStatementIfNecessary(parser, body);
+    result->doWhileStmt.body = ParseStatement(parser);
     parser->loopLevel -= 1;
 
-    let SyntaxToken whileKeyword = MatchAndAdvanceToken(parser, SyntaxKind::WhileKeyword);
-
-    let SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
-    let ASTNode* condition = ParseExpression(parser);
-    // TODO we should check that conditions is truthy
-    let SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind::RightParenToken);
-    let SyntaxToken semicolon = MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
-
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::DoWhileStatement, parser->symbolTable, whileKeyword);
-    result->left = condition;
-    result->right = body;
+    result->doWhileStmt.whileKeyword = MatchAndAdvanceToken(parser, SyntaxKind::WhileKeyword);
+    result->doWhileStmt.leftParen = MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
+    result->doWhileStmt.condition = ParseExpression(parser);
+    result->doWhileStmt.rightParen = MatchAndAdvanceToken(parser, SyntaxKind::RightParenToken);
+    result->doWhileStmt.semicolon = MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
     return result;
 }
 
-fun ASTNode* ParseForStatement(Parser* parser) {
-    let SyntaxToken forKeyword = MatchAndAdvanceToken(parser, SyntaxKind::ForKeyword);
+fun SyntaxNode* ParseForStatement(Parser* parser) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::ForStatement, parser->tree);
+    result->forStmt.forKeyword = MatchAndAdvanceToken(parser, SyntaxKind::ForKeyword);
 
-    // Push symboltable scope to make the index local to the for statement
-    parser->symbolTable = SymbolTableCreate(parser->symbolTable);
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::ForStatement, parser->symbolTable, forKeyword);
-
-    let SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
-
-    let ASTNode* initializer = nullptr;
+    result->forStmt.leftParen = MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
     if (parser->tokenCur.kind == SyntaxKind::LetKeyword)
-        initializer = ParseVariableDefinitionStatement(parser, false);
+        result->forStmt.initializerStatement = ParseVariableDefinitionStatement(parser, false, true, SyntaxKind::SemicolonToken);
     else 
-        initializer = ParseExpressionStatement(parser);
-    let ASTNode* condition = ParseExpressionStatement(parser);
-    // TODO we should check that conditions is truthy
-    let ASTNode* iterator = ParseExpression(parser);
-
-    let SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind::RightParenToken);
+        result->forStmt.initializerStatement = ParseExpressionStatement(parser);
+    result->forStmt.conditionStatement = ParseExpressionStatement(parser);
+    result->forStmt.incrementExpression = ParseExpression(parser);
+    result->forStmt.rightParen = MatchAndAdvanceToken(parser, SyntaxKind::RightParenToken);
 
     parser->loopLevel += 1;
-    let ASTNode* body = ParseStatement(parser);
-    body = WrapInBlockStatementIfNecessary(parser, body);
+    result->forStmt.body = ParseStatement(parser);
     parser->loopLevel -= 1;
-
-    // Pop symboltable
-    parser->symbolTable = parser->symbolTable->parent;
-
-    result->left = initializer;
-    result->right = condition;
-    result->extra1 = iterator;
-    result->extra2 = body;
     return result;
 }
 
-fun ASTNode* ParseReturnStatement(Parser* parser) {
-    let SyntaxToken returnKeyword = MatchAndAdvanceToken(parser, SyntaxKind::ReturnKeyword);
-    if (parser->currentFunctionSymbol == nullptr) {
+fun SyntaxNode* ParseReturnStatement(Parser* parser) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::ReturnStatement, parser->tree);
+    result->returnStmt.returnKeyword = MatchAndAdvanceToken(parser, SyntaxKind::ReturnKeyword);
+    if (parser->functionLevel == 0) {
         ReportError(
-            TokenGetLocation(returnKeyword),
-            "Invalid 'return' statement found outside of function definition"
+            TokenGetLocation(result->returnStmt.returnKeyword),
+            "Invalid 'return' keyword found outside of function definition"
         );
     }
-
-    let Type functionReturnType = parser->currentFunctionSymbol->type;
-    if (IsVoidType(functionReturnType) && parser->tokenCur.kind != SyntaxKind::SemicolonToken) {
-        ReportError(
-            TokenGetLocation(returnKeyword),
-            "Invalid return expression in void function"
-        );
-    }
-    if (!IsVoidType(functionReturnType) && parser->tokenCur.kind == SyntaxKind::SemicolonToken) {
-        ReportError(
-            TokenGetLocation(returnKeyword),
-            "Must return expression in non-void function"
-        );
-    }
-
-    let ASTNode* expression = nullptr;
-    if (parser->tokenCur.kind != SyntaxKind::SemicolonToken) {
-        expression = ParseExpression(parser);
-
-        let TypeConversionResult conversion = CanConvertTypeFromTo(expression->type, functionReturnType);
-        if (conversion == TypeConversionResult::NonConvertible) {
-            ReportError(
-                TokenGetLocation(returnKeyword),
-                "Incompatible types for return expression '%s'", 
-                TokenKindToString(returnKeyword.kind).cstr
-            );
-        }
-        if (conversion == TypeConversionResult::ExplicitlyConvertible) {
-            ReportError(
-                TokenGetLocation(returnKeyword),
-                "Types cannot be implicitly converted for return expression '%s'", 
-                TokenKindToString(returnKeyword.kind).cstr
-            );
-        }
-    }
-    let SyntaxToken semicolonToken = MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
-
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::ReturnStatement, parser->symbolTable, returnKeyword);
-    result->left = expression;
+    if (parser->tokenCur.kind != SyntaxKind::SemicolonToken)
+        result->returnStmt.returnExpression = ParseExpression(parser);
+    else
+        result->returnStmt.returnExpression = nullptr;
+    result->returnStmt.semicolon = MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
     return result;
 }
 
-fun ASTNode* ParseBreakStatement(Parser* parser) {
-    let SyntaxToken breakKeyword = MatchAndAdvanceToken(parser, SyntaxKind::BreakKeyword);
+fun SyntaxNode* ParseBreakStatement(Parser* parser) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::BreakStatement, parser->tree);
+    result->breakStmt.breakKeyword = MatchAndAdvanceToken(parser, SyntaxKind::BreakKeyword);
     if (parser->loopLevel == 0 && parser->switchCaseLevel == 0) {
         ReportError(
-            TokenGetLocation(breakKeyword),
-            "Invalid 'break' statement found outside of loop or switch-case definition"
+            TokenGetLocation(result->breakStmt.breakKeyword),
+            "Invalid 'break' keyword found outside of loop or switch-case definition"
         );
     }
-    let SyntaxToken semicolonToken = MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
-
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::BreakStatement, parser->symbolTable, breakKeyword);
+    result->returnStmt.semicolon = MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
     return result;
 }
 
-fun ASTNode* ParseContinueStatement(Parser* parser) {
-    let SyntaxToken continueKeyword = MatchAndAdvanceToken(parser, SyntaxKind::ContinueKeyword);
+fun SyntaxNode* ParseContinueStatement(Parser* parser) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::ContinueStatement, parser->tree);
+    result->continueStmt.continueKeyword = MatchAndAdvanceToken(parser, SyntaxKind::ContinueKeyword);
     if (parser->loopLevel == 0) {
         ReportError(
-            TokenGetLocation(continueKeyword),
-            "Invalid 'continue' statement found outside of loop definition"
+            TokenGetLocation(result->continueStmt.continueKeyword),
+            "Invalid 'continue' keyword found outside of loop definition"
         );
     }
-    let SyntaxToken semicolonToken = MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
-
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::ContinueStatement, parser->symbolTable, continueKeyword);
+    result->returnStmt.semicolon = MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
     return result;
 }
 
-
-fun Type ParseType(Parser* parser) {
-    let Type type = TypeCreateVoid();
-    let SyntaxToken startToken = parser->tokenCur;
-    switch (parser->tokenCur.kind) {
-        case SyntaxKind::VoidKeyword:
-            type.kind = TypeKind::PrimitiveVoid;
-            break;
-        case SyntaxKind::CharKeyword:
-            type.kind = TypeKind::PrimitiveChar;
-            break;
-        case SyntaxKind::BoolKeyword:
-            type.kind = TypeKind::PrimitiveBool;
-            break;
-        case SyntaxKind::ByteKeyword:
-            type.kind = TypeKind::PrimitiveByte;
-            break;
-        case SyntaxKind::ShortKeyword:
-            type.kind = TypeKind::PrimitiveShort;
-            break;
-        case SyntaxKind::IntKeyword:
-            type.kind = TypeKind::PrimitiveInt;
-            break;
-        case SyntaxKind::LongKeyword:
-            type.kind = TypeKind::PrimitiveLong;
-            break;
-        case SyntaxKind::CStringKeyword:
-            type.kind = TypeKind::PrimitiveCString;
-            break;
-        case SyntaxKind::IdentifierToken: {
-                let String name = TokenGetText(parser->tokenCur);
-                let Symbol* symbol = GetSymbol(parser->symbolTable, name);
-                if (symbol != nullptr) {
-                    if (symbol->kind == SymbolKind::Struct) {
-                        type.kind = TypeKind::Struct;
-                        type.name = name;
-                        break;
-                    } else if (symbol->kind == SymbolKind::Union) {
-                        type.kind = TypeKind::Union;
-                        type.name = name;
-                        break;
-                    } else if (symbol->kind == SymbolKind::Enum) {
-                        type.kind = TypeKind::Enum;
-                        type.name = name;
-                        break;
-                    }
-                }
-            } // Fallthrough
-        default: 
-            ReportError(
-                TokenGetLocation(parser->tokenCur),
-                "SyntaxToken '%s' is not a type", 
-                TokenGetText(parser->tokenCur).cstr
-            );
-    }
-    AdvanceToken(parser);
-
-    while (parser->tokenCur.kind == SyntaxKind::StarToken) {
-        AdvanceToken(parser);
-        type = GetPointerTypeForBaseType(type);
-    }
-
-    if (type.kind == TypeKind::Struct) {
-        let Symbol* symbol = GetSymbol(parser->symbolTable, type.name);
-        if (!symbol->alreadyDefined && type.baseIndirectionLevel == 0) {
-            ReportError(
-                TokenGetLocation(startToken),
-                "Usage of undefined but forward declared type '%s' is only allowed as pointer", 
-                type.name.cstr
-            );
-        }
-    }
-
-    return type;
-}
-
-fun ASTNode* ParseBlockStatement(Parser* parser, bool inSwitch) {
-    let bool startsWithBrace = false;
-
-    let SyntaxToken leftBrace = parser->tokenCur;
+fun SyntaxNode* ParseBlockStatement(Parser* parser, bool inSwitch) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::BlockStatement, parser->tree);
     if (parser->tokenCur.kind == SyntaxKind::LeftBraceToken || !inSwitch) {
-        leftBrace = MatchAndAdvanceToken(parser, SyntaxKind::LeftBraceToken);
-        startsWithBrace = true;
+        result->blockStmt.leftBrace = MatchAndAdvanceToken(parser, SyntaxKind::LeftBraceToken);
+    } else {
+        // We allow omitting the braces in switch statements
+        result->blockStmt.leftBrace = SyntaxTokenCreateEmpty(parser->tree);
     }
 
-    // Push symboltable scope
-    parser->symbolTable = SymbolTableCreate(parser->symbolTable);
-
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::BlockStatement, parser->symbolTable, leftBrace);
-
+    result->blockStmt.statements = SyntaxNodeArrayCreate();
     while (parser->tokenCur.kind != SyntaxKind::RightBraceToken) {
         if (inSwitch && parser->tokenCur.kind == SyntaxKind::CaseKeyword)
             break;
         if (inSwitch && parser->tokenCur.kind == SyntaxKind::DefaultKeyword)
             break;
-        let ASTNode* statement = ParseStatement(parser);
-        ASTNodeArrayPush(&result->children, statement);
+        let SyntaxNode* statement = ParseStatement(parser);
+        SyntaxNodeArrayPush(&result->blockStmt.statements, statement);
     }
 
-    // Pop symboltable
-    parser->symbolTable = parser->symbolTable->parent;
-
-    if (startsWithBrace) {
-        // Then it also must end with a brace
-        let SyntaxToken rightBrace = MatchAndAdvanceToken(parser, SyntaxKind::RightBraceToken);
+    if (result->blockStmt.leftBrace.kind != SyntaxKind::BadToken ) {
+        // If we start with a brace we also must end with a brace
+        result->blockStmt.rightBrace = MatchAndAdvanceToken(parser, SyntaxKind::RightBraceToken);
     }
-
-    return FlattenBlockStatementIfNecessary(parser, result);
-}
-
-fun ASTNode* ParseVariableDeclarationWithoutTerminator(Parser* parser, Type type, SyntaxToken identifier, SymbolScopeKind symbolScopeKind) {
-    let Symbol* varSymbol = AddSymbol(parser->symbolTable, TokenGetText(identifier), SymbolKind::Variable, symbolScopeKind, type);
-    if (varSymbol == nullptr) {
-        ReportError(
-            TokenGetLocation(identifier),
-            "Symbol was '%s' already declared in current scope", 
-            TokenGetText(identifier).cstr
-        );
-    }
-
-    if (IsVoidType(type)) {
-        ReportError(
-            TokenGetLocation(identifier),
-            "'void' not allowed as variables '%s' storage type", 
-            TokenGetText(identifier).cstr
-        );
-    }
-
-    if (parser->tokenCur.kind == SyntaxKind::LeftBracketToken) {
-        // Array definition
-        let longint arrayElementCount = -1;
-        let SyntaxToken leftBracket = MatchAndAdvanceToken(parser, SyntaxKind::LeftBracketToken);
-        if (parser->tokenCur.kind == SyntaxKind::IntegerLiteralToken) {
-            let SyntaxToken intLiteral = MatchAndAdvanceToken(parser, SyntaxKind::IntegerLiteralToken);
-            arrayElementCount = intLiteral.intvalue;
-        }
-        let SyntaxToken rightBracket = MatchAndAdvanceToken(parser, SyntaxKind::RightBracketToken);
-
-        if (arrayElementCount == 0) {
-            ReportError(
-                TokenGetLocation(identifier),
-                "Array size cannot be zero for '%s'", 
-                TokenGetText(identifier).cstr
-            );
-        }
-
-        varSymbol->type.isArray = true;
-        varSymbol->type.arrayElementCount = arrayElementCount;
-    }
-
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::VariableDeclarationStatement, parser->symbolTable, identifier);
-    result->symbol = varSymbol;
     return result;
 }
 
-fun ASTNode* ParseUnionOrStructDefinitionStatement(Parser* parser, bool isExternal) {
-    let SymbolScopeKind symbolScopeKind = isExternal ? SymbolScopeKind::Extern : SymbolScopeKind::Global;
+fun SyntaxNode* ParseCaseStatement(Parser* parser, SyntaxNode* switchExpression) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::CaseStatement, parser->tree);
+    result->caseStmt.caseKeyword = MatchAndAdvanceToken(parser, SyntaxKind::CaseKeyword);
 
-    let SyntaxToken structKeyword;
-    if (parser->tokenCur.kind == SyntaxKind::StructKeyword)
-        structKeyword = MatchAndAdvanceToken(parser, SyntaxKind::StructKeyword);
-    else 
-        structKeyword = MatchAndAdvanceToken(parser, SyntaxKind::UnionKeyword);
-    let bool isUnion = structKeyword.kind == SyntaxKind::UnionKeyword;
-
-    let SyntaxToken identifier = MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
-    let String name = TokenGetText(identifier);
-
-    if (parser->currentFunctionSymbol != nullptr) {
+    if (parser->switchCaseLevel == 0) {
         ReportError(
-            TokenGetLocation(identifier),
-            "Unexpected struct or union declaration of '%s' while already parsing function", 
-            name.cstr
+            TokenGetLocation(result->caseStmt.caseKeyword), 
+            "Unexpected 'case' label keyword outside of switch statement"
         );
     }
-
-    let Symbol* structSymbol = GetSymbol(parser->symbolTable, name);
-    if (structSymbol != nullptr) {
-        if (isUnion &&  structSymbol->kind != SymbolKind::Union) {
-            ReportError(
-                TokenGetLocation(identifier),
-                "Another symbol with the same name '%s' but different type was already declared in current scope", 
-                TokenGetText(identifier).cstr
-            );
-        }
-        if (!isUnion &&  structSymbol->kind != SymbolKind::Struct) {
-            ReportError(
-                TokenGetLocation(identifier),
-                "Another symbol with the same name '%s' but different type was already declared in current scope", 
-                TokenGetText(identifier).cstr
-            );
-        }
-        if (structSymbol->scopeKind != symbolScopeKind) {
-            ReportError(
-                TokenGetLocation(identifier),
-                "Struct or union '%s was previously declared but with different scope attribute", 
-                TokenGetText(identifier).cstr
-            );
-        }
-    }
-    if (structSymbol == nullptr) {
-        let Type type = TypeCreate(isUnion ? TypeKind::Union : TypeKind::Struct, 0, name);
-        structSymbol = AddSymbol(parser->symbolTable, name, isUnion ? SymbolKind::Union : SymbolKind::Struct, symbolScopeKind, type);
-    }
-
-    if (parser->tokenCur.kind == SyntaxKind::SemicolonToken) {
-        MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
-        let ASTNode* result = ASTNodeCreate(
-            isUnion ? ASTNodeKind::UnionDeclarationStatement : ASTNodeKind::StructDeclarationStatement, parser->symbolTable, identifier);
-        result->symbol = structSymbol;
-        return result;
-    } else {
-        structSymbol->membersSymbolTable = SymbolTableCreate(parser->symbolTable);
-
-        // Push union/struct member symboltable scope to parse variable declarations as members
-        parser->symbolTable = structSymbol->membersSymbolTable;
-
-        let SyntaxToken leftBrace = MatchAndAdvanceToken(parser, SyntaxKind::LeftBraceToken);
-        while (parser->tokenCur.kind != SyntaxKind::RightBraceToken) {
-            let Type memberType = ParseType(parser);
-            let SyntaxToken memberIdent = MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
-            let ASTNode* memberNode = ParseVariableDeclarationWithoutTerminator(parser, memberType, memberIdent, SymbolScopeKind::Local);
-            memberNode->symbol->kind = SymbolKind::Member;
-            MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
-        }
-        let SyntaxToken rightBrace = MatchAndAdvanceToken(parser, SyntaxKind::RightBraceToken);
-
-        // Pop symboltable
-        parser->symbolTable = parser->symbolTable->parent;
-
-        if (structSymbol->membersSymbolTable->count == 0){
-            ReportError(
-                TokenGetLocation(identifier),
-                "Struct or union '%s' needs at least one member", 
-                name.cstr
-            );
-        }
-
-        MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
-
-        if (structSymbol->alreadyDefined) {
-            ReportError(
-                TokenGetLocation(identifier),
-                "Duplicate struct or union definition of '%s'", 
-                name.cstr
-            );
-        }
-        structSymbol->alreadyDefined = true;
-
-        let ASTNode* result = ASTNodeCreate(
-            isUnion ? ASTNodeKind::UnionDefinitionStatement : ASTNodeKind::StructDefinitionStatement, parser->symbolTable, identifier);
-        result->symbol = structSymbol;
-        return result;
-    }
-}
-
-fun ASTNode* ParseEnumDefinitionStatement(Parser* parser, bool isExternal) {
-    let SymbolScopeKind symbolScopeKind = isExternal ? SymbolScopeKind::Extern : SymbolScopeKind::Global;
-
-    let SyntaxToken enumKeyword = MatchAndAdvanceToken(parser, SyntaxKind::EnumKeyword);
-    let SyntaxToken classKeyword = MatchAndAdvanceToken(parser, SyntaxKind::ClassKeyword);
-    let SyntaxToken identifier = MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
-    let String name = TokenGetText(identifier);
-
-    if (parser->currentFunctionSymbol != nullptr) {
-        ReportError(
-            TokenGetLocation(identifier),
-            "Unexpected enum declaration of '%s' while already parsing function", 
-            name.cstr
-        );
-    }
-
-    let Symbol* enumSymbol = GetSymbol(parser->symbolTable, name);
-    if (enumSymbol != nullptr) {
-        if (enumSymbol->kind != SymbolKind::Enum) {
-            ReportError(
-                TokenGetLocation(identifier),
-                "Another symbol with the same name '%s' but different type was already declared in current scope",
-                TokenGetText(identifier).cstr
-            );
-        }
-        if (enumSymbol->scopeKind != symbolScopeKind) {
-            ReportError(
-                TokenGetLocation(identifier),
-                "Enum '%s was previously declared but with different scope attribute", 
-                TokenGetText(identifier).cstr
-            );
-        }
-    }
-    if (enumSymbol == nullptr) {
-        let Type type = TypeCreate(TypeKind::Enum, 0, name);
-        enumSymbol = AddSymbol(parser->symbolTable, name, SymbolKind::Enum, symbolScopeKind, type);
-    }
-
-    if (parser->tokenCur.kind == SyntaxKind::SemicolonToken) {
-        MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
-        let ASTNode* result = ASTNodeCreate(ASTNodeKind::EnumDeclarationStatement, parser->symbolTable, identifier);
-        result->symbol = enumSymbol;
-        return result;
-    } else {
-        enumSymbol->membersSymbolTable = SymbolTableCreate(parser->symbolTable);
-
-        // Push enum member symboltable scope to parse declarations as members
-        parser->symbolTable = enumSymbol->membersSymbolTable;
-
-        let longint valueCounter = 0;
-        let SyntaxToken leftBrace = MatchAndAdvanceToken(parser, SyntaxKind::LeftBraceToken);
-        while (parser->tokenCur.kind != SyntaxKind::RightBraceToken) {
-            let Type memberType = TypeCreate(TypeKind::Enum, 0, enumSymbol->name);
-            let SyntaxToken memberIdent = MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
-            let ASTNode* memberNode = ParseVariableDeclarationWithoutTerminator(parser, memberType, memberIdent, SymbolScopeKind::Local);
-            if (parser->tokenCur.kind == SyntaxKind::EqualsToken) {
-                let SyntaxToken equalsToken = MatchAndAdvanceToken(parser, SyntaxKind::EqualsToken);
-                let SyntaxToken valueToken = MatchAndAdvanceToken(parser, SyntaxKind::IntegerLiteralToken);
-                if (valueToken.intvalue < valueCounter)
-                {
-                    ReportError(
-                        TokenGetLocation(identifier),
-                        "Assigned value of enum value literal '%s' must chosen such that all enum values of '%s' are unique - chosen value '%lld' would lead to duplicates", 
-                        TokenGetText(memberIdent).cstr, enumSymbol->name.cstr, valueToken.intvalue
-                    );
-                }
-                valueCounter = valueToken.intvalue;
-            }
-            memberNode->symbol->kind = SymbolKind::Enumvalue;
-            memberNode->symbol->enumValue = valueCounter;
-            if (parser->tokenCur.kind == SyntaxKind::RightBraceToken)
-                break;
-            MatchAndAdvanceToken(parser, SyntaxKind::CommaToken);
-            valueCounter += 1;
-        }
-        let SyntaxToken rightBrace = MatchAndAdvanceToken(parser, SyntaxKind::RightBraceToken);
-
-        // Pop symboltable
-        parser->symbolTable = parser->symbolTable->parent;
-
-        if (enumSymbol->membersSymbolTable->count == 0){
-            ReportError(
-                TokenGetLocation(identifier),
-                "Enum '%s' needs at least one member", 
-                name.cstr
-            );
-        }
-
-        MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
-
-        if (enumSymbol->alreadyDefined) {
-            ReportError(
-                TokenGetLocation(identifier),
-                "Duplicate enum definition of '%s'", 
-                name.cstr
-            );
-        }
-        enumSymbol->alreadyDefined = true;
-
-        let ASTNode* result = ASTNodeCreate(ASTNodeKind::EnumDefinitionStatement, parser->symbolTable, identifier);
-        result->symbol = enumSymbol;
-        return result;
-    }
-}
-
-fun Symbol* ParseFunctionDeclarationStatementWithoutTerminator(Parser* parser, Type returnType, SyntaxToken identifier, bool isExternal) {
-    if (parser->currentFunctionSymbol != nullptr) {
-        ReportError(
-            TokenGetLocation(identifier),
-            "Unexpected function declaration of '%s' while already parsing function", 
-            TokenGetText(identifier).cstr
-        );
-    }
-
-    let SymbolScopeKind symbolScopeKind = isExternal ? SymbolScopeKind::Extern : SymbolScopeKind::Global;
-
-    let Symbol* functionSymbol = GetSymbol(parser->symbolTable, TokenGetText(identifier));
-    if (functionSymbol != nullptr) {
-        if (functionSymbol->kind != SymbolKind::Function) {
-            ReportError(
-                TokenGetLocation(identifier),
-                "Another symbol with the same name '%s' but different type was already declared in current scope", 
-                TokenGetText(identifier).cstr
-            );
-        }
-        if (functionSymbol->scopeKind != symbolScopeKind) {
-            ReportError(
-                TokenGetLocation(identifier),
-                "Function '%s was previously declared but with different scope attribute", 
-                TokenGetText(identifier).cstr
-            );
-        }
-    }
-
-    if (functionSymbol == nullptr)
-        functionSymbol = AddSymbol(parser->symbolTable, TokenGetText(identifier), SymbolKind::Function, symbolScopeKind, returnType);
-
-    let SymbolTable* functionParamsSymbolTable = SymbolTableCreate(parser->symbolTable);
-
-    // Push function symboltable scope to parse variables as function parameters
-    parser->symbolTable = functionParamsSymbolTable;
-
-    let bool isVariadric = false;
-    let SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
-    while (parser->tokenCur.kind != SyntaxKind::RightParenToken) {
-        if (parser->tokenCur.kind == SyntaxKind::DotDotDotToken) {
-            MatchAndAdvanceToken(parser, SyntaxKind::DotDotDotToken);
-            isVariadric = true;
+    result->caseStmt.literalExpression = ParseExpression(parser);
+    switch (result->caseStmt.literalExpression->kind)
+    {
+        case SyntaxKind::IntegerLiteralExpression:
+        case SyntaxKind::StringLiteralExpression:
+        case SyntaxKind::CharacterLiteralExpression:
+        case SyntaxKind::EnumValueLiteralExpression:
             break;
-        }
-        let Type paramType = ParseType(parser);
-        let SyntaxToken paramIdent = MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
-        let ASTNode* paramNode = ParseVariableDeclarationWithoutTerminator(parser, paramType, paramIdent, SymbolScopeKind::Local);
-        paramNode->symbol->kind = SymbolKind::Parameter;
-        if (parser->tokenCur.kind == SyntaxKind::CommaToken)
-            MatchAndAdvanceToken(parser, SyntaxKind::CommaToken);
-        else
-            break;
+        default:
+            ReportError(
+                // TODO we want the location of the failed expression here instead of the case token
+                TokenGetLocation(result->caseStmt.caseKeyword), 
+                "Expected literal token in case label but got '%s' instead",
+                "TODO - we need to get the string of an expression"
+                // TokenKindToString(result->caseStmt.literalExpression).cstr
+            );
     }
-    let SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind::RightParenToken);
-
-    // Pop symboltable
-    parser->symbolTable = parser->symbolTable->parent;
-
-    if (functionSymbol->membersSymbolTable != nullptr) {
-        // The function was already declared before, we need to make sure its types and 
-        // parameters match up with the previous defined type and parameters
-        if (!TypesIdentical(returnType, functionSymbol->type)) {
-            ReportError(
-                TokenGetLocation(identifier),
-                "Return type of function '%s' does not match return type of a previous declaration", 
-                TokenGetText(identifier).cstr
-            );
-        }
-
-        if (functionSymbol->isVariadric != isVariadric) {
-            ReportError(
-                TokenGetLocation(identifier),
-                "Vadriaticity of function '%s' does not match with a previous declaration", 
-                TokenGetText(identifier).cstr
-            );
-        }
-
-        if (functionParamsSymbolTable->count != functionSymbol->membersSymbolTable->count) {
-            ReportError(
-                TokenGetLocation(leftParen),
-                "Function '%s' was previously declared with %d parameters wheras new declaration has %d parameters", 
-                functionSymbol->name.cstr, functionSymbol->membersSymbolTable->count, functionParamsSymbolTable->count
-            );
-        }
-
-        for (let int paramIndex = 0; paramIndex < functionParamsSymbolTable->count; paramIndex += 1) {
-            let Type paramType = functionParamsSymbolTable->symbols[paramIndex]->type;
-            let Type previosType = functionSymbol->membersSymbolTable->symbols[paramIndex]->type;
-
-            if (!TypesIdentical(paramType, previosType)) {
-                ReportError(
-                    TokenGetLocation(leftParen),
-                    "Previous function '%s' parameter %d declared type differs from current declared type", 
-                    functionSymbol->name.cstr, paramIndex + 1
-                );
-            }
-        }
-    }
-    functionSymbol->membersSymbolTable = functionParamsSymbolTable;
-    functionSymbol->isVariadric = isVariadric;
-
-    return functionSymbol;
-}
-
-fun ASTNode* ParseFunctionDefinitionStatement(Parser* parser, bool isExternal) {
-    let SyntaxToken funKeyword = MatchAndAdvanceToken(parser, SyntaxKind::FunKeyword);
-    let Type type = ParseType(parser);
-    let SyntaxToken identifier = MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
-    let Symbol* functionSymbol = ParseFunctionDeclarationStatementWithoutTerminator(parser, type, identifier, isExternal);
-
-    let ASTNode* body = nullptr;
-    if (parser->tokenCur.kind == SyntaxKind::SemicolonToken) {
-        // Just a forward declaration
-        MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
-    } else {
-        if (isExternal) {
-            ReportError(
-                TokenGetLocation(identifier),
-                "Cannot define external function '%s'", 
-                TokenGetText(identifier).cstr
-            );
-        }
-        if (functionSymbol->alreadyDefined) {
-            ReportError(
-                TokenGetLocation(identifier),
-                "Duplicate function definition of '%s'", 
-                TokenGetText(identifier).cstr
-            );
-        }
-        // Parse function body
-        parser->symbolTable = functionSymbol->membersSymbolTable;
-        parser->currentFunctionSymbol = functionSymbol;
-        body = ParseBlockStatement(parser, false);
-        // TODO: make sure function returns something if its return type is not void
-        functionSymbol->alreadyDefined = true;
-        parser->currentFunctionSymbol = nullptr;
-        parser->symbolTable = parser->symbolTable->parent;
-    }
-
-    let ASTNode* result = ASTNodeCreate(
-        body == nullptr ? ASTNodeKind::FunctionDeclarationStatement : ASTNodeKind::FunctionDefinitionStatement, 
-        parser->symbolTable, identifier);
-    result->symbol = functionSymbol;
-    result->left = body;
+    result->caseStmt.colon = MatchAndAdvanceToken(parser, SyntaxKind::ColonToken);
+    result->caseStmt.body = ParseBlockStatement(parser, true);
     return result;
 }
 
-fun ASTNode* ParseVariableDefinitionStatement(Parser* parser, bool isExternal) {
-    let SyntaxToken letKeyword;
-    let bool isLocalPersist = false;
-    if (parser->tokenCur.kind == SyntaxKind::LetLocalPersistKeyword) {
-        letKeyword = MatchAndAdvanceToken(parser, SyntaxKind::LetLocalPersistKeyword);
-        isLocalPersist = true;
-    } else {
-        letKeyword = MatchAndAdvanceToken(parser, SyntaxKind::LetKeyword);
+fun SyntaxNode* ParseDefaultStatement(Parser* parser, SyntaxNode* switchExpression) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::DefaultStatement, parser->tree);
+    result->defaultStmt.defaultKeyword = MatchAndAdvanceToken(parser, SyntaxKind::DefaultKeyword);
+    if (parser->switchCaseLevel == 0) {
+        ReportError(
+            TokenGetLocation(result->defaultStmt.defaultKeyword), 
+            "Unexpected 'default' case label keyword outside of switch statement"
+        );
     }
-
-    let Type type = ParseType(parser);
-    let SyntaxToken identifier = MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
-
-    let SymbolScopeKind symbolScopeKind = parser->currentFunctionSymbol == nullptr
-        ? SymbolScopeKind::Global 
-        : SymbolScopeKind::Local;
-    
-    if (isLocalPersist) {
-        if (symbolScopeKind != SymbolScopeKind::Local) {
-            ReportError(
-                TokenGetLocation(identifier),
-                "Cannot mark global variable as localpersist '%s'", 
-                TokenGetText(identifier).cstr
-            );
-        }
-        symbolScopeKind = SymbolScopeKind::LocalPersist;
-    }
-    if (isExternal) {
-        if (symbolScopeKind != SymbolScopeKind::Global) {
-            ReportError(
-                TokenGetLocation(identifier),
-                "Cannot mark local variable as external '%s'", 
-                TokenGetText(identifier).cstr
-            );
-        }
-        symbolScopeKind = SymbolScopeKind::Extern;
-    }
-
-    let ASTNode* result = ParseVariableDeclarationWithoutTerminator(parser, type, identifier, symbolScopeKind);
-
-    if (parser->tokenCur.kind == SyntaxKind::EqualsToken) {
-        let SyntaxToken equalsToken = MatchAndAdvanceToken(parser, SyntaxKind::EqualsToken);
-        let ASTNode* initializer = nullptr;
-        if (result->symbol->type.isArray)
-            initializer = ParseArrayLiteralExpression(parser, result->symbol);
-        else
-            initializer = ParseExpression(parser);
-        result->left = initializer;
-    } 
-    let SyntaxToken semicolonToken = MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
+    result->defaultStmt.colon = MatchAndAdvanceToken(parser, SyntaxKind::ColonToken);
+    result->defaultStmt.body = ParseBlockStatement(parser, true);
     return result;
 }
 
-fun ASTNode* ParseDefinitionStatement(Parser* parser) {
-    let bool isExternal = false;
-    if (parser->tokenCur.kind == SyntaxKind::ExternKeyword) {
-        isExternal = true;
-        AdvanceToken(parser);
-    }
+fun SyntaxNode* ParseSwitchStatement(Parser* parser) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::SwitchStatement, parser->tree);
+    result->switchStmt.switchKeyword = MatchAndAdvanceToken(parser, SyntaxKind::SwitchKeyword);
+    result->switchStmt.leftParen = MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
+    result->switchStmt.switchExpression = ParseExpression(parser);
+    result->switchStmt.rightParen = MatchAndAdvanceToken(parser, SyntaxKind::RightParenToken);
 
-    if (parser->tokenCur.kind == SyntaxKind::EnumKeyword)
-        return ParseEnumDefinitionStatement(parser, isExternal);
-    else if (parser->tokenCur.kind == SyntaxKind::StructKeyword || parser->tokenCur.kind == SyntaxKind::UnionKeyword)
-        return ParseUnionOrStructDefinitionStatement(parser, isExternal);
-    else if (parser->tokenCur.kind == SyntaxKind::FunKeyword)
-        return ParseFunctionDefinitionStatement(parser, isExternal);
-    else 
-        return ParseVariableDefinitionStatement(parser, isExternal);
-}
-
-fun ASTNode* ParseCaseStatement(Parser* parser, ASTNode* switchExpression) {
-    let SyntaxToken caseLabel = SyntaxTokenCreateEmpty(parser->tree);
-    let ASTNode* caseExpression = nullptr;
-
-    if (parser->tokenCur.kind == SyntaxKind::CaseKeyword) {
-        caseLabel = MatchAndAdvanceToken(parser, SyntaxKind::CaseKeyword);
-        if (parser->switchCaseLevel == 0) {
-            ReportError(
-                TokenGetLocation(caseLabel), 
-                "Unexpected case label outside of switch statement"
-            );
-        }
-
-        caseExpression = ParseExpression(parser);
-        if (caseExpression->kind != ASTNodeKind::IntegerLiteral 
-        && caseExpression->kind != ASTNodeKind::StringLiteral 
-        && caseExpression->kind != ASTNodeKind::CharacterLiteral 
-        && caseExpression->kind != ASTNodeKind::EnumValueLiteral) {
-            ReportError(
-                TokenGetLocation(caseExpression->token), 
-                "Expected literal in case label but got '%s'",
-                TokenKindToString(caseExpression->token.kind).cstr
-            );
-        }
-        let TypeConversionResult conversion = CanConvertTypeFromTo(caseExpression->type, switchExpression->type);
-        if (conversion != TypeConversionResult::Identical && conversion != TypeConversionResult::ImplictlyConvertible) {
-            ReportError(
-                TokenGetLocation(caseExpression->token), 
-                "Cannot convert type '%s' of case label literal '%s' to its switch expression type '%s'",
-                TypeGetText(caseExpression->type).cstr, TokenGetText(caseExpression->token).cstr, TypeGetText(switchExpression->type).cstr
-            );
-        }
-    } else {
-        caseLabel = MatchAndAdvanceToken(parser, SyntaxKind::DefaultKeyword);
-        if (parser->switchCaseLevel == 0) {
-            ReportError(
-                TokenGetLocation(caseLabel), 
-                "Unexpected default case label outside of switch statement"
-            );
-        }
-    }
-    let SyntaxToken colonToken = MatchAndAdvanceToken(parser, SyntaxKind::ColonToken);
-
-    let ASTNode* body = ParseBlockStatement(parser, true);
-    if (body->children.count == 0)
-        body = nullptr;
-
-    let ASTNode* result = ASTNodeCreate(
-        caseLabel.kind == SyntaxKind::CaseKeyword
-        ? ASTNodeKind::CaseStatement 
-        : ASTNodeKind::DefaultStatement, 
-        parser->symbolTable, caseLabel);
-    result->left = body;
-    result->right = caseExpression;
-    return result;
-}
-
-fun ASTNode* ParseSwitchStatement(Parser* parser) {
-    let SyntaxToken switchKeyword = MatchAndAdvanceToken(parser, SyntaxKind::SwitchKeyword);
-
-    let SyntaxToken leftParen = MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
-    let ASTNode* switchExpression = ParseExpression(parser);
-    let SyntaxToken rightParen = MatchAndAdvanceToken(parser, SyntaxKind::RightParenToken);
-
+    result->switchStmt.leftBrace = MatchAndAdvanceToken(parser, SyntaxKind::LeftBraceToken);
     parser->switchCaseLevel += 1;
-    let SyntaxToken leftBrace = MatchAndAdvanceToken(parser, SyntaxKind::LeftBraceToken);
 
-    let int defaultTokenEncountered = false;
-    let ASTNodeArray caseStatements = ASTNodeArrayCreate();
+    result->switchStmt.caseStatements = SyntaxNodeArrayCreate();
     while (parser->tokenCur.kind != SyntaxKind::EndOfFileToken) {
         if (parser->tokenCur.kind == SyntaxKind::RightBraceToken)
             break;
-        let ASTNode* caseStatement = ParseCaseStatement(parser, switchExpression);
-        if (defaultTokenEncountered) {
-            ReportError(
-                TokenGetLocation(caseStatement->token),
-                "Unexpected case statement after default statement was already defined"
-            );
+        if (parser->tokenCur.kind == SyntaxKind::CaseKeyword) {
+            let SyntaxNode* caseStatement = ParseCaseStatement(parser, result);
+            SyntaxNodeArrayPush(&result->switchStmt.caseStatements, caseStatement);
+        } else {
+            let SyntaxNode* defaultStatement = ParseDefaultStatement(parser, result);
+            SyntaxNodeArrayPush(&result->switchStmt.caseStatements, defaultStatement);
         }
-        if (caseStatement->kind == ASTNodeKind::DefaultStatement)
-            defaultTokenEncountered = true;
-        ASTNodeArrayPush(&caseStatements, caseStatement);
     }
 
-    let SyntaxToken rightBrace = MatchAndAdvanceToken(parser, SyntaxKind::RightBraceToken);
     parser->switchCaseLevel -= 1;
-
-    if (caseStatements.count == 0) {
-        ReportError(
-            TokenGetLocation(switchKeyword),
-            "Empty switch statements are not allowed"
-        );
-    }
-
-    // Check that we don't have any duplicate case labels
-    for (let int index = 0; index < caseStatements.count; index += 1) {
-        let ASTNode* a = caseStatements.nodes[index];
-        for (let int inner = index + 1; inner < caseStatements.count; inner += 1) {
-            let ASTNode* b = caseStatements.nodes[inner];
-            if (a->right && b->right && AreLiteralsEqual(a->right, b->right)) {
-                ReportError(
-                    TokenGetLocation(b->token),
-                    "Duplicate switch case literal '%s'",
-                    TokenGetText(b->right->token).cstr
-                );
-            }
-        }
-    }
-
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::SwitchStatement, parser->symbolTable, switchKeyword);
-    result->left = switchExpression;
-    result->children = caseStatements;
+    result->switchStmt.rightBrace = MatchAndAdvanceToken(parser, SyntaxKind::RightBraceToken);
     return result;
 }
 
-
-fun ASTNode* ParseStatement(Parser* parser) {
+fun SyntaxNode* ParseStatement(Parser* parser) {
+    assert(parser->functionLevel > 0);
     switch (parser->tokenCur.kind) {
         case SyntaxKind::LeftBraceToken:
             return ParseBlockStatement(parser, false);
@@ -1579,30 +645,202 @@ fun ASTNode* ParseStatement(Parser* parser) {
             return ParseContinueStatement(parser);
         case SyntaxKind::SwitchKeyword:
             return ParseSwitchStatement(parser);
+        case SyntaxKind::LetKeyword:
+        case SyntaxKind::LetLocalPersistKeyword:
+            return ParseVariableDefinitionStatement(parser, false, true, SyntaxKind::SemicolonToken);
+        default:
+            return ParseExpressionStatement(parser);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Module
+
+fun SyntaxNode* ParseStructOrUnionDefinitionStatement(Parser* parser, SyntaxToken externKeyword) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::StructOrUnionDeclarationStatement, parser->tree);
+    result->structOrUnionDeclarationStmt.externKeyword = externKeyword;
+    if (parser->tokenCur.kind == SyntaxKind::StructKeyword)
+        result->structOrUnionDeclarationStmt.structOrUnionKeyword = MatchAndAdvanceToken(parser, SyntaxKind::StructKeyword);
+    else 
+        result->structOrUnionDeclarationStmt.structOrUnionKeyword = MatchAndAdvanceToken(parser, SyntaxKind::UnionKeyword);
+    result->structOrUnionDeclarationStmt.identifier = MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
+
+    if (parser->tokenCur.kind == SyntaxKind::SemicolonToken) {
+        result->structOrUnionDeclarationStmt.semicolon = MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
+        return result;
+    } else {
+        result->kind = SyntaxKind::StructOrUniontDefinitionStatement;
+        result->structOrUnionDefinitionStmt.memberDeclarationStatements = SyntaxNodeArrayCreate();
+
+        result->structOrUnionDefinitionStmt.leftBrace = MatchAndAdvanceToken(parser, SyntaxKind::LeftBraceToken);
+        while (parser->tokenCur.kind != SyntaxKind::RightBraceToken) {
+            let SyntaxNode* memberDeclaration = ParseVariableDefinitionStatement(parser, true, false, SyntaxKind::SemicolonToken);
+            SyntaxNodeArrayPush(&result->structOrUnionDefinitionStmt.memberDeclarationStatements, memberDeclaration);
+        }
+        result->structOrUnionDefinitionStmt.rightBrace = MatchAndAdvanceToken(parser, SyntaxKind::RightBraceToken);
+        result->structOrUnionDefinitionStmt.semicolon = MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
+        return result;
+    }
+}
+
+fun SyntaxNode* ParseEnumMemberClause(Parser* parser) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::EnumMemberClauseSyntax, parser->tree);
+
+    result->enumMember.identifier = MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
+    if (parser->tokenCur.kind == SyntaxKind::EqualsToken) {
+        result->enumMember.equals = MatchAndAdvanceToken(parser, SyntaxKind::EqualsToken);
+        result->enumMember.integerLiteral = MatchAndAdvanceToken(parser, SyntaxKind::IntegerLiteralToken);
+    } else {
+        result->enumMember.equals = SyntaxTokenCreateEmpty(parser->tree);
+        result->enumMember.integerLiteral = SyntaxTokenCreateEmpty(parser->tree);
+    }
+
+    if (parser->tokenCur.kind == SyntaxKind::CommaToken)
+        result->enumMember.comma = MatchAndAdvanceToken(parser, SyntaxKind::CommaToken);
+    else
+        result->enumMember.comma = SyntaxTokenCreateEmpty(parser->tree);
+
+    return result;
+}
+
+fun SyntaxNode* ParseEnumDefinitionStatement(Parser* parser, SyntaxToken externKeyword) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::EnumDeclarationStatement, parser->tree);
+    result->enumDeclarationStmt.externKeyword = externKeyword;
+    result->enumDeclarationStmt.enumKeyword = MatchAndAdvanceToken(parser, SyntaxKind::EnumKeyword);
+    result->enumDeclarationStmt.classKeyword = MatchAndAdvanceToken(parser, SyntaxKind::ClassKeyword);
+    result->enumDeclarationStmt.identifier = MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
+
+    if (parser->tokenCur.kind == SyntaxKind::SemicolonToken) {
+        // Just a forward declaration
+        result->enumDeclarationStmt.semicolon = MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
+        return result;
+    } else {
+        // Definition including body
+        result->kind = SyntaxKind::EnumDefinitionStatement;
+        result->enumDefinitionStmt.memberClauses = SyntaxNodeArrayCreate();
+
+        result->enumDefinitionStmt.leftBrace = MatchAndAdvanceToken(parser, SyntaxKind::LeftBraceToken);
+        while (parser->tokenCur.kind != SyntaxKind::RightBraceToken) {
+            let SyntaxNode* memberClause = ParseEnumMemberClause(parser);
+            SyntaxNodeArrayPush(&result->enumDefinitionStmt.memberClauses, memberClause);
+            if (memberClause->enumMember.comma.kind != SyntaxKind::CommaToken)
+                break;
+        }
+        result->enumDefinitionStmt.rightBrace = MatchAndAdvanceToken(parser, SyntaxKind::RightBraceToken);
+        result->enumDefinitionStmt.semicolon = MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
+        return result;
+    }
+}
+
+fun SyntaxNode* ParseFunctionDefinitionStatement(Parser* parser, SyntaxToken externKeyword) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::FunctionDeclarationStatement, parser->tree);
+    result->functionDeclarationStmt.externKeyword = externKeyword;
+    result->functionDeclarationStmt.funKeyword = MatchAndAdvanceToken(parser, SyntaxKind::FunKeyword);
+    result->functionDeclarationStmt.returnType = ParseTypeExpression(parser);
+    result->functionDeclarationStmt.identifier = MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
+
+    result->functionDeclarationStmt.leftParen = MatchAndAdvanceToken(parser, SyntaxKind::LeftParenToken);
+    result->functionDeclarationStmt.params = SyntaxNodeArrayCreate();
+    while (parser->tokenCur.kind != SyntaxKind::RightParenToken) {
+        if (parser->tokenCur.kind == SyntaxKind::DotDotDotToken) {
+            let SyntaxToken dotdot = MatchAndAdvanceToken(parser, SyntaxKind::DotDotDotToken);
+            let SyntaxNode* dotdotWrapper = WrapTokenInNode(parser, dotdot);
+            SyntaxNodeArrayPush(&result->functionDeclarationStmt.params, dotdotWrapper);
+            break;
+        }
+
+        let SyntaxNode* parameter = ParseVariableDefinitionStatement(parser, true, false, SyntaxKind::BadToken);
+        SyntaxNodeArrayPush(&result->functionDeclarationStmt.params, parameter);
+
+        if (parser->tokenCur.kind == SyntaxKind::CommaToken) {
+            parameter->variableDeclarationStmt.terminatorToken = MatchAndAdvanceToken(parser, SyntaxKind::CommaToken);
+        } else {
+            break;
+        }
+    }
+    result->functionDeclarationStmt.rightParen = MatchAndAdvanceToken(parser, SyntaxKind::RightParenToken);
+
+    if (parser->tokenCur.kind == SyntaxKind::SemicolonToken) {
+        // Just a forward declaration
+        result->functionDeclarationStmt.semicolon = MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
+        return result;
+    } else {
+        // Definition including body
+        result->kind = SyntaxKind::FunctionDefinitionStatement;
+        parser->functionLevel += 1;
+        result->functionDefinitionStmt.body = ParseBlockStatement(parser, false);
+        parser->functionLevel -= 1;
+        return result;
+    }
+}
+
+fun SyntaxNode* ParseGlobalVariableDefinitionStatement(Parser* parser, SyntaxToken externKeyword) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::GlobalVariableDeclarationStatement, parser->tree);
+    result->globalVariableStmt.externKeyword = externKeyword;
+    result->globalVariableStmt.variableDeclarationStatement = ParseVariableDefinitionStatement(parser, false, true, SyntaxKind::SemicolonToken);
+    return result;
+}
+
+fun SyntaxNode* ParseGlobalDefinitionStatement(Parser* parser) {
+    assert(parser->functionLevel == 0);
+
+    let SyntaxToken externKeyword = SyntaxTokenCreateEmpty(parser->tree);
+    if (parser->tokenCur.kind == SyntaxKind::ExternKeyword) 
+        externKeyword = AdvanceToken(parser);
+
+    switch (parser->tokenCur.kind) {
+        case SyntaxKind::EnumKeyword:
+            return ParseEnumDefinitionStatement(parser, externKeyword);
+        case SyntaxKind::StructKeyword: 
+        case SyntaxKind::UnionKeyword:
+            return ParseStructOrUnionDefinitionStatement(parser, externKeyword);
+        case SyntaxKind::FunKeyword:
+            return ParseFunctionDefinitionStatement(parser, externKeyword);
+        default:
+            return ParseGlobalVariableDefinitionStatement(parser, externKeyword);
+    }
+}
+
+fun SyntaxNode* ParseImportDeclarationStatement(Parser* parser) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::ImportDeclarationStatement, parser->tree);
+    result->importStmt.importKeyword = MatchAndAdvanceToken(parser, SyntaxKind::ImportKeyword);
+    result->importStmt.modulenameLiteral = MatchAndAdvanceToken(parser, SyntaxKind::StringLiteralToken);
+    return result;
+}
+
+fun SyntaxNode* ParseModuleStatement(Parser* parser) {
+    switch (parser->tokenCur.kind) {
         case SyntaxKind::ExternKeyword:
         case SyntaxKind::StructKeyword:
         case SyntaxKind::UnionKeyword:
         case SyntaxKind::EnumKeyword:
         case SyntaxKind::FunKeyword:
         case SyntaxKind::LetKeyword:
-        case SyntaxKind::LetLocalPersistKeyword:
-            return ParseDefinitionStatement(parser);
+            return ParseGlobalDefinitionStatement(parser);
+        case SyntaxKind::IncludeDirectiveKeyword:
+            return ParseImportDeclarationStatement(parser);
         default:
-            return ParseExpressionStatement(parser);
+            ReportError(
+                TokenGetLocation(parser->tokenCur),
+                "Expected global module definition got unexpected token '%s' instead",
+                TokenGetText(parser->tokenCur).cstr
+            );
+            exit(1);
     }
 }
 
-fun ASTNode* ParseGlobalStatements(Parser* parser) {
-    let SyntaxToken root = SyntaxTokenCreateEmpty(parser->tree);
-    let ASTNode* result = ASTNodeCreate(ASTNodeKind::Module, parser->symbolTable, root);
+fun SyntaxTree* ParseModule(Parser* parser) {
+    let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::Module, parser->tree);
+    parser->tree->moduleRoot = (as ModuleStatementSyntax*)result;
+    result->moduleStmt.globalStatements = SyntaxNodeArrayCreate();
 
     while (parser->tokenCur.kind != SyntaxKind::EndOfFileToken) {
         // TODO get rid of these hacks when we do our own language
         // Skip pragmas, include directives, define directives, typedefs
-        let bool foundDirectives = true;
-        while (foundDirectives) { 
+        let bool foundDirectives = false;
+        do { 
             foundDirectives = false;
-            while (parser->tokenCur.kind == SyntaxKind::TypedefKeyword) {
+            if (parser->tokenCur.kind == SyntaxKind::TypedefKeyword) {
                 MatchAndAdvanceToken(parser, SyntaxKind::TypedefKeyword);
                 while (parser->tokenCur.kind != SyntaxKind::SemicolonToken) {
                     AdvanceToken(parser); // Ignore everything in the typedef
@@ -1610,7 +848,7 @@ fun ASTNode* ParseGlobalStatements(Parser* parser) {
                 MatchAndAdvanceToken(parser, SyntaxKind::SemicolonToken);
                 foundDirectives = true;
             }
-            while (parser->tokenCur.kind == SyntaxKind::IncludeDirectiveKeyword) {
+            if (parser->tokenCur.kind == SyntaxKind::IncludeDirectiveKeyword) {
                 MatchAndAdvanceToken(parser, SyntaxKind::IncludeDirectiveKeyword);
                 if (parser->tokenCur.kind == SyntaxKind::LessToken) {
                     MatchAndAdvanceToken(parser, SyntaxKind::LessToken);
@@ -1623,21 +861,21 @@ fun ASTNode* ParseGlobalStatements(Parser* parser) {
                 }
                 foundDirectives = true;
             }
-            while (parser->tokenCur.kind == SyntaxKind::PragmaDirectiveKeyword) {
+            if (parser->tokenCur.kind == SyntaxKind::PragmaDirectiveKeyword) {
                 MatchAndAdvanceToken(parser, SyntaxKind::PragmaDirectiveKeyword);
                 MatchAndAdvanceToken(parser, SyntaxKind::IdentifierToken);
                 foundDirectives = true;
             }
-            while (parser->tokenCur.kind == SyntaxKind::IfDirectiveKeyword) {
+            if (parser->tokenCur.kind == SyntaxKind::IfDirectiveKeyword) {
                 MatchAndAdvanceToken(parser, SyntaxKind::IfDirectiveKeyword);
                 AdvanceToken(parser); // Ignore 0
                 foundDirectives = true;
             }
-            while (parser->tokenCur.kind == SyntaxKind::EndIfDefinedDirectiveKeyword) {
+            if (parser->tokenCur.kind == SyntaxKind::EndIfDefinedDirectiveKeyword) {
                 MatchAndAdvanceToken(parser, SyntaxKind::EndIfDefinedDirectiveKeyword);
                 foundDirectives = true;
             }
-            while (parser->tokenCur.kind == SyntaxKind::DefineDirectiveKeyword) {
+            if (parser->tokenCur.kind == SyntaxKind::DefineDirectiveKeyword) {
                 MatchAndAdvanceToken(parser, SyntaxKind::DefineDirectiveKeyword);
                 if (parser->tokenCur.kind == SyntaxKind::LetKeyword) {
                     MatchAndAdvanceToken(parser, SyntaxKind::LetKeyword);
@@ -1654,10 +892,20 @@ fun ASTNode* ParseGlobalStatements(Parser* parser) {
                 }
                 foundDirectives = true;
             }
-        }
-        let ASTNode* statement = ParseDefinitionStatement(parser);
-        ASTNodeArrayPush(&result->children, statement);
+        } while (foundDirectives);
+        let SyntaxNode* statement = ParseModuleStatement(parser);
+        SyntaxNodeArrayPush(&result->moduleStmt.globalStatements, statement);
     }
 
-    return result;
+    if (parser->tokenCur.kind != SyntaxKind::EndOfFileToken)
+    {
+        ReportError(
+            TokenGetLocation(parser->tokenCur),
+            "Expected EOF token after parsing file, instead got '%s'", 
+            TokenKindToString(parser->tokenCur.kind).cstr
+        );
+    }
+    // TODO: figure out and assign all parents to all nodes in the tree here
+
+    return parser->tree;
 }
