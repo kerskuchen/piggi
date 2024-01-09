@@ -179,65 +179,89 @@ static int32 FindCharPosInString(String str, char ch) {
     return -1;
 }
 
-struct SourceFile; typedef struct SourceFile SourceFile; struct SourceFile {
-    String filepath;
-    String content;
-};
+static bool StringStartsWith(String str, String prefix) {
+    if (str.length < prefix.length) {
+        return false;
+    }
+    for (int32 pos = 0; pos < prefix.length; pos += 1) {
+        if (str.cstr[pos] != prefix.cstr[pos]) {
+            return false;
+        }
+    }
+    return true;
+}
 
-struct SourceFileArray; typedef struct SourceFileArray SourceFileArray; struct SourceFileArray {
-    SourceFile* files;
+static bool StringEndsWith(String str, String suffix) {
+    if (str.length < suffix.length) {
+        return false;
+    }
+    for (int32 pos = 0; pos < suffix.length; pos += 1) {
+        int32 strIndex = str.length - suffix.length + pos;
+        int32 suffixIndex = pos;
+        if (str.cstr[strIndex] != suffix.cstr[suffixIndex]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+struct StringArray; typedef struct StringArray StringArray; struct StringArray {
+    String* strings;
     int32 count;
     int32 capacity;
 };
 
-static SourceFileArray SourceFileArrayCreate() {
-    SourceFileArray result;
-    result.files = NULL;
+static StringArray StringArrayCreate() {
+    StringArray result;
+    result.strings = NULL;
     result.count = 0;
     result.capacity = 0;
     return result;
 }
 
-static void SourceFileArrayGrow(SourceFileArray* array, int32 newCapacity) {
+static void StringArrayGrow(StringArray* array, int32 newCapacity) {
     array->capacity = newCapacity;
-    array->files = (SourceFile*)realloc(array->files, newCapacity * sizeof(SourceFile));
-    assert(array->files != NULL);
+    array->strings = (String*)realloc(array->strings, newCapacity * sizeof(String));
+    assert(array->strings != NULL);
 }
 
-static int32 SourceFileArrayPush(SourceFileArray* array, SourceFile file) {
+static int32 StringArrayPush(StringArray* array, String string) {
     if (array->count == array->capacity) {
         int32 newCapacity = 2 * array->capacity;
         if (newCapacity == 0) {
             newCapacity = 64;
         }
-        SourceFileArrayGrow(array, newCapacity);
+        StringArrayGrow(array, newCapacity);
     }
     int32 insertionIndex = array->count;
-    array->files[insertionIndex] = file;
+    array->strings[insertionIndex] = string;
     array->count += 1;
     return insertionIndex;
 }
 
-struct Source; typedef struct Source Source; struct Source {
-    SourceFileArray files;
-    String content;
-};
-
-static Source SourceCreateEmpty() {
-    Source result;
-    result.files = SourceFileArrayCreate();
-    result.content = StringCreateEmpty();
-    return result;
-}
-
-static bool SourceContainsFile(Source source, String filepath) {
-    for (int32 index = 0; index < source.files.count; index += 1) {
-        if (StringEquals(source.files.files[index].filepath, filepath)) {
+static bool StringArrayContains(StringArray* array, String value) {
+    for (int32 index = 0; index < array->count; index += 1) {
+        if (StringEquals(array->strings[index], value)) {
             return true;
         }
     }
     return false;
 }
+
+static String StringArrayPop(StringArray* array) {
+    if (array->count > 0) {
+        array->count -= 1;
+        return array->strings[array->count];
+    }
+    assert(array->count > 0);
+    exit(1);
+}
+
+struct Source; typedef struct Source Source; struct Source {
+    String modulename;
+    String filepath;
+    String content;
+};
 
 static String SourceGetSubstring(Source source, int32 start, int32 end) {
     return StringGetSubstring(source.content, start, end);
@@ -249,57 +273,64 @@ static char SourceGetCharAtIndex(Source source, int32 charPos) {
 
 struct SourceLocation; typedef struct SourceLocation SourceLocation; struct SourceLocation {
     Source source;
-    int32 charPos;
-    char ch;
-    String filepath;
-    LineAndColumnNumber fileLineColumn;
-};
-
-static SourceLocation SourceGetLocationForCharPos(Source source, int32 charPos) {
-    SourceLocation result;
-    result.source = source;
-    result.charPos = charPos;
-    result.ch = SourceGetCharAtIndex(source, charPos);
-    result.filepath = StringCreateEmpty();
-    result.fileLineColumn.lineNumber = -1;
-    result.fileLineColumn.columnNumber = -1;
-    int32 remainder = charPos;
-    for (int32 fileIndex = 0; fileIndex < source.files.count; fileIndex += 1) {
-        String filepath = source.files.files[fileIndex].filepath;
-        String fileContent = source.files.files[fileIndex].content;
-        int32 fileLength = fileContent.length;
-        if (remainder < fileLength) {
-            result.filepath = filepath;
-            result.fileLineColumn = StringGetLineAndColumnNumberAtPos(fileContent, remainder);
-            result.ch = fileContent.cstr[remainder];
-            break;
-        }
-        remainder -= fileLength;
-    }
-    return result;
-}
-
-struct SourceLocation2; typedef struct SourceLocation2 SourceLocation2; struct SourceLocation2 {
-    Source source;
     int32 start;
     int32 end;
 };
 
-static SourceLocation2 SourceLocation2Create(Source source, int32 start, int32 end) {
-    SourceLocation2 result;
+static SourceLocation SourceLocationCreate(Source source, int32 start, int32 end) {
+    SourceLocation result;
     result.source = source;
     result.start = start;
     result.end = end;
     return result;
 }
 
+static LineAndColumnNumber LocationGetLineColumn(SourceLocation location) {
+    return StringGetLineAndColumnNumberAtPos(location.source.content, location.start);
+}
+
+struct SourceArray; typedef struct SourceArray SourceArray; struct SourceArray {
+    Source* files;
+    int32 count;
+    int32 capacity;
+};
+
+static SourceArray SourceArrayCreate() {
+    SourceArray result;
+    result.files = NULL;
+    result.count = 0;
+    result.capacity = 0;
+    return result;
+}
+
+static void SourceArrayGrow(SourceArray* array, int32 newCapacity) {
+    array->capacity = newCapacity;
+    array->files = (Source*)realloc(array->files, newCapacity * sizeof(Source));
+    assert(array->files != NULL);
+}
+
+static int32 SourceArrayPush(SourceArray* array, Source file) {
+    if (array->count == array->capacity) {
+        int32 newCapacity = 2 * array->capacity;
+        if (newCapacity == 0) {
+            newCapacity = 64;
+        }
+        SourceArrayGrow(array, newCapacity);
+    }
+    int32 insertionIndex = array->count;
+    array->files[insertionIndex] = file;
+    array->count += 1;
+    return insertionIndex;
+}
+
 static void ReportLocation(SourceLocation location) {
-    fprintf(stderr, "%s(%d)", location.filepath.cstr, location.fileLineColumn.lineNumber);
+    LineAndColumnNumber fileLineColumn = LocationGetLineColumn(location);
+    fprintf(stderr, "%s(%d)", location.source.filepath.cstr, fileLineColumn.lineNumber);
 }
 
 static void ReportError(SourceLocation location, char* format, ...) {
     ReportLocation(location);
-    fprintf(stderr, ": Error - ", location.filepath.cstr, location.fileLineColumn.lineNumber);
+    fprintf(stderr, ": Error - ");
     va_list args;
     va_start(args, format);
     vfprintf(stderr, format, args);
@@ -309,142 +340,143 @@ static void ReportError(SourceLocation location, char* format, ...) {
 }
 
 enum SyntaxKind; typedef enum SyntaxKind SyntaxKind; enum SyntaxKind {
-    SyntaxKind_BadToken = 0,
-    SyntaxKind_SkippedTextTrivia = 1,
-    SyntaxKind_LineBreakTrivia = 2,
-    SyntaxKind_WhitespaceTrivia = 3,
-    SyntaxKind_SingleLineCommentTrivia = 4,
-    SyntaxKind_MultiLineCommentTrivia = 5,
-    SyntaxKind_EndOfFileToken = 6,
-    SyntaxKind_BangToken = 7,
-    SyntaxKind_TildeToken = 8,
-    SyntaxKind_PlusToken = 9,
-    SyntaxKind_MinusToken = 10,
-    SyntaxKind_StarToken = 11,
-    SyntaxKind_SlashToken = 12,
-    SyntaxKind_PercentToken = 13,
-    SyntaxKind_EqualsToken = 14,
-    SyntaxKind_PlusEqualsToken = 15,
-    SyntaxKind_MinusEqualsToken = 16,
-    SyntaxKind_StarEqualsToken = 17,
-    SyntaxKind_SlashEqualsToken = 18,
-    SyntaxKind_PercentEqualsToken = 19,
-    SyntaxKind_LessLessEqualsToken = 20,
-    SyntaxKind_GreaterGreaterEqualsToken = 21,
-    SyntaxKind_HatEqualsToken = 22,
-    SyntaxKind_PipeEqualsToken = 23,
-    SyntaxKind_AmpersandEqualsToken = 24,
-    SyntaxKind_PipePipeToken = 25,
-    SyntaxKind_AmpersandAmpersandToken = 26,
-    SyntaxKind_EqualsEqualsToken = 27,
-    SyntaxKind_BangEqualsToken = 28,
-    SyntaxKind_LessToken = 29,
-    SyntaxKind_LessEqualsToken = 30,
-    SyntaxKind_GreaterToken = 31,
-    SyntaxKind_GreaterEqualsToken = 32,
-    SyntaxKind_LessLessToken = 33,
-    SyntaxKind_GreaterGreaterToken = 34,
-    SyntaxKind_HatToken = 35,
-    SyntaxKind_PipeToken = 36,
-    SyntaxKind_AmpersandToken = 37,
-    SyntaxKind_QuestionmarkToken = 38,
-    SyntaxKind_ColonToken = 39,
-    SyntaxKind_ColonColonToken = 40,
-    SyntaxKind_ArrowToken = 41,
-    SyntaxKind_DotToken = 42,
-    SyntaxKind_DotDotDotToken = 43,
-    SyntaxKind_CommaToken = 44,
-    SyntaxKind_SemicolonToken = 45,
-    SyntaxKind_LeftBraceToken = 46,
-    SyntaxKind_RightBraceToken = 47,
-    SyntaxKind_LeftParenToken = 48,
-    SyntaxKind_RightParenToken = 49,
-    SyntaxKind_LeftBracketToken = 50,
-    SyntaxKind_RightBracketToken = 51,
-    SyntaxKind_IntegerLiteralToken = 52,
-    SyntaxKind_CharacterLiteralToken = 53,
-    SyntaxKind_StringLiteralToken = 54,
-    SyntaxKind_IdentifierToken = 55,
-    SyntaxKind_VoidKeyword = 56,
-    SyntaxKind_CharKeyword = 57,
-    SyntaxKind_ByteKeyword = 58,
-    SyntaxKind_ShortKeyword = 59,
-    SyntaxKind_IntKeyword = 60,
-    SyntaxKind_LongKeyword = 61,
-    SyntaxKind_NullKeyword = 62,
-    SyntaxKind_CStringKeyword = 63,
-    SyntaxKind_BoolKeyword = 64,
-    SyntaxKind_TrueKeyword = 65,
-    SyntaxKind_FalseKeyword = 66,
-    SyntaxKind_LetKeyword = 67,
-    SyntaxKind_LetLocalPersistKeyword = 68,
-    SyntaxKind_FunKeyword = 69,
-    SyntaxKind_StructKeyword = 70,
-    SyntaxKind_UnionKeyword = 71,
-    SyntaxKind_EnumKeyword = 72,
-    SyntaxKind_ClassKeyword = 73,
-    SyntaxKind_ImportKeyword = 74,
-    SyntaxKind_IfKeyword = 75,
-    SyntaxKind_ElseKeyword = 76,
-    SyntaxKind_DoKeyword = 77,
-    SyntaxKind_WhileKeyword = 78,
-    SyntaxKind_ForKeyword = 79,
-    SyntaxKind_ReturnKeyword = 80,
-    SyntaxKind_BreakKeyword = 81,
-    SyntaxKind_ContinueKeyword = 82,
-    SyntaxKind_SwitchKeyword = 83,
-    SyntaxKind_CaseKeyword = 84,
-    SyntaxKind_DefaultKeyword = 85,
-    SyntaxKind_AsKeyword = 86,
-    SyntaxKind_SizeOfKeyword = 87,
-    SyntaxKind_ExternKeyword = 88,
-    SyntaxKind_IncludeDirectiveKeyword = 89,
-    SyntaxKind_DefineDirectiveKeyword = 90,
-    SyntaxKind_IfDirectiveKeyword = 91,
-    SyntaxKind_EndIfDefinedDirectiveKeyword = 92,
-    SyntaxKind_PragmaDirectiveKeyword = 93,
-    SyntaxKind_TypedefKeyword = 94,
-    SyntaxKind_UnaryExpression = 95,
-    SyntaxKind_BinaryExpression = 96,
-    SyntaxKind_FuncCallExpression = 97,
-    SyntaxKind_ArrayIndexExpression = 98,
-    SyntaxKind_MemberAccessExpression = 99,
-    SyntaxKind_TypeCastExpression = 100,
-    SyntaxKind_ParenthesizedExpression = 101,
-    SyntaxKind_TernaryConditionalExpression = 102,
-    SyntaxKind_SizeOfExpression = 103,
-    SyntaxKind_NameExpression = 104,
-    SyntaxKind_TypeExpression = 105,
-    SyntaxKind_NullLiteralExpression = 106,
-    SyntaxKind_IntegerLiteralExpression = 107,
-    SyntaxKind_CharacterLiteralExpression = 108,
-    SyntaxKind_BoolLiteralExpression = 109,
-    SyntaxKind_StringLiteralExpression = 110,
-    SyntaxKind_EnumValueLiteralExpression = 111,
-    SyntaxKind_ArrayLiteralExpression = 112,
-    SyntaxKind_EnumMemberClauseSyntax = 113,
-    SyntaxKind_BlockStatement = 114,
-    SyntaxKind_ExpressionStatement = 115,
-    SyntaxKind_IfStatement = 116,
-    SyntaxKind_DoWhileStatement = 117,
-    SyntaxKind_WhileStatement = 118,
-    SyntaxKind_ForStatement = 119,
-    SyntaxKind_ReturnStatement = 120,
-    SyntaxKind_BreakStatement = 121,
-    SyntaxKind_ContinueStatement = 122,
-    SyntaxKind_SwitchStatement = 123,
-    SyntaxKind_CaseStatement = 124,
-    SyntaxKind_DefaultStatement = 125,
-    SyntaxKind_VariableDeclarationStatement = 126,
-    SyntaxKind_Module = 127,
-    SyntaxKind_ImportDeclarationStatement = 128,
-    SyntaxKind_GlobalVariableDeclarationStatement = 129,
-    SyntaxKind_EnumDeclarationStatement = 130,
-    SyntaxKind_EnumDefinitionStatement = 131,
-    SyntaxKind_StructOrUnionDeclarationStatement = 132,
-    SyntaxKind_StructOrUniontDefinitionStatement = 133,
-    SyntaxKind_FunctionDeclarationStatement = 134,
-    SyntaxKind_FunctionDefinitionStatement = 135,
+    SyntaxKind_MissingToken = 0,
+    SyntaxKind_BadToken = 1,
+    SyntaxKind_SkippedTextTrivia = 2,
+    SyntaxKind_LineBreakTrivia = 3,
+    SyntaxKind_WhitespaceTrivia = 4,
+    SyntaxKind_SingleLineCommentTrivia = 5,
+    SyntaxKind_MultiLineCommentTrivia = 6,
+    SyntaxKind_EndOfFileToken = 7,
+    SyntaxKind_BangToken = 8,
+    SyntaxKind_TildeToken = 9,
+    SyntaxKind_PlusToken = 10,
+    SyntaxKind_MinusToken = 11,
+    SyntaxKind_StarToken = 12,
+    SyntaxKind_SlashToken = 13,
+    SyntaxKind_PercentToken = 14,
+    SyntaxKind_EqualsToken = 15,
+    SyntaxKind_PlusEqualsToken = 16,
+    SyntaxKind_MinusEqualsToken = 17,
+    SyntaxKind_StarEqualsToken = 18,
+    SyntaxKind_SlashEqualsToken = 19,
+    SyntaxKind_PercentEqualsToken = 20,
+    SyntaxKind_LessLessEqualsToken = 21,
+    SyntaxKind_GreaterGreaterEqualsToken = 22,
+    SyntaxKind_HatEqualsToken = 23,
+    SyntaxKind_PipeEqualsToken = 24,
+    SyntaxKind_AmpersandEqualsToken = 25,
+    SyntaxKind_PipePipeToken = 26,
+    SyntaxKind_AmpersandAmpersandToken = 27,
+    SyntaxKind_EqualsEqualsToken = 28,
+    SyntaxKind_BangEqualsToken = 29,
+    SyntaxKind_LessToken = 30,
+    SyntaxKind_LessEqualsToken = 31,
+    SyntaxKind_GreaterToken = 32,
+    SyntaxKind_GreaterEqualsToken = 33,
+    SyntaxKind_LessLessToken = 34,
+    SyntaxKind_GreaterGreaterToken = 35,
+    SyntaxKind_HatToken = 36,
+    SyntaxKind_PipeToken = 37,
+    SyntaxKind_AmpersandToken = 38,
+    SyntaxKind_QuestionmarkToken = 39,
+    SyntaxKind_ColonToken = 40,
+    SyntaxKind_ColonColonToken = 41,
+    SyntaxKind_ArrowToken = 42,
+    SyntaxKind_DotToken = 43,
+    SyntaxKind_DotDotDotToken = 44,
+    SyntaxKind_CommaToken = 45,
+    SyntaxKind_SemicolonToken = 46,
+    SyntaxKind_LeftBraceToken = 47,
+    SyntaxKind_RightBraceToken = 48,
+    SyntaxKind_LeftParenToken = 49,
+    SyntaxKind_RightParenToken = 50,
+    SyntaxKind_LeftBracketToken = 51,
+    SyntaxKind_RightBracketToken = 52,
+    SyntaxKind_IntegerLiteralToken = 53,
+    SyntaxKind_CharacterLiteralToken = 54,
+    SyntaxKind_StringLiteralToken = 55,
+    SyntaxKind_IdentifierToken = 56,
+    SyntaxKind_VoidKeyword = 57,
+    SyntaxKind_CharKeyword = 58,
+    SyntaxKind_ByteKeyword = 59,
+    SyntaxKind_ShortKeyword = 60,
+    SyntaxKind_IntKeyword = 61,
+    SyntaxKind_LongKeyword = 62,
+    SyntaxKind_NullKeyword = 63,
+    SyntaxKind_CStringKeyword = 64,
+    SyntaxKind_BoolKeyword = 65,
+    SyntaxKind_TrueKeyword = 66,
+    SyntaxKind_FalseKeyword = 67,
+    SyntaxKind_LetKeyword = 68,
+    SyntaxKind_LetLocalPersistKeyword = 69,
+    SyntaxKind_FunKeyword = 70,
+    SyntaxKind_StructKeyword = 71,
+    SyntaxKind_UnionKeyword = 72,
+    SyntaxKind_EnumKeyword = 73,
+    SyntaxKind_ClassKeyword = 74,
+    SyntaxKind_ImportKeyword = 75,
+    SyntaxKind_IfKeyword = 76,
+    SyntaxKind_ElseKeyword = 77,
+    SyntaxKind_DoKeyword = 78,
+    SyntaxKind_WhileKeyword = 79,
+    SyntaxKind_ForKeyword = 80,
+    SyntaxKind_ReturnKeyword = 81,
+    SyntaxKind_BreakKeyword = 82,
+    SyntaxKind_ContinueKeyword = 83,
+    SyntaxKind_SwitchKeyword = 84,
+    SyntaxKind_CaseKeyword = 85,
+    SyntaxKind_DefaultKeyword = 86,
+    SyntaxKind_AsKeyword = 87,
+    SyntaxKind_SizeOfKeyword = 88,
+    SyntaxKind_ExternKeyword = 89,
+    SyntaxKind_IncludeDirectiveKeyword = 90,
+    SyntaxKind_DefineDirectiveKeyword = 91,
+    SyntaxKind_IfDirectiveKeyword = 92,
+    SyntaxKind_EndIfDefinedDirectiveKeyword = 93,
+    SyntaxKind_PragmaDirectiveKeyword = 94,
+    SyntaxKind_TypedefKeyword = 95,
+    SyntaxKind_UnaryExpression = 96,
+    SyntaxKind_BinaryExpression = 97,
+    SyntaxKind_FuncCallExpression = 98,
+    SyntaxKind_ArrayIndexExpression = 99,
+    SyntaxKind_MemberAccessExpression = 100,
+    SyntaxKind_TypeCastExpression = 101,
+    SyntaxKind_ParenthesizedExpression = 102,
+    SyntaxKind_TernaryConditionalExpression = 103,
+    SyntaxKind_SizeOfExpression = 104,
+    SyntaxKind_NameExpression = 105,
+    SyntaxKind_TypeExpression = 106,
+    SyntaxKind_NullLiteralExpression = 107,
+    SyntaxKind_IntegerLiteralExpression = 108,
+    SyntaxKind_CharacterLiteralExpression = 109,
+    SyntaxKind_BoolLiteralExpression = 110,
+    SyntaxKind_StringLiteralExpression = 111,
+    SyntaxKind_EnumValueLiteralExpression = 112,
+    SyntaxKind_ArrayLiteralExpression = 113,
+    SyntaxKind_EnumMemberClauseSyntax = 114,
+    SyntaxKind_BlockStatement = 115,
+    SyntaxKind_ExpressionStatement = 116,
+    SyntaxKind_IfStatement = 117,
+    SyntaxKind_DoWhileStatement = 118,
+    SyntaxKind_WhileStatement = 119,
+    SyntaxKind_ForStatement = 120,
+    SyntaxKind_ReturnStatement = 121,
+    SyntaxKind_BreakStatement = 122,
+    SyntaxKind_ContinueStatement = 123,
+    SyntaxKind_SwitchStatement = 124,
+    SyntaxKind_CaseStatement = 125,
+    SyntaxKind_DefaultStatement = 126,
+    SyntaxKind_VariableDeclarationStatement = 127,
+    SyntaxKind_Module = 128,
+    SyntaxKind_ImportDeclarationStatement = 129,
+    SyntaxKind_GlobalVariableDeclarationStatement = 130,
+    SyntaxKind_EnumDeclarationStatement = 131,
+    SyntaxKind_EnumDefinitionStatement = 132,
+    SyntaxKind_StructOrUnionDeclarationStatement = 133,
+    SyntaxKind_StructOrUniontDefinitionStatement = 134,
+    SyntaxKind_FunctionDeclarationStatement = 135,
+    SyntaxKind_FunctionDefinitionStatement = 136,
 };
 
 union SyntaxNode; typedef union SyntaxNode SyntaxNode;
@@ -455,6 +487,40 @@ struct SyntaxTree; typedef struct SyntaxTree SyntaxTree; struct SyntaxTree {
     Source source;
     ModuleStatementSyntax* moduleRoot;
 };
+
+struct SyntaxTreeArray; typedef struct SyntaxTreeArray SyntaxTreeArray; struct SyntaxTreeArray {
+    SyntaxTree** trees;
+    int32 count;
+    int32 capacity;
+};
+
+static SyntaxTreeArray SyntaxTreeArrayCreate() {
+    SyntaxTreeArray result;
+    result.trees = NULL;
+    result.count = 0;
+    result.capacity = 0;
+    return result;
+}
+
+static void SyntaxTreeArrayGrow(SyntaxTreeArray* array, int32 newCapacity) {
+    array->capacity = newCapacity;
+    array->trees = (SyntaxTree**)realloc(array->trees, newCapacity * sizeof(SyntaxTree*));
+    assert(array->trees != NULL);
+}
+
+static int32 SyntaxTreeArrayPush(SyntaxTreeArray* array, SyntaxTree* tree) {
+    if (array->count == array->capacity) {
+        int32 newCapacity = 2 * array->capacity;
+        if (newCapacity == 0) {
+            newCapacity = 64;
+        }
+        SyntaxTreeArrayGrow(array, newCapacity);
+    }
+    int32 insertionIndex = array->count;
+    array->trees[insertionIndex] = tree;
+    array->count += 1;
+    return insertionIndex;
+}
 
 struct SyntaxInfo; typedef struct SyntaxInfo SyntaxInfo; struct SyntaxInfo {
     SyntaxKind kind;
@@ -493,10 +559,10 @@ static int32 SyntaxNodeArrayPush(SyntaxNodeArray* array, SyntaxNode* node) {
 
 struct SyntaxTrivia; typedef struct SyntaxTrivia SyntaxTrivia; struct SyntaxTrivia {
     SyntaxKind kind;
-    SourceLocation2 location;
+    SourceLocation location;
 };
 
-static SyntaxTrivia SyntaxTriviaCreate(SyntaxKind kind, SourceLocation2 location) {
+static SyntaxTrivia SyntaxTriviaCreate(SyntaxKind kind, SourceLocation location) {
     SyntaxTrivia result;
     result.kind = kind;
     result.location = location;
@@ -536,7 +602,7 @@ static int32 SyntaxTriviaArrayPush(SyntaxTriviaArray* array, SyntaxTrivia node) 
 struct SyntaxToken; typedef struct SyntaxToken SyntaxToken; struct SyntaxToken {
     SyntaxKind kind;
     SyntaxTree* tree;
-    SourceLocation2 location;
+    SourceLocation location;
     SyntaxTriviaArray leadingTrivia;
     SyntaxTriviaArray trailingTrivia;
     int64 intvalue;
@@ -544,6 +610,24 @@ struct SyntaxToken; typedef struct SyntaxToken SyntaxToken; struct SyntaxToken {
     String stringValueWithoutQuotes;
     String debugString;
 };
+
+static SyntaxToken SyntaxTokenCreateMissing() {
+    SyntaxToken result;
+    result.kind = SyntaxKind_MissingToken;
+    result.tree = NULL;
+    result.location.source.content = StringCreateEmpty();
+    result.location.source.filepath = StringCreateEmpty();
+    result.location.source.modulename = StringCreateEmpty();
+    result.location.start = 0;
+    result.location.end = 0;
+    result.leadingTrivia = SyntaxTriviaArrayCreate();
+    result.trailingTrivia = SyntaxTriviaArrayCreate();
+    result.intvalue = 0;
+    result.intvalueIsHex = false;
+    result.stringValueWithoutQuotes = StringCreateEmpty();
+    result.debugString = StringCreateEmpty();
+    return result;
+}
 
 static SyntaxToken SyntaxTokenCreateEmpty(SyntaxTree* tree) {
     SyntaxToken result;
@@ -960,10 +1044,6 @@ static SyntaxKind GetKeywordForIdentifier(String identifier) {
 
 static String TokenGetText(SyntaxToken token) {
     return SourceGetSubstring(token.location.source, token.location.start, token.location.end);
-}
-
-static SourceLocation TokenGetLocation(SyntaxToken token) {
-    return SourceGetLocationForCharPos(token.location.source, token.location.start);
 }
 
 struct StringLiteralExpressionSyntax; typedef struct StringLiteralExpressionSyntax StringLiteralExpressionSyntax; struct StringLiteralExpressionSyntax {
@@ -2075,7 +2155,7 @@ static UnaryOperator GetUnaryOperationForToken(SyntaxToken token, Type operandTy
         result.operandMustBeLValue = true;
         return result;
     }
-    ReportError(TokenGetLocation(token), "No applicable unary operation for combination token '%s', type '%s'", TokenKindToString(token.kind).cstr, TypeGetText(operandType).cstr);
+    ReportError(token.location, "No applicable unary operation for combination token '%s', type '%s'", TokenKindToString(token.kind).cstr, TypeGetText(operandType).cstr);
     exit(1);
 }
 
@@ -2102,10 +2182,10 @@ static BinaryOperator GetBinaryOperationForToken(SyntaxToken token, Type leftTyp
     if (token.kind == SyntaxKind_EqualsToken) {
         TypeConversionResult conversion = CanConvertTypeFromTo(rightType, leftType);
         if (conversion == TypeConversionResult_NonConvertible) {
-            ReportError(TokenGetLocation(token), "Incompatible types for assignment '%s' = '%s'", TypeGetText(leftType).cstr, TypeGetText(rightType).cstr);
+            ReportError(token.location, "Incompatible types for assignment '%s' = '%s'", TypeGetText(leftType).cstr, TypeGetText(rightType).cstr);
         }
         if (conversion == TypeConversionResult_ExplicitlyConvertible) {
-            ReportError(TokenGetLocation(token), "Cannot implicitly convert types for assignment '%s' = '%s'", TypeGetText(leftType).cstr, TypeGetText(rightType).cstr);
+            ReportError(token.location, "Cannot implicitly convert types for assignment '%s' = '%s'", TypeGetText(leftType).cstr, TypeGetText(rightType).cstr);
         }
         result.operatorKind = ASTNodeKind_Assignment;
         result.leftMustBeLValue = true;
@@ -2334,7 +2414,7 @@ static BinaryOperator GetBinaryOperationForToken(SyntaxToken token, Type leftTyp
             }
         }
     }
-    ReportError(TokenGetLocation(token), "No applicable binary operation for combination token '%s', left type '%s', right type '%s'", TokenKindToString(token.kind).cstr, TypeGetText(leftType).cstr, TypeGetText(rightType).cstr);
+    ReportError(token.location, "No applicable binary operation for combination token '%s', left type '%s', right type '%s'", TokenKindToString(token.kind).cstr, TypeGetText(leftType).cstr, TypeGetText(rightType).cstr);
     exit(1);
 }
 
@@ -2444,6 +2524,14 @@ static char AdvanceChar(Scanner* scanner) {
     return result;
 }
 
+static SourceLocation GetCurrentLocation(Scanner* scanner) {
+    SourceLocation result;
+    result.source = scanner->source;
+    result.start = scanner->start;
+    result.end = scanner->pos;
+    return result;
+}
+
 static void ReadLineBreak(Scanner* scanner) {
     scanner->token.kind = SyntaxKind_LineBreakTrivia;
     if (CurrentChar(scanner) == '\r' && Lookahead(scanner) == '\n') {
@@ -2499,8 +2587,7 @@ static void ReadMultiLineComment(Scanner* scanner) {
     while (true) {
         switch (CurrentChar(scanner)) {
             case '\0': {
-                SourceLocation location = SourceGetLocationForCharPos(scanner->source, scanner->pos);
-                ReportError(location, "Unterminated multiline comment");
+                ReportError(GetCurrentLocation(scanner), "Unterminated multiline comment");
                 return;
             }
             case '*': {
@@ -2565,8 +2652,7 @@ static SyntaxTriviaArray ReadTrivia(Scanner* scanner, bool isLeading) {
             }
         }
         if (scanner->pos > scanner->start) {
-            SourceLocation2 location = SourceLocation2Create(scanner->source, scanner->start, scanner->pos);
-            SyntaxTrivia trivia = SyntaxTriviaCreate(scanner->token.kind, location);
+            SyntaxTrivia trivia = SyntaxTriviaCreate(scanner->token.kind, GetCurrentLocation(scanner));
             SyntaxTriviaArrayPush(&result, trivia);
         }
     }
@@ -2575,8 +2661,7 @@ static SyntaxTriviaArray ReadTrivia(Scanner* scanner, bool isLeading) {
 
 static int64 ReadPositiveIntegerLiteralWithRadix(Scanner* scanner, int32 radix) {
     if (FindCharPosInString(StringCreateFromCStr("0123456789ABCDEF"), ToUpper(CurrentChar(scanner))) == -1) {
-        SourceLocation location = SourceGetLocationForCharPos(scanner->source, scanner->pos);
-        ReportError(location, "Unexpected character in integer literal '%c'", CurrentChar(scanner));
+        ReportError(GetCurrentLocation(scanner), "Unexpected character in integer literal '%c'", CurrentChar(scanner));
     }
     int64 result = 0;
     int32 digit;
@@ -2586,8 +2671,7 @@ static int64 ReadPositiveIntegerLiteralWithRadix(Scanner* scanner, int32 radix) 
             break;
         }
         if (digit >= radix) {
-            SourceLocation location = SourceGetLocationForCharPos(scanner->source, scanner->pos);
-            ReportError(location, "Invalid digit in integer literal '%c'", CurrentChar(scanner));
+            ReportError(GetCurrentLocation(scanner), "Invalid digit in integer literal '%c'", CurrentChar(scanner));
         }
         result = result * radix + digit;
         AdvanceChar(scanner);
@@ -2654,14 +2738,12 @@ static char ReadCharWithEscapeSequence(Scanner* scanner) {
             case 'x': {
                 int64 number = ReadPositiveIntegerLiteralWithRadix(scanner, 16);
                 if (number > UCHAR_MAX) {
-                    SourceLocation location = SourceGetLocationForCharPos(scanner->source, scanner->pos);
-                    ReportError(location, "Hexadecimal character literal cannot be bigger than '\\xFF'");
+                    ReportError(GetCurrentLocation(scanner), "Hexadecimal character literal cannot be bigger than '\\xFF'");
                 }
                 return (char)number;
             }
             default: {
-                SourceLocation location = SourceGetLocationForCharPos(scanner->source, scanner->pos);
-                ReportError(location, "Unknown escape sequence '\\%c'", escape);
+                ReportError(GetCurrentLocation(scanner), "Unknown escape sequence '\\%c'", escape);
             }
         }
     }
@@ -2675,8 +2757,7 @@ static void ReadCharacterLiteral(Scanner* scanner) {
     int32 end = scanner->pos;
     char closingQuote = AdvanceChar(scanner);
     if (closingQuote != '\'') {
-        SourceLocation location = SourceGetLocationForCharPos(scanner->source, scanner->start);
-        ReportError(location, "Expected closing quote \"'\" character after character literal but got '%c'", closingQuote);
+        ReportError(GetCurrentLocation(scanner), "Expected closing quote \"'\" character after character literal but got '%c'", closingQuote);
     }
     scanner->token.kind = SyntaxKind_CharacterLiteralToken;
     scanner->token.stringValueWithoutQuotes = SourceGetSubstring(scanner->source, start, end);
@@ -2701,8 +2782,7 @@ static void ReadStringLiteral(Scanner* scanner) {
     int32 end = scanner->pos;
     char closingQuote = AdvanceChar(scanner);
     if (closingQuote != '\"') {
-        SourceLocation location = SourceGetLocationForCharPos(scanner->source, scanner->start);
-        ReportError(location, "Unterminated string literal");
+        ReportError(GetCurrentLocation(scanner), "Unterminated string literal");
     }
     scanner->token.kind = SyntaxKind_StringLiteralToken;
     scanner->token.stringValueWithoutQuotes = SourceGetSubstring(scanner->source, start, end);
@@ -2719,8 +2799,7 @@ static void ReadPreprocessorDirective(Scanner* scanner) {
     if (keywordKind != SyntaxKind_EndOfFileToken) {
         scanner->token.kind = keywordKind;
     } else {
-        SourceLocation location = SourceGetLocationForCharPos(scanner->source, scanner->start);
-        ReportError(location, "Unknown preprocesser directive '%s'", identifier.cstr);
+        ReportError(GetCurrentLocation(scanner), "Unknown preprocesser directive '%s'", identifier.cstr);
     }
 }
 
@@ -3018,8 +3097,7 @@ static SyntaxToken ReadToken(Scanner* scanner) {
                     }
                 }
             }
-            SourceLocation location = SourceGetLocationForCharPos(scanner->source, scanner->start);
-            ReportError(location, "Unexpected character '%c'", ch);
+            ReportError(GetCurrentLocation(scanner), "Unexpected character '%c'", ch);
         }
     }
     scanner->token.location.start = scanner->start;
@@ -3072,7 +3150,7 @@ static Parser ParserCreate(Source source) {
     Parser result;
     result.tree = tree;
     result.scanner = ScannerCreate(tree);
-    result.tokenPrev = SyntaxTokenCreateEmpty(tree);
+    result.tokenPrev = SyntaxTokenCreateMissing();
     result.tokenCur = NextToken(&result.scanner);
     result.tokenNext = NextToken(&result.scanner);
     result.tokenNextAfter = NextToken(&result.scanner);
@@ -3095,7 +3173,7 @@ static SyntaxToken MatchAndAdvanceToken(Parser* parser, SyntaxKind kind) {
     if (kind == parser->tokenCur.kind) {
         return AdvanceToken(parser);
     }
-    ReportError(TokenGetLocation(parser->tokenCur), "Expected token '%s' but got token '%s'", TokenKindToString(kind).cstr, TokenKindToString(parser->tokenCur.kind).cstr);
+    ReportError(parser->tokenCur.location, "Expected token '%s' but got token '%s'", TokenKindToString(kind).cstr, TokenKindToString(parser->tokenCur.kind).cstr);
     exit(1);
 }
 
@@ -3127,7 +3205,7 @@ static SyntaxNode* ParseTypeExpression(Parser* parser) {
             break;
         }
         default: {
-            ReportError(TokenGetLocation(parser->tokenCur), "Expected primitive type or identifier token - got token '%s'", TokenGetText(parser->tokenCur).cstr);
+            ReportError(parser->tokenCur.location, "Expected primitive type or identifier token - got token '%s'", TokenGetText(parser->tokenCur).cstr);
         }
     }
     SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_TypeExpression, parser->tree);
@@ -3387,7 +3465,7 @@ static SyntaxNode* ParseExpressionStatement(Parser* parser) {
 static SyntaxNode* ParseVariableDefinitionStatement(Parser* parser, bool skipLet, bool allowInitializer, SyntaxKind terminator) {
     SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_VariableDeclarationStatement, parser->tree);
     if (skipLet) {
-        result->variableDeclarationStmt.letKeyword = SyntaxTokenCreateEmpty(parser->tree);
+        result->variableDeclarationStmt.letKeyword = SyntaxTokenCreateMissing();
     } else {
         if (parser->tokenCur.kind == SyntaxKind_LetLocalPersistKeyword) {
             result->variableDeclarationStmt.letKeyword = MatchAndAdvanceToken(parser, SyntaxKind_LetLocalPersistKeyword);
@@ -3407,23 +3485,23 @@ static SyntaxNode* ParseVariableDefinitionStatement(Parser* parser, bool skipLet
             result->variableDeclarationStmt.equalsToken = MatchAndAdvanceToken(parser, SyntaxKind_EqualsToken);
             result->variableDeclarationStmt.initializerExpression = ParseArrayLiteralExpression(parser);
         } else {
-            result->variableDeclarationStmt.equalsToken = SyntaxTokenCreateEmpty(parser->tree);
+            result->variableDeclarationStmt.equalsToken = SyntaxTokenCreateMissing();
             result->variableDeclarationStmt.initializerExpression = NULL;
         }
     } else {
-        result->variableDeclarationStmt.leftBracket = SyntaxTokenCreateEmpty(parser->tree);
-        result->variableDeclarationStmt.arraySizeLiteral = SyntaxTokenCreateEmpty(parser->tree);
-        result->variableDeclarationStmt.rightBracket = SyntaxTokenCreateEmpty(parser->tree);
+        result->variableDeclarationStmt.leftBracket = SyntaxTokenCreateMissing();
+        result->variableDeclarationStmt.arraySizeLiteral = SyntaxTokenCreateMissing();
+        result->variableDeclarationStmt.rightBracket = SyntaxTokenCreateMissing();
         if (parser->tokenCur.kind == SyntaxKind_EqualsToken && allowInitializer) {
             result->variableDeclarationStmt.equalsToken = MatchAndAdvanceToken(parser, SyntaxKind_EqualsToken);
             result->variableDeclarationStmt.initializerExpression = ParseExpression(parser);
         } else {
-            result->variableDeclarationStmt.equalsToken = SyntaxTokenCreateEmpty(parser->tree);
+            result->variableDeclarationStmt.equalsToken = SyntaxTokenCreateMissing();
             result->variableDeclarationStmt.initializerExpression = NULL;
         }
     }
-    if (terminator == SyntaxKind_BadToken) {
-        result->variableDeclarationStmt.terminatorToken = SyntaxTokenCreateEmpty(parser->tree);
+    if (terminator == SyntaxKind_MissingToken) {
+        result->variableDeclarationStmt.terminatorToken = SyntaxTokenCreateMissing();
     } else {
         result->variableDeclarationStmt.terminatorToken = MatchAndAdvanceToken(parser, terminator);
     }
@@ -3437,11 +3515,12 @@ static SyntaxNode* ParseIfStatement(Parser* parser) {
     result->ifStmt.condition = ParseExpression(parser);
     result->ifStmt.rightParen = MatchAndAdvanceToken(parser, SyntaxKind_RightParenToken);
     result->ifStmt.thenBlock = ParseStatement(parser);
-    result->ifStmt.elseBlock = NULL;
-    result->ifStmt.elseKeyword = SyntaxTokenCreateEmpty(parser->tree);
     if (parser->tokenCur.kind == SyntaxKind_ElseKeyword) {
         result->ifStmt.elseKeyword = MatchAndAdvanceToken(parser, SyntaxKind_ElseKeyword);
         result->ifStmt.elseBlock = ParseStatement(parser);
+    } else {
+        result->ifStmt.elseBlock = NULL;
+        result->ifStmt.elseKeyword = SyntaxTokenCreateMissing();
     }
     return result;
 }
@@ -3494,7 +3573,7 @@ static SyntaxNode* ParseReturnStatement(Parser* parser) {
     SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ReturnStatement, parser->tree);
     result->returnStmt.returnKeyword = MatchAndAdvanceToken(parser, SyntaxKind_ReturnKeyword);
     if (parser->functionLevel == 0) {
-        ReportError(TokenGetLocation(result->returnStmt.returnKeyword), "Invalid 'return' keyword found outside of function definition");
+        ReportError(result->returnStmt.returnKeyword.location, "Invalid 'return' keyword found outside of function definition");
     }
     if (parser->tokenCur.kind != SyntaxKind_SemicolonToken) {
         result->returnStmt.returnExpression = ParseExpression(parser);
@@ -3509,7 +3588,7 @@ static SyntaxNode* ParseBreakStatement(Parser* parser) {
     SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_BreakStatement, parser->tree);
     result->breakStmt.breakKeyword = MatchAndAdvanceToken(parser, SyntaxKind_BreakKeyword);
     if (parser->loopLevel == 0 && parser->switchCaseLevel == 0) {
-        ReportError(TokenGetLocation(result->breakStmt.breakKeyword), "Invalid 'break' keyword found outside of loop or switch-case definition");
+        ReportError(result->breakStmt.breakKeyword.location, "Invalid 'break' keyword found outside of loop or switch-case definition");
     }
     result->returnStmt.semicolon = MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
     return result;
@@ -3519,7 +3598,7 @@ static SyntaxNode* ParseContinueStatement(Parser* parser) {
     SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_ContinueStatement, parser->tree);
     result->continueStmt.continueKeyword = MatchAndAdvanceToken(parser, SyntaxKind_ContinueKeyword);
     if (parser->loopLevel == 0) {
-        ReportError(TokenGetLocation(result->continueStmt.continueKeyword), "Invalid 'continue' keyword found outside of loop definition");
+        ReportError(result->continueStmt.continueKeyword.location, "Invalid 'continue' keyword found outside of loop definition");
     }
     result->returnStmt.semicolon = MatchAndAdvanceToken(parser, SyntaxKind_SemicolonToken);
     return result;
@@ -3530,7 +3609,7 @@ static SyntaxNode* ParseBlockStatement(Parser* parser, bool inSwitch) {
     if (parser->tokenCur.kind == SyntaxKind_LeftBraceToken || !inSwitch) {
         result->blockStmt.leftBrace = MatchAndAdvanceToken(parser, SyntaxKind_LeftBraceToken);
     } else {
-        result->blockStmt.leftBrace = SyntaxTokenCreateEmpty(parser->tree);
+        result->blockStmt.leftBrace = SyntaxTokenCreateMissing();
     }
     result->blockStmt.statements = SyntaxNodeArrayCreate();
     while (parser->tokenCur.kind != SyntaxKind_RightBraceToken) {
@@ -3543,7 +3622,7 @@ static SyntaxNode* ParseBlockStatement(Parser* parser, bool inSwitch) {
         SyntaxNode* statement = ParseStatement(parser);
         SyntaxNodeArrayPush(&result->blockStmt.statements, statement);
     }
-    if (result->blockStmt.leftBrace.kind != SyntaxKind_BadToken) {
+    if (result->blockStmt.leftBrace.kind != SyntaxKind_MissingToken) {
         result->blockStmt.rightBrace = MatchAndAdvanceToken(parser, SyntaxKind_RightBraceToken);
     }
     return result;
@@ -3553,7 +3632,7 @@ static SyntaxNode* ParseCaseStatement(Parser* parser, SyntaxNode* switchExpressi
     SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_CaseStatement, parser->tree);
     result->caseStmt.caseKeyword = MatchAndAdvanceToken(parser, SyntaxKind_CaseKeyword);
     if (parser->switchCaseLevel == 0) {
-        ReportError(TokenGetLocation(result->caseStmt.caseKeyword), "Unexpected 'case' label keyword outside of switch statement");
+        ReportError(result->caseStmt.caseKeyword.location, "Unexpected 'case' label keyword outside of switch statement");
     }
     result->caseStmt.literalExpression = ParseExpression(parser);
     switch (result->caseStmt.literalExpression->kind) {
@@ -3564,7 +3643,7 @@ static SyntaxNode* ParseCaseStatement(Parser* parser, SyntaxNode* switchExpressi
             break;
         }
         default: {
-            ReportError(TokenGetLocation(result->caseStmt.caseKeyword), "Expected literal token in case label but got '%s' instead", "TODO - we need to get the string of an expression");
+            ReportError(result->caseStmt.caseKeyword.location, "Expected literal token in case label but got '%s' instead", "TODO - we need to get the string of an expression");
         }
     }
     result->caseStmt.colon = MatchAndAdvanceToken(parser, SyntaxKind_ColonToken);
@@ -3576,7 +3655,7 @@ static SyntaxNode* ParseDefaultStatement(Parser* parser, SyntaxNode* switchExpre
     SyntaxNode* result = SyntaxNodeCreate(SyntaxKind_DefaultStatement, parser->tree);
     result->defaultStmt.defaultKeyword = MatchAndAdvanceToken(parser, SyntaxKind_DefaultKeyword);
     if (parser->switchCaseLevel == 0) {
-        ReportError(TokenGetLocation(result->defaultStmt.defaultKeyword), "Unexpected 'default' case label keyword outside of switch statement");
+        ReportError(result->defaultStmt.defaultKeyword.location, "Unexpected 'default' case label keyword outside of switch statement");
     }
     result->defaultStmt.colon = MatchAndAdvanceToken(parser, SyntaxKind_ColonToken);
     result->defaultStmt.body = ParseBlockStatement(parser, true);
@@ -3682,13 +3761,13 @@ static SyntaxNode* ParseEnumMemberClause(Parser* parser) {
         result->enumMember.equals = MatchAndAdvanceToken(parser, SyntaxKind_EqualsToken);
         result->enumMember.integerLiteral = MatchAndAdvanceToken(parser, SyntaxKind_IntegerLiteralToken);
     } else {
-        result->enumMember.equals = SyntaxTokenCreateEmpty(parser->tree);
-        result->enumMember.integerLiteral = SyntaxTokenCreateEmpty(parser->tree);
+        result->enumMember.equals = SyntaxTokenCreateMissing();
+        result->enumMember.integerLiteral = SyntaxTokenCreateMissing();
     }
     if (parser->tokenCur.kind == SyntaxKind_CommaToken) {
         result->enumMember.comma = MatchAndAdvanceToken(parser, SyntaxKind_CommaToken);
     } else {
-        result->enumMember.comma = SyntaxTokenCreateEmpty(parser->tree);
+        result->enumMember.comma = SyntaxTokenCreateMissing();
     }
     return result;
 }
@@ -3734,7 +3813,7 @@ static SyntaxNode* ParseFunctionDefinitionStatement(Parser* parser, SyntaxToken 
             SyntaxNodeArrayPush(&result->functionDeclarationStmt.params, dotdotWrapper);
             break;
         }
-        SyntaxNode* parameter = ParseVariableDefinitionStatement(parser, true, false, SyntaxKind_BadToken);
+        SyntaxNode* parameter = ParseVariableDefinitionStatement(parser, true, false, SyntaxKind_MissingToken);
         SyntaxNodeArrayPush(&result->functionDeclarationStmt.params, parameter);
         if (parser->tokenCur.kind == SyntaxKind_CommaToken) {
             parameter->variableDeclarationStmt.terminatorToken = MatchAndAdvanceToken(parser, SyntaxKind_CommaToken);
@@ -3764,7 +3843,7 @@ static SyntaxNode* ParseGlobalVariableDefinitionStatement(Parser* parser, Syntax
 
 static SyntaxNode* ParseGlobalDefinitionStatement(Parser* parser) {
     assert(parser->functionLevel == 0);
-    SyntaxToken externKeyword = SyntaxTokenCreateEmpty(parser->tree);
+    SyntaxToken externKeyword = SyntaxTokenCreateMissing();
     if (parser->tokenCur.kind == SyntaxKind_ExternKeyword) {
         externKeyword = AdvanceToken(parser);
     }
@@ -3802,11 +3881,11 @@ static SyntaxNode* ParseModuleStatement(Parser* parser) {
         case SyntaxKind_LetKeyword: {
             return ParseGlobalDefinitionStatement(parser);
         }
-        case SyntaxKind_IncludeDirectiveKeyword: {
+        case SyntaxKind_ImportKeyword: {
             return ParseImportDeclarationStatement(parser);
         }
         default: {
-            ReportError(TokenGetLocation(parser->tokenCur), "Expected global module definition got unexpected token '%s' instead", TokenGetText(parser->tokenCur).cstr);
+            ReportError(parser->tokenCur.location, "Expected global module definition got unexpected token '%s' instead", TokenGetText(parser->tokenCur).cstr);
             exit(1);
         }
     }
@@ -3879,11 +3958,14 @@ static SyntaxTree* ParseModule(Parser* parser) {
                 foundDirectives = true;
             }
         } while (foundDirectives);
+        if (parser->tokenCur.kind == SyntaxKind_EndOfFileToken) {
+            break;
+        }
         SyntaxNode* statement = ParseModuleStatement(parser);
         SyntaxNodeArrayPush(&result->moduleStmt.globalStatements, statement);
     }
     if (parser->tokenCur.kind != SyntaxKind_EndOfFileToken) {
-        ReportError(TokenGetLocation(parser->tokenCur), "Expected EOF token after parsing file, instead got '%s'", TokenKindToString(parser->tokenCur.kind).cstr);
+        ReportError(parser->tokenCur.location, "Expected EOF token after parsing file, instead got '%s'", TokenKindToString(parser->tokenCur.kind).cstr);
     }
     return parser->tree;
 }
@@ -4618,111 +4700,17 @@ static void EmitRoot(Emitter* emitter, ASTNode* node) {
     EmitPostamble(emitter);
 }
 
-static SourceFile ReadFileToString(String filepath) {
-    char* buffer = NULL;
-    FILE* handle = fopen(filepath.cstr, "rb");
-    if (handle == NULL) {
-        fprintf(stderr, "Unable to open file '%s'\n", filepath.cstr);
-        exit(1);
-    }
-    fseek(handle, 0, SEEK_END);
-    int64 length = (int64)ftell(handle);
-    fseek(handle, 0, SEEK_SET);
-    buffer = (char*)malloc(length + 1);
-    if (buffer) {
-        fread(buffer, 1, length, handle);
-    }
-    buffer[length] = '\0';
-    fclose(handle);
-    SourceFile result;
-    result.filepath = filepath;
-    result.content.cstr = buffer;
-    result.content.length = (int32)length;
-    return result;
-}
-
-struct Preprocessor; typedef struct Preprocessor Preprocessor; struct Preprocessor {
-    Source source;
-    SourceFileArray seenFiles;
-};
-
-static Preprocessor PreprocessorCreate() {
-    Preprocessor result;
-    result.source = SourceCreateEmpty();
-    result.seenFiles = SourceFileArrayCreate();
-    return result;
-}
-
-static bool PreprocessorSeenFile(Preprocessor* preprocessor, String filepath) {
-    for (int32 index = 0; index < preprocessor->seenFiles.count; index += 1) {
-        if (StringEquals(preprocessor->seenFiles.files[index].filepath, filepath)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static void PreprocessorPreprocessFile(Preprocessor* preprocessor, String filepath) {
-    if (PreprocessorSeenFile(preprocessor, filepath)) {
-        return;
-    }
-    SourceFile sourceFile = ReadFileToString(filepath);
-    SourceFileArrayPush(&preprocessor->seenFiles, sourceFile);
-    Source dummy = SourceCreateEmpty();
-    SourceFileArrayPush(&dummy.files, sourceFile);
-    dummy.content = sourceFile.content;
-    SyntaxTree tree;
-    tree.moduleRoot = NULL;
-    tree.source = dummy;
-    Scanner scanner = ScannerCreate(&tree);
-    String result = StringCreateEmpty();
-    while (true) {
-        SyntaxToken token = NextToken(&scanner);
-        if (token.kind == SyntaxKind_EndOfFileToken) {
-            break;
-        }
-        if (token.kind != SyntaxKind_IncludeDirectiveKeyword) {
-            continue;
-        }
-        token = NextToken(&scanner);
-        if (token.kind == SyntaxKind_LessToken) {
-            token = NextToken(&scanner);
-            token = NextToken(&scanner);
-            assert(token.kind == SyntaxKind_DotToken);
-            token = NextToken(&scanner);
-            token = NextToken(&scanner);
-            assert(token.kind == SyntaxKind_GreaterToken);
-        } else {
-            if (token.kind == SyntaxKind_StringLiteralToken) {
-                PreprocessorPreprocessFile(preprocessor, token.stringValueWithoutQuotes);
-            } else {
-                ReportError(TokenGetLocation(token), "Expected filepath after '#include' directive in '%s'", filepath.cstr);
-            }
-        }
-    }
-    SourceFileArrayPush(&preprocessor->source.files, sourceFile);
-    preprocessor->source.content = StringAppend(preprocessor->source.content, sourceFile.content);
-}
-
-static Source PreprocessFile(String filepath) {
-    Preprocessor preprocessor = PreprocessorCreate();
-    PreprocessorPreprocessFile(&preprocessor, filepath);
-    return preprocessor.source;
-}
-
 struct Binder; typedef struct Binder Binder; struct Binder {
     SymbolTable* symbolTable;
-    Source source;
     ModuleStatementSyntax* tree;
     int32 loopLevel;
     int32 switchCaseLevel;
     Symbol* currentFunctionSymbol;
 };
 
-static Binder BinderCreate(Source source, SymbolTable* symbolTable) {
+static Binder BinderCreate(SymbolTable* symbolTable) {
     Binder result;
     result.symbolTable = symbolTable;
-    result.source = source;
     result.loopLevel = 0;
     result.switchCaseLevel = 0;
     result.currentFunctionSymbol = NULL;
@@ -4816,7 +4804,7 @@ static Type BindType(Binder* binder, SyntaxNode* syntax) {
             }
         }
         default: {
-            ReportError(TokenGetLocation(primary), "SyntaxToken '%s' is not a type", TokenGetText(primary).cstr);
+            ReportError(primary.location, "SyntaxToken '%s' is not a type", TokenGetText(primary).cstr);
         }
     }
     for (int32 index = 1; index < syntax->typeExpr.typeTokens.count; index += 1) {
@@ -4827,7 +4815,7 @@ static Type BindType(Binder* binder, SyntaxNode* syntax) {
     if (type.kind == TypeKind_Struct) {
         Symbol* symbol = GetSymbol(binder->symbolTable, type.name);
         if (!symbol->alreadyDefined && type.baseIndirectionLevel == 0) {
-            ReportError(TokenGetLocation(primary), "Usage of undefined but forward declared type '%s' is only allowed as pointer", type.name.cstr);
+            ReportError(primary.location, "Usage of undefined but forward declared type '%s' is only allowed as pointer", type.name.cstr);
         }
     }
     return type;
@@ -4847,7 +4835,7 @@ static ASTNode* BindTypeCastExpression(Binder* binder, SyntaxNode* syntax) {
     Type targetType = BindType(binder, syntax->typeCastExpr.targetTypeExpression);
     TypeConversionResult conversion = CanConvertTypeFromTo(expression->type, targetType);
     if (conversion == TypeConversionResult_NonConvertible) {
-        ReportError(TokenGetLocation(syntax->typeCastExpr.asKeyword), "Cast from type '%s' to type '%s' is impossible", TypeGetText(expression->type).cstr, TypeGetText(targetType).cstr);
+        ReportError(syntax->typeCastExpr.asKeyword.location, "Cast from type '%s' to type '%s' is impossible", TypeGetText(expression->type).cstr, TypeGetText(targetType).cstr);
     }
     ASTNode* result = ASTNodeCreate2(ASTNodeKind_CastExpression, binder->symbolTable, syntax);
     result->type = targetType;
@@ -4937,15 +4925,15 @@ static ASTNode* BindEnumValueLiteralExpression(Binder* binder, SyntaxNode* synta
     String enumText = TokenGetText(enumIdentifier);
     Symbol* enumSymbol = GetSymbol(binder->symbolTable, enumText);
     if (enumSymbol == NULL) {
-        ReportError(TokenGetLocation(enumIdentifier), "Undeclared identifier '%s'", enumText.cstr);
+        ReportError(enumIdentifier.location, "Undeclared identifier '%s'", enumText.cstr);
     }
     if (enumSymbol->kind != SymbolKind_Enum) {
-        ReportError(TokenGetLocation(enumIdentifier), "Identifier '%s' is not an enum", enumText.cstr);
+        ReportError(enumIdentifier.location, "Identifier '%s' is not an enum", enumText.cstr);
     }
     String valueText = TokenGetText(valueIdentifier);
     Symbol* valueSymbol = GetSymbol(enumSymbol->membersSymbolTable, valueText);
     if (valueSymbol == NULL) {
-        ReportError(TokenGetLocation(enumIdentifier), "Identifier '%s' is not a member of enum '%s'", valueText.cstr, enumText.cstr);
+        ReportError(enumIdentifier.location, "Identifier '%s' is not a member of enum '%s'", valueText.cstr, enumText.cstr);
     }
     assert(valueSymbol->kind == SymbolKind_Enumvalue);
     ASTNode* result = ASTNodeCreate2(ASTNodeKind_EnumValueLiteral, binder->symbolTable, syntax);
@@ -4965,7 +4953,7 @@ static ASTNode* BindArrayLiteralExpression(Binder* binder, Symbol* arraySymbol, 
         ASTNode* boundExpression = BindExpression(binder, expression);
         TypeConversionResult conversion = CanConvertTypeFromTo(boundExpression->type, arrayElemType);
         if (conversion == TypeConversionResult_NonConvertible || conversion == TypeConversionResult_ExplicitlyConvertible) {
-            ReportError(TokenGetLocation(expression->token), "Cannot convert type '%s' of element %d in array initializer to array type '%s'", TypeGetText(boundExpression->type).cstr, index / 2 + 1, TypeGetText(arrayElemType).cstr);
+            ReportError(expression->token.location, "Cannot convert type '%s' of element %d in array initializer to array type '%s'", TypeGetText(boundExpression->type).cstr, index / 2 + 1, TypeGetText(arrayElemType).cstr);
         }
         ASTNodeArrayPush(&result->children, boundExpression);
     }
@@ -4975,10 +4963,10 @@ static ASTNode* BindArrayLiteralExpression(Binder* binder, Symbol* arraySymbol, 
         arraySymbol->type.arrayElementCount = elementCount;
     }
     if (elementCount == 0) {
-        ReportError(TokenGetLocation(leftBrace), "Element count cannot be zero in array initializer of array '%s'", arraySymbol->name.cstr);
+        ReportError(leftBrace.location, "Element count cannot be zero in array initializer of array '%s'", arraySymbol->name.cstr);
     }
     if (arraySymbol->type.arrayElementCount != elementCount) {
-        ReportError(TokenGetLocation(leftBrace), "Element count %d of array initializer does not match element count %d of array '%s'", elementCount, arraySymbol->type.arrayElementCount, arraySymbol->name.cstr);
+        ReportError(leftBrace.location, "Element count %d of array initializer does not match element count %d of array '%s'", elementCount, arraySymbol->type.arrayElementCount, arraySymbol->name.cstr);
     }
     result->isRValue = true;
     return result;
@@ -4990,7 +4978,7 @@ static ASTNode* BindNameExpression(Binder* binder, SyntaxNode* syntax) {
     String identifierText = TokenGetText(identifier);
     Symbol* symbol = GetSymbol(binder->symbolTable, identifierText);
     if (symbol == NULL) {
-        ReportError(TokenGetLocation(identifier), "Undeclared identifier '%s'", identifierText.cstr);
+        ReportError(identifier.location, "Undeclared identifier '%s'", identifierText.cstr);
     }
     ASTNode* result = ASTNodeCreate2(ASTNodeKind_NameExpression, binder->symbolTable, syntax);
     result->symbol = symbol;
@@ -5013,10 +5001,10 @@ static ASTNode* BindFunctionCallExpression(Binder* binder, SyntaxNode* syntax) {
     SyntaxToken leftParen = syntax->funcCallExpr.leftParen;
     Symbol* funcSymbol = left->symbol;
     if (funcSymbol == NULL) {
-        ReportError(TokenGetLocation(leftParen), "Expression left of '%s' is not a known symbol", TokenGetText(leftParen));
+        ReportError(leftParen.location, "Expression left of '%s' is not a known symbol", TokenGetText(leftParen));
     }
     if (funcSymbol->kind != SymbolKind_Function) {
-        ReportError(TokenGetLocation(leftParen), "Identifier '%s' is not a callable function", funcSymbol->name.cstr);
+        ReportError(leftParen.location, "Identifier '%s' is not a callable function", funcSymbol->name.cstr);
     }
     ASTNodeArray argumentList = ASTNodeArrayCreate();
     for (int32 index = 0; index < syntax->funcCallExpr.argumentsWithSeparators.count; index += 2) {
@@ -5026,11 +5014,11 @@ static ASTNode* BindFunctionCallExpression(Binder* binder, SyntaxNode* syntax) {
     }
     if (funcSymbol->isVariadric) {
         if (argumentList.count < funcSymbol->membersSymbolTable->count) {
-            ReportError(TokenGetLocation(leftParen), "Function '%s' expects at least %d arguments but %d arguments were provided", funcSymbol->name.cstr, funcSymbol->membersSymbolTable->count, argumentList.count);
+            ReportError(leftParen.location, "Function '%s' expects at least %d arguments but %d arguments were provided", funcSymbol->name.cstr, funcSymbol->membersSymbolTable->count, argumentList.count);
         }
     } else {
         if (argumentList.count != funcSymbol->membersSymbolTable->count) {
-            ReportError(TokenGetLocation(leftParen), "Function '%s' expects %d arguments but %d arguments were provided", funcSymbol->name.cstr, funcSymbol->membersSymbolTable->count, argumentList.count);
+            ReportError(leftParen.location, "Function '%s' expects %d arguments but %d arguments were provided", funcSymbol->name.cstr, funcSymbol->membersSymbolTable->count, argumentList.count);
         }
     }
     for (int32 argumentIndex = 0; argumentIndex < funcSymbol->membersSymbolTable->count; argumentIndex += 1) {
@@ -5038,10 +5026,10 @@ static ASTNode* BindFunctionCallExpression(Binder* binder, SyntaxNode* syntax) {
         Type expectedType = funcSymbol->membersSymbolTable->symbols[argumentIndex]->type;
         TypeConversionResult conversion = CanConvertTypeFromTo(argumentType, expectedType);
         if (conversion == TypeConversionResult_NonConvertible) {
-            ReportError(TokenGetLocation(leftParen), "Passed incompatible type '%s' for argument %d to function '%s' - expected type '%s'", TypeGetText(argumentType).cstr, argumentIndex + 1, funcSymbol->name.cstr, TypeGetText(expectedType).cstr);
+            ReportError(leftParen.location, "Passed incompatible type '%s' for argument %d to function '%s' - expected type '%s'", TypeGetText(argumentType).cstr, argumentIndex + 1, funcSymbol->name.cstr, TypeGetText(expectedType).cstr);
         }
         if (conversion == TypeConversionResult_ExplicitlyConvertible) {
-            ReportError(TokenGetLocation(leftParen), "Cannot implicitly convert type '%s' of argument %d  to expected type '%s' in function call of '%s'", TypeGetText(argumentType).cstr, argumentIndex + 1, TypeGetText(expectedType).cstr, funcSymbol->name.cstr);
+            ReportError(leftParen.location, "Cannot implicitly convert type '%s' of argument %d  to expected type '%s' in function call of '%s'", TypeGetText(argumentType).cstr, argumentIndex + 1, TypeGetText(expectedType).cstr, funcSymbol->name.cstr);
         }
     }
     ASTNode* result = ASTNodeCreate2(ASTNodeKind_FunccallExpression, binder->symbolTable, syntax);
@@ -5057,10 +5045,10 @@ static ASTNode* BindArrayIndexingExpression(Binder* binder, SyntaxNode* syntax) 
     ASTNode* left = BindExpression(binder, syntax->arrayIndexExpr.arr);
     ASTNode* index = BindExpression(binder, syntax->arrayIndexExpr.indexExpression);
     if (!IsNumberType(index->type)) {
-        ReportError(TokenGetLocation(leftBracket), "Array index after '%s' must be number type", TokenKindToString(leftBracket.kind).cstr);
+        ReportError(leftBracket.location, "Array index after '%s' must be number type", TokenKindToString(leftBracket.kind).cstr);
     }
     if (left->symbol == NULL || TypeGetIndirectionLevel(left->symbol->type) == 0) {
-        ReportError(TokenGetLocation(leftBracket), "Left hand side of array index operator '%s' is not a known array or pointer", TokenKindToString(leftBracket.kind).cstr);
+        ReportError(leftBracket.location, "Left hand side of array index operator '%s' is not a known array or pointer", TokenKindToString(leftBracket.kind).cstr);
     }
     ASTNode* result = ASTNodeCreate2(ASTNodeKind_Arrayindexing, binder->symbolTable, syntax);
     result->type = left->symbol->type;
@@ -5079,28 +5067,28 @@ static ASTNode* BindMemberAccessExpression(Binder* binder, SyntaxNode* syntax) {
     ASTNode* container = BindExpression(binder, syntax->memberAccessExpr.container);
     SyntaxToken accessorToken = syntax->memberAccessExpr.accessToken;
     if (container->type.kind != TypeKind_Struct && container->type.kind != TypeKind_Union) {
-        ReportError(TokenGetLocation(accessorToken), "Attempt to access member of non union or struct identifier '%s'", container->symbol->name.cstr);
+        ReportError(accessorToken.location, "Attempt to access member of non union or struct identifier '%s'", container->symbol->name.cstr);
     }
     Symbol* containerSymbol = GetSymbol(binder->symbolTable, container->type.name);
     assert(containerSymbol != NULL);
     if (containerSymbol->kind != SymbolKind_Struct && containerSymbol->kind != SymbolKind_Union) {
-        ReportError(TokenGetLocation(accessorToken), "Attempt to access member of non union or struct identifier '%s'", containerSymbol->name.cstr);
+        ReportError(accessorToken.location, "Attempt to access member of non union or struct identifier '%s'", containerSymbol->name.cstr);
     }
     if (!containerSymbol->alreadyDefined) {
-        ReportError(TokenGetLocation(accessorToken), "Attempt to access member of forward declared but undefined union or struct '%s'", containerSymbol->name.cstr);
+        ReportError(accessorToken.location, "Attempt to access member of forward declared but undefined union or struct '%s'", containerSymbol->name.cstr);
     }
     bool isArrow = accessorToken.kind == SyntaxKind_ArrowToken;
     if (isArrow && TypeGetIndirectionLevel(container->type) == 0) {
-        ReportError(TokenGetLocation(accessorToken), "Member access of '%s' with '->' is only allowed for pointer types", containerSymbol->name.cstr);
+        ReportError(accessorToken.location, "Member access of '%s' with '->' is only allowed for pointer types", containerSymbol->name.cstr);
     }
     if (!isArrow && TypeGetIndirectionLevel(container->type) > 0) {
-        ReportError(TokenGetLocation(accessorToken), "Member access of '%s' with '.' is only allowed for non-pointer types", containerSymbol->name.cstr);
+        ReportError(accessorToken.location, "Member access of '%s' with '.' is only allowed for non-pointer types", containerSymbol->name.cstr);
     }
     SyntaxToken memberIdentifier = syntax->memberAccessExpr.memberIdentifier;
     String identifierText = TokenGetText(memberIdentifier);
     Symbol* memberSymbol = GetSymbol(containerSymbol->membersSymbolTable, identifierText);
     if (memberSymbol == NULL) {
-        ReportError(TokenGetLocation(memberIdentifier), "Undeclared struct or union member '%s'", identifierText.cstr);
+        ReportError(memberIdentifier.location, "Undeclared struct or union member '%s'", identifierText.cstr);
     }
     assert(memberSymbol->kind == SymbolKind_Member);
     ASTNode* result = ASTNodeCreate2(ASTNodeKind_Memberaccess, binder->symbolTable, syntax);
@@ -5116,7 +5104,7 @@ static ASTNode* BindUnaryExpression(Binder* binder, SyntaxNode* syntax) {
     SyntaxToken operatorToken = syntax->unaryExpr.operatorToken;
     UnaryOperator op = GetUnaryOperationForToken(operatorToken, operand->type);
     if (op.operandMustBeLValue && operand->isRValue) {
-        ReportError(TokenGetLocation(operatorToken), "Operand of operator '%s' must be an storage location", TokenKindToString(operatorToken.kind).cstr);
+        ReportError(operatorToken.location, "Operand of operator '%s' must be an storage location", TokenKindToString(operatorToken.kind).cstr);
     }
     ASTNode* result = ASTNodeCreate2(op.operatorKind, binder->symbolTable, syntax);
     result->isRValue = op.resultIsRValue;
@@ -5132,10 +5120,10 @@ static ASTNode* BindBinaryExpression(Binder* binder, SyntaxNode* syntax) {
     SyntaxToken operatorToken = syntax->binaryExpr.operatorToken;
     BinaryOperator op = GetBinaryOperationForToken(operatorToken, left->type, right->type);
     if (op.leftMustBeLValue && left->isRValue) {
-        ReportError(TokenGetLocation(operatorToken), "Left argument of operator '%s' must be an storage location", TokenKindToString(operatorToken.kind).cstr);
+        ReportError(operatorToken.location, "Left argument of operator '%s' must be an storage location", TokenKindToString(operatorToken.kind).cstr);
     }
     if (op.rightMustBeLValue && right->isRValue) {
-        ReportError(TokenGetLocation(operatorToken), "Right argument of operator '%s' must be a storage location", TokenKindToString(operatorToken.kind).cstr);
+        ReportError(operatorToken.location, "Right argument of operator '%s' must be a storage location", TokenKindToString(operatorToken.kind).cstr);
     }
     ASTNode* result = ASTNodeCreate2(op.operatorKind, binder->symbolTable, syntax);
     result->isRValue = op.resultIsRValue;
@@ -5152,7 +5140,7 @@ static ASTNode* BindTernaryConditionalExpression(Binder* binder, SyntaxNode* syn
     ASTNode* elseExpression = BindExpression(binder, syntax->ternaryConditionalExpr.elseExpression);
     Type type = GetTypeThatFitsBothTypes(thenExpression->type, elseExpression->type);
     if (IsVoidType(type)) {
-        ReportError(TokenGetLocation(syntax->ternaryConditionalExpr.questionmark), "Incompatible expression types in ternary operator - then branch: '%s', else branch: '%s'", TypeGetText(thenExpression->type).cstr, TypeGetText(elseExpression->type).cstr);
+        ReportError(syntax->ternaryConditionalExpr.questionmark.location, "Incompatible expression types in ternary operator - then branch: '%s', else branch: '%s'", TypeGetText(thenExpression->type).cstr, TypeGetText(elseExpression->type).cstr);
     }
     ASTNode* result = ASTNodeCreate2(ASTNodeKind_TernaryConditionalExpression, binder->symbolTable, syntax);
     result->left = condition;
@@ -5257,17 +5245,17 @@ static ASTNode* BindVariableDefinitionStatement(Binder* binder, SyntaxNode* synt
     bool isLocalPersist = syntax->variableDeclarationStmt.letKeyword.kind == SyntaxKind_LetLocalPersistKeyword;
     if (isLocalPersist) {
         if (symbolScopeKind != SymbolScopeKind_Local) {
-            ReportError(TokenGetLocation(identifier), "Cannot mark global variable '%s' as local persistent", TokenGetText(identifier).cstr);
+            ReportError(identifier.location, "Cannot mark global variable '%s' as local persistent", TokenGetText(identifier).cstr);
         }
         symbolScopeKind = SymbolScopeKind_LocalPersist;
     }
     Type type = BindType(binder, syntax->variableDeclarationStmt.typeExpression);
     Symbol* varSymbol = AddSymbol(binder->symbolTable, TokenGetText(identifier), SymbolKind_Variable, symbolScopeKind, type);
     if (varSymbol == NULL) {
-        ReportError(TokenGetLocation(identifier), "Symbol was '%s' already declared in current scope", TokenGetText(identifier).cstr);
+        ReportError(identifier.location, "Symbol was '%s' already declared in current scope", TokenGetText(identifier).cstr);
     }
     if (IsVoidType(type)) {
-        ReportError(TokenGetLocation(identifier), "'void' not allowed as variables '%s' storage type", TokenGetText(identifier).cstr);
+        ReportError(identifier.location, "'void' not allowed as variables '%s' storage type", TokenGetText(identifier).cstr);
     }
     if (syntax->variableDeclarationStmt.leftBracket.kind == SyntaxKind_LeftBracketToken) {
         int64 arrayElementCount = -1;
@@ -5277,7 +5265,7 @@ static ASTNode* BindVariableDefinitionStatement(Binder* binder, SyntaxNode* synt
             arrayElementCountDefined = true;
         }
         if (arrayElementCountDefined && arrayElementCount <= 0) {
-            ReportError(TokenGetLocation(identifier), "Array size must be greater than zero for '%s'", TokenGetText(identifier).cstr);
+            ReportError(identifier.location, "Array size must be greater than zero for '%s'", TokenGetText(identifier).cstr);
         }
         varSymbol->type.isArray = true;
         varSymbol->type.arrayElementCount = arrayElementCount;
@@ -5371,24 +5359,24 @@ static ASTNode* BindReturnStatement(Binder* binder, SyntaxNode* syntax) {
     assert(syntax->kind == SyntaxKind_ReturnStatement);
     assert(binder->currentFunctionSymbol != NULL);
     if (binder->currentFunctionSymbol == NULL) {
-        ReportError(TokenGetLocation(syntax->returnStmt.returnKeyword), "Invalid 'return' statement found outside of function definition");
+        ReportError(syntax->returnStmt.returnKeyword.location, "Invalid 'return' statement found outside of function definition");
     }
     Type functionReturnType = binder->currentFunctionSymbol->type;
     if (IsVoidType(functionReturnType) && syntax->returnStmt.returnExpression != NULL) {
-        ReportError(TokenGetLocation(syntax->returnStmt.returnKeyword), "Invalid return expression in void function");
+        ReportError(syntax->returnStmt.returnKeyword.location, "Invalid return expression in void function");
     }
     if (!IsVoidType(functionReturnType) && syntax->returnStmt.returnExpression == NULL) {
-        ReportError(TokenGetLocation(syntax->returnStmt.returnKeyword), "Must return expression in non-void function");
+        ReportError(syntax->returnStmt.returnKeyword.location, "Must return expression in non-void function");
     }
     ASTNode* boundExpression = NULL;
     if (syntax->returnStmt.returnExpression != NULL) {
         boundExpression = BindExpression(binder, syntax->returnStmt.returnExpression);
         TypeConversionResult conversion = CanConvertTypeFromTo(boundExpression->type, functionReturnType);
         if (conversion == TypeConversionResult_NonConvertible) {
-            ReportError(TokenGetLocation(syntax->returnStmt.returnKeyword), "Incompatible types for return expression '%s'", TokenKindToString(syntax->returnStmt.returnKeyword.kind).cstr);
+            ReportError(syntax->returnStmt.returnKeyword.location, "Incompatible types for return expression '%s'", TokenKindToString(syntax->returnStmt.returnKeyword.kind).cstr);
         }
         if (conversion == TypeConversionResult_ExplicitlyConvertible) {
-            ReportError(TokenGetLocation(syntax->returnStmt.returnKeyword), "Types cannot be implicitly converted for return expression '%s'", TokenKindToString(syntax->returnStmt.returnKeyword.kind).cstr);
+            ReportError(syntax->returnStmt.returnKeyword.location, "Types cannot be implicitly converted for return expression '%s'", TokenKindToString(syntax->returnStmt.returnKeyword.kind).cstr);
         }
     }
     ASTNode* result = ASTNodeCreate2(ASTNodeKind_ReturnStatement, binder->symbolTable, syntax);
@@ -5400,7 +5388,7 @@ static ASTNode* BindBreakStatement(Binder* binder, SyntaxNode* syntax) {
     assert(syntax->kind == SyntaxKind_BreakStatement);
     assert(binder->currentFunctionSymbol != NULL);
     if (binder->loopLevel == 0 && binder->switchCaseLevel == 0) {
-        ReportError(TokenGetLocation(syntax->breakStmt.breakKeyword), "Invalid 'break' statement found outside of loop or switch-case definition");
+        ReportError(syntax->breakStmt.breakKeyword.location, "Invalid 'break' statement found outside of loop or switch-case definition");
     }
     ASTNode* result = ASTNodeCreate2(ASTNodeKind_BreakStatement, binder->symbolTable, syntax);
     return result;
@@ -5410,7 +5398,7 @@ static ASTNode* BindContinueStatement(Binder* binder, SyntaxNode* syntax) {
     assert(syntax->kind == SyntaxKind_ContinueStatement);
     assert(binder->currentFunctionSymbol != NULL);
     if (binder->loopLevel == 0) {
-        ReportError(TokenGetLocation(syntax->continueStmt.continueKeyword), "Invalid 'continue' statement found outside of loop definition");
+        ReportError(syntax->continueStmt.continueKeyword.location, "Invalid 'continue' statement found outside of loop definition");
     }
     ASTNode* result = ASTNodeCreate2(ASTNodeKind_ContinueStatement, binder->symbolTable, syntax);
     return result;
@@ -5439,11 +5427,11 @@ static ASTNode* BindCaseStatement(Binder* binder, ASTNode* switchExpression, Syn
     if (syntax->kind == SyntaxKind_CaseStatement) {
         caseExpression = BindExpression(binder, syntax->caseStmt.literalExpression);
         if (caseExpression->kind != ASTNodeKind_IntegerLiteral && caseExpression->kind != ASTNodeKind_StringLiteral && caseExpression->kind != ASTNodeKind_CharacterLiteral && caseExpression->kind != ASTNodeKind_EnumValueLiteral) {
-            ReportError(TokenGetLocation(caseExpression->token), "Expected literal in case label but got '%s'", TokenKindToString(caseExpression->token.kind).cstr);
+            ReportError(caseExpression->token.location, "Expected literal in case label but got '%s'", TokenKindToString(caseExpression->token.kind).cstr);
         }
         TypeConversionResult conversion = CanConvertTypeFromTo(caseExpression->type, switchExpression->type);
         if (conversion != TypeConversionResult_Identical && conversion != TypeConversionResult_ImplictlyConvertible) {
-            ReportError(TokenGetLocation(caseExpression->token), "Cannot convert type '%s' of case label literal '%s' to its switch expression type '%s'", TypeGetText(caseExpression->type).cstr, TokenGetText(caseExpression->token).cstr, TypeGetText(switchExpression->type).cstr);
+            ReportError(caseExpression->token.location, "Cannot convert type '%s' of case label literal '%s' to its switch expression type '%s'", TypeGetText(caseExpression->type).cstr, TokenGetText(caseExpression->token).cstr, TypeGetText(switchExpression->type).cstr);
         }
     }
     ASTNode* body = BindBlockStatement(binder, isDefault ? syntax->defaultStmt.body : syntax->caseStmt.body);
@@ -5467,7 +5455,7 @@ static ASTNode* BindSwitchStatement(Binder* binder, SyntaxNode* syntax) {
         SyntaxNode* caseStatement = syntax->switchStmt.caseStatements.nodes[index];
         ASTNode* boundCaseStatement = BindCaseStatement(binder, switchExpression, caseStatement);
         if (defaultStatementEncountered) {
-            ReportError(TokenGetLocation(caseStatement->caseStmt.caseKeyword), "Unexpected case statement after default statement was already defined");
+            ReportError(caseStatement->caseStmt.caseKeyword.location, "Unexpected case statement after default statement was already defined");
         }
         if (caseStatement->kind == SyntaxKind_DefaultStatement) {
             defaultStatementEncountered = true;
@@ -5476,14 +5464,14 @@ static ASTNode* BindSwitchStatement(Binder* binder, SyntaxNode* syntax) {
     }
     binder->switchCaseLevel -= 1;
     if (caseStatements.count == 0) {
-        ReportError(TokenGetLocation(syntax->switchStmt.switchKeyword), "Empty switch statements are not allowed");
+        ReportError(syntax->switchStmt.switchKeyword.location, "Empty switch statements are not allowed");
     }
     for (int32 index = 0; index < caseStatements.count; index += 1) {
         ASTNode* a = caseStatements.nodes[index];
         for (int32 inner = index + 1; inner < caseStatements.count; inner += 1) {
             ASTNode* b = caseStatements.nodes[inner];
             if (a->right && b->right && AreLiteralsEqual(a->right, b->right)) {
-                ReportError(TokenGetLocation(b->token), "Duplicate switch case literal '%s'", TokenGetText(b->right->token).cstr);
+                ReportError(b->token.location, "Duplicate switch case literal '%s'", TokenGetText(b->right->token).cstr);
             }
         }
     }
@@ -5555,13 +5543,13 @@ static ASTNode* BindStructOrUnionDefinitionStatement(Binder* binder, SyntaxNode*
     Symbol* structSymbol = GetSymbol(binder->symbolTable, name);
     if (structSymbol != NULL) {
         if (isUnion && structSymbol->kind != SymbolKind_Union) {
-            ReportError(TokenGetLocation(identifier), "Another symbol with the same name '%s' but different type was already declared in current scope", TokenGetText(identifier).cstr);
+            ReportError(identifier.location, "Another symbol with the same name '%s' but different type was already declared in current scope", TokenGetText(identifier).cstr);
         }
         if (!isUnion && structSymbol->kind != SymbolKind_Struct) {
-            ReportError(TokenGetLocation(identifier), "Another symbol with the same name '%s' but different type was already declared in current scope", TokenGetText(identifier).cstr);
+            ReportError(identifier.location, "Another symbol with the same name '%s' but different type was already declared in current scope", TokenGetText(identifier).cstr);
         }
         if (structSymbol->scopeKind != symbolScopeKind) {
-            ReportError(TokenGetLocation(identifier), "Struct or union '%s was previously declared but with different scope attribute", TokenGetText(identifier).cstr);
+            ReportError(identifier.location, "Struct or union '%s was previously declared but with different scope attribute", TokenGetText(identifier).cstr);
         }
     }
     if (structSymbol == NULL) {
@@ -5582,10 +5570,10 @@ static ASTNode* BindStructOrUnionDefinitionStatement(Binder* binder, SyntaxNode*
         }
         binder->symbolTable = binder->symbolTable->parent;
         if (structSymbol->membersSymbolTable->count == 0) {
-            ReportError(TokenGetLocation(identifier), "Struct or union '%s' needs at least one member", name.cstr);
+            ReportError(identifier.location, "Struct or union '%s' needs at least one member", name.cstr);
         }
         if (structSymbol->alreadyDefined) {
-            ReportError(TokenGetLocation(identifier), "Duplicate struct or union definition of '%s'", name.cstr);
+            ReportError(identifier.location, "Duplicate struct or union definition of '%s'", name.cstr);
         }
         structSymbol->alreadyDefined = true;
         ASTNode* result = ASTNodeCreate2(isUnion ? ASTNodeKind_UnionDefinitionStatement : ASTNodeKind_StructDefinitionStatement, binder->symbolTable, syntax);
@@ -5602,15 +5590,15 @@ static ASTNode* BindEnumDefinitionStatement(Binder* binder, SyntaxNode* syntax) 
     SyntaxToken identifier = syntax->enumDeclarationStmt.identifier;
     String name = TokenGetText(identifier);
     if (binder->currentFunctionSymbol != NULL) {
-        ReportError(TokenGetLocation(identifier), "Unexpected enum declaration of '%s' while already parsing function", name.cstr);
+        ReportError(identifier.location, "Unexpected enum declaration of '%s' while already parsing function", name.cstr);
     }
     Symbol* enumSymbol = GetSymbol(binder->symbolTable, name);
     if (enumSymbol != NULL) {
         if (enumSymbol->kind != SymbolKind_Enum) {
-            ReportError(TokenGetLocation(identifier), "Another symbol with the same name '%s' but different type was already declared in current scope", TokenGetText(identifier).cstr);
+            ReportError(identifier.location, "Another symbol with the same name '%s' but different type was already declared in current scope", TokenGetText(identifier).cstr);
         }
         if (enumSymbol->scopeKind != symbolScopeKind) {
-            ReportError(TokenGetLocation(identifier), "Enum '%s was previously declared but with different scope attribute", TokenGetText(identifier).cstr);
+            ReportError(identifier.location, "Enum '%s was previously declared but with different scope attribute", TokenGetText(identifier).cstr);
         }
     }
     if (enumSymbol == NULL) {
@@ -5631,12 +5619,12 @@ static ASTNode* BindEnumDefinitionStatement(Binder* binder, SyntaxNode* syntax) 
             String valueName = TokenGetText(memberClause->enumMember.identifier);
             Symbol* valueSymbol = AddSymbol(binder->symbolTable, valueName, SymbolKind_Enumvalue, SymbolScopeKind_Global, memberType);
             if (valueSymbol == NULL) {
-                ReportError(TokenGetLocation(identifier), "Symbol was '%s' already declared in current scope", TokenGetText(identifier).cstr);
+                ReportError(identifier.location, "Symbol was '%s' already declared in current scope", TokenGetText(identifier).cstr);
             }
             if (memberClause->enumMember.integerLiteral.kind == SyntaxKind_IntegerLiteralToken) {
                 SyntaxToken valueToken = memberClause->enumMember.integerLiteral;
                 if (valueToken.intvalue < valueCounter) {
-                    ReportError(TokenGetLocation(valueToken), "Assigned value of enum value literal '%s' must chosen such that all enum values of '%s' are unique - chosen value '%lld' would lead to duplicates", TokenGetText(memberClause->enumMember.identifier).cstr, enumSymbol->name.cstr, valueToken.intvalue);
+                    ReportError(valueToken.location, "Assigned value of enum value literal '%s' must chosen such that all enum values of '%s' are unique - chosen value '%lld' would lead to duplicates", TokenGetText(memberClause->enumMember.identifier).cstr, enumSymbol->name.cstr, valueToken.intvalue);
                 }
                 valueCounter = valueToken.intvalue;
             }
@@ -5646,10 +5634,10 @@ static ASTNode* BindEnumDefinitionStatement(Binder* binder, SyntaxNode* syntax) 
         }
         binder->symbolTable = binder->symbolTable->parent;
         if (enumSymbol->membersSymbolTable->count == 0) {
-            ReportError(TokenGetLocation(identifier), "Enum '%s' needs at least one member", name.cstr);
+            ReportError(identifier.location, "Enum '%s' needs at least one member", name.cstr);
         }
         if (enumSymbol->alreadyDefined) {
-            ReportError(TokenGetLocation(identifier), "Duplicate enum definition of '%s'", name.cstr);
+            ReportError(identifier.location, "Duplicate enum definition of '%s'", name.cstr);
         }
         enumSymbol->alreadyDefined = true;
         ASTNode* result = ASTNodeCreate2(ASTNodeKind_EnumDefinitionStatement, binder->symbolTable, syntax);
@@ -5668,10 +5656,10 @@ static ASTNode* BindFunctionDefinitionStatement(Binder* binder, SyntaxNode* synt
     Symbol* functionSymbol = GetSymbol(binder->symbolTable, TokenGetText(identifier));
     if (functionSymbol != NULL) {
         if (functionSymbol->kind != SymbolKind_Function) {
-            ReportError(TokenGetLocation(identifier), "Another symbol with the same name '%s' but different type was already declared in current scope", TokenGetText(identifier).cstr);
+            ReportError(identifier.location, "Another symbol with the same name '%s' but different type was already declared in current scope", TokenGetText(identifier).cstr);
         }
         if (functionSymbol->scopeKind != symbolScopeKind) {
-            ReportError(TokenGetLocation(identifier), "Function '%s was previously declared but with different scope attribute", TokenGetText(identifier).cstr);
+            ReportError(identifier.location, "Function '%s was previously declared but with different scope attribute", TokenGetText(identifier).cstr);
         }
     }
     if (functionSymbol == NULL) {
@@ -5697,19 +5685,19 @@ static ASTNode* BindFunctionDefinitionStatement(Binder* binder, SyntaxNode* synt
     binder->symbolTable = binder->symbolTable->parent;
     if (functionSymbol->membersSymbolTable != NULL) {
         if (!TypesIdentical(returnType, functionSymbol->type)) {
-            ReportError(TokenGetLocation(identifier), "Return type of function '%s' does not match return type of a previous declaration", TokenGetText(identifier).cstr);
+            ReportError(identifier.location, "Return type of function '%s' does not match return type of a previous declaration", TokenGetText(identifier).cstr);
         }
         if (functionSymbol->isVariadric != isVariadric) {
-            ReportError(TokenGetLocation(identifier), "Vadriaticity of function '%s' does not match with a previous declaration", TokenGetText(identifier).cstr);
+            ReportError(identifier.location, "Vadriaticity of function '%s' does not match with a previous declaration", TokenGetText(identifier).cstr);
         }
         if (functionParamsSymbolTable->count != functionSymbol->membersSymbolTable->count) {
-            ReportError(TokenGetLocation(syntax->functionDeclarationStmt.leftParen), "Function '%s' was previously declared with %d parameters wheras new declaration has %d parameters", functionSymbol->name.cstr, functionSymbol->membersSymbolTable->count, functionParamsSymbolTable->count);
+            ReportError(syntax->functionDeclarationStmt.leftParen.location, "Function '%s' was previously declared with %d parameters wheras new declaration has %d parameters", functionSymbol->name.cstr, functionSymbol->membersSymbolTable->count, functionParamsSymbolTable->count);
         }
         for (int32 paramIndex = 0; paramIndex < functionParamsSymbolTable->count; paramIndex += 1) {
             Type paramType = functionParamsSymbolTable->symbols[paramIndex]->type;
             Type previosType = functionSymbol->membersSymbolTable->symbols[paramIndex]->type;
             if (!TypesIdentical(paramType, previosType)) {
-                ReportError(TokenGetLocation(syntax->functionDeclarationStmt.leftParen), "Previous function '%s' parameter %d declared type differs from current declared type", functionSymbol->name.cstr, paramIndex + 1);
+                ReportError(syntax->functionDeclarationStmt.leftParen.location, "Previous function '%s' parameter %d declared type differs from current declared type", functionSymbol->name.cstr, paramIndex + 1);
             }
         }
     }
@@ -5718,10 +5706,10 @@ static ASTNode* BindFunctionDefinitionStatement(Binder* binder, SyntaxNode* synt
     ASTNode* body = NULL;
     if (syntax->kind == SyntaxKind_FunctionDefinitionStatement) {
         if (isExternal) {
-            ReportError(TokenGetLocation(identifier), "Cannot define external function '%s'", TokenGetText(identifier).cstr);
+            ReportError(identifier.location, "Cannot define external function '%s'", TokenGetText(identifier).cstr);
         }
         if (functionSymbol->alreadyDefined) {
-            ReportError(TokenGetLocation(identifier), "Duplicate function definition of '%s'", TokenGetText(identifier).cstr);
+            ReportError(identifier.location, "Duplicate function definition of '%s'", TokenGetText(identifier).cstr);
         }
         binder->symbolTable = functionSymbol->membersSymbolTable;
         binder->currentFunctionSymbol = functionSymbol;
@@ -5776,13 +5764,94 @@ static ASTNode* BindModule(Binder* binder, ModuleStatementSyntax* syntax) {
     return result;
 }
 
-static void Compile(String inputFilepath, String outputFilepath) {
-    Source source = PreprocessFile(inputFilepath);
+static ASTNode* BindCompilationUnit(Binder* binder, SyntaxTreeArray trees) {
+    ASTNode* result = ASTNodeCreate2(ASTNodeKind_Module, binder->symbolTable, NULL);
+    for (int32 index = 0; index < trees.count; index += 1) {
+        SyntaxTree* tree = trees.trees[index];
+        ModuleStatementSyntax* syntax = tree->moduleRoot;
+        for (int32 index = 0; index < syntax->globalStatements.count; index += 1) {
+            SyntaxNode* statement = syntax->globalStatements.nodes[index];
+            ASTNode* boundStatement = BindModuleStatement(binder, statement);
+            if (boundStatement != NULL) {
+                ASTNodeArrayPush(&result->children, boundStatement);
+            }
+        }
+    }
+    return result;
+}
+
+static String ReadFileToString(String filepath) {
+    char* buffer = NULL;
+    FILE* handle = fopen(filepath.cstr, "rb");
+    if (handle == NULL) {
+        fprintf(stderr, "Unable to open file '%s'\n", filepath.cstr);
+        exit(1);
+    }
+    fseek(handle, 0, SEEK_END);
+    int64 length = (int64)ftell(handle);
+    fseek(handle, 0, SEEK_SET);
+    buffer = (char*)malloc(length + 1);
+    if (buffer) {
+        fread(buffer, 1, length, handle);
+    }
+    buffer[length] = '\0';
+    fclose(handle);
+    String result;
+    result.cstr = buffer;
+    result.length = (int32)length;
+    return result;
+}
+
+static Source LoadSource(String modulename, String filepath) {
+    String content = ReadFileToString(filepath);
+    Source result;
+    result.modulename = modulename;
+    result.filepath = filepath;
+    result.content = content;
+    return result;
+}
+
+static Source LoadModule(String modulename) {
+    String modulepath = modulename;
+    String extensionSource = StringCreateFromCStr(".cpp");
+    String extensionHeader = StringCreateFromCStr(".hpp");
+    if (!StringEndsWith(modulepath, extensionHeader) && !StringEndsWith(modulepath, extensionSource)) {
+        modulepath = StringAppend(modulepath, extensionHeader);
+    }
+    return LoadSource(modulename, modulepath);
+}
+
+static void CollectSyntaxTreesRecursive(SyntaxTreeArray* result, StringArray* visited, String modulename) {
+    if (StringArrayContains(visited, modulename)) {
+        return;
+    } else {
+        StringArrayPush(visited, modulename);
+    }
+    Source source = LoadModule(modulename);
     Parser parser = ParserCreate(source);
     SyntaxTree* syntaxTree = ParseModule(&parser);
+    for (int32 index = 0; index < syntaxTree->moduleRoot->globalStatements.count; index += 1) {
+        SyntaxNode* statement = syntaxTree->moduleRoot->globalStatements.nodes[index];
+        if (statement->kind == SyntaxKind_ImportDeclarationStatement) {
+            String importmodulename = statement->importStmt.modulenameLiteral.stringValueWithoutQuotes;
+            CollectSyntaxTreesRecursive(result, visited, importmodulename);
+        }
+    }
+    SyntaxTreeArrayPush(result, syntaxTree);
+}
+
+static SyntaxTreeArray CollectSyntaxTrees(String rootModule) {
+    SyntaxTreeArray result = SyntaxTreeArrayCreate();
+    StringArray visited = StringArrayCreate();
+    CollectSyntaxTreesRecursive(&result, &visited, rootModule);
+    return result;
+}
+
+static void Compile(String inputFilepath, String outputFilepath) {
+    SyntaxTreeArray trees = CollectSyntaxTrees(inputFilepath);
     SymbolTable* symbolTable = SymbolTableCreate(NULL);
-    Binder binder = BinderCreate(source, symbolTable);
-    ASTNode* boundTree = BindModule(&binder, syntaxTree->moduleRoot);
+    Binder binder = BinderCreate(symbolTable);
+    ASTNode* boundTree = BindCompilationUnit(&binder, trees);
     Emitter emitter = EmitterCreate(outputFilepath);
     EmitRoot(&emitter, boundTree);
 }

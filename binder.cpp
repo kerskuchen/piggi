@@ -1,11 +1,10 @@
 #include "definitions.hpp"
-// #if 0
-// import "definitions.hpp"
-// #endif
+#if 0
+import "definitions.hpp"
+#endif
 
 struct Binder {
     SymbolTable* symbolTable;
-    Source source;
     ModuleStatementSyntax* tree;
 
     int loopLevel;
@@ -13,10 +12,9 @@ struct Binder {
     Symbol* currentFunctionSymbol;
 };
 
-fun Binder BinderCreate(Source source, SymbolTable* symbolTable) {
+fun Binder BinderCreate(SymbolTable* symbolTable) {
     let Binder result;
     result.symbolTable = symbolTable;
-    result.source = source;
     result.loopLevel = 0;
     result.switchCaseLevel = 0;
     result.currentFunctionSymbol = nullptr;
@@ -102,7 +100,7 @@ fun Type BindType(Binder* binder, SyntaxNode* syntax) {
             } // Fallthrough
         default: 
             ReportError(
-                TokenGetLocation(primary),
+                primary.location,
                 "SyntaxToken '%s' is not a type", 
                 TokenGetText(primary).cstr
             );
@@ -118,7 +116,7 @@ fun Type BindType(Binder* binder, SyntaxNode* syntax) {
         let Symbol* symbol = GetSymbol(binder->symbolTable, type.name);
         if (!symbol->alreadyDefined && type.baseIndirectionLevel == 0) {
             ReportError(
-                TokenGetLocation(primary),
+                primary.location,
                 "Usage of undefined but forward declared type '%s' is only allowed as pointer", 
                 type.name.cstr
             );
@@ -146,7 +144,7 @@ fun ASTNode* BindTypeCastExpression(Binder* binder, SyntaxNode* syntax) {
     let TypeConversionResult conversion = CanConvertTypeFromTo(expression->type, targetType);
     if (conversion == TypeConversionResult::NonConvertible) {
         ReportError(
-            TokenGetLocation(syntax->typeCastExpr.asKeyword),
+            syntax->typeCastExpr.asKeyword.location,
             "Cast from type '%s' to type '%s' is impossible",
             TypeGetText(expression->type).cstr, TypeGetText(targetType).cstr
         );
@@ -247,14 +245,14 @@ fun ASTNode* BindEnumValueLiteralExpression(Binder* binder, SyntaxNode* syntax) 
     let Symbol* enumSymbol = GetSymbol(binder->symbolTable, enumText);
     if (enumSymbol == nullptr) {
         ReportError(
-            TokenGetLocation(enumIdentifier),
+            enumIdentifier.location,
             "Undeclared identifier '%s'", 
             enumText.cstr
         );
     }
     if (enumSymbol->kind != SymbolKind::Enum) {
         ReportError(
-            TokenGetLocation(enumIdentifier),
+            enumIdentifier.location,
             "Identifier '%s' is not an enum", 
             enumText.cstr
         );
@@ -264,7 +262,7 @@ fun ASTNode* BindEnumValueLiteralExpression(Binder* binder, SyntaxNode* syntax) 
     let Symbol* valueSymbol = GetSymbol(enumSymbol->membersSymbolTable, valueText);
     if (valueSymbol == nullptr) {
         ReportError(
-            TokenGetLocation(enumIdentifier),
+            enumIdentifier.location,
             "Identifier '%s' is not a member of enum '%s'", 
             valueText.cstr, enumText.cstr
         );
@@ -292,7 +290,7 @@ fun ASTNode* BindArrayLiteralExpression(Binder* binder, Symbol* arraySymbol, Syn
         if (conversion == TypeConversionResult::NonConvertible 
          || conversion == TypeConversionResult::ExplicitlyConvertible) {
             ReportError(
-                TokenGetLocation(expression->token),
+                expression->token.location,
                 "Cannot convert type '%s' of element %d in array initializer to array type '%s'",
                 TypeGetText(boundExpression->type).cstr, index / 2 + 1, TypeGetText(arrayElemType).cstr
             );
@@ -306,14 +304,14 @@ fun ASTNode* BindArrayLiteralExpression(Binder* binder, Symbol* arraySymbol, Syn
         arraySymbol->type.arrayElementCount = elementCount;
     if (elementCount == 0) {
         ReportError(
-            TokenGetLocation(leftBrace),
+            leftBrace.location,
             "Element count cannot be zero in array initializer of array '%s'",
             arraySymbol->name.cstr
         );
     }
     if (arraySymbol->type.arrayElementCount != elementCount) {
         ReportError(
-            TokenGetLocation(leftBrace),
+            leftBrace.location,
             "Element count %d of array initializer does not match element count %d of array '%s'",
             elementCount, arraySymbol->type.arrayElementCount, arraySymbol->name.cstr
         );
@@ -334,7 +332,7 @@ fun ASTNode* BindNameExpression(Binder* binder, SyntaxNode* syntax) {
     let Symbol* symbol = GetSymbol(binder->symbolTable, identifierText);
     if (symbol == nullptr) {
         ReportError(
-            TokenGetLocation(identifier),
+            identifier.location,
             "Undeclared identifier '%s'", 
             identifierText.cstr
         );
@@ -365,7 +363,7 @@ fun ASTNode* BindFunctionCallExpression(Binder* binder, SyntaxNode* syntax) {
     if (funcSymbol == nullptr) {
         // TODO: change this to a span that prints the whole left expression
         ReportError(
-            TokenGetLocation(leftParen),
+            leftParen.location,
             "Expression left of '%s' is not a known symbol", 
             TokenGetText(leftParen)
         );
@@ -373,7 +371,7 @@ fun ASTNode* BindFunctionCallExpression(Binder* binder, SyntaxNode* syntax) {
     if (funcSymbol->kind != SymbolKind::Function) {
         // TODO: change this to a span that prints the whole left expression
         ReportError(
-            TokenGetLocation(leftParen),
+            leftParen.location,
             "Identifier '%s' is not a callable function", 
             funcSymbol->name.cstr
         );
@@ -389,7 +387,7 @@ fun ASTNode* BindFunctionCallExpression(Binder* binder, SyntaxNode* syntax) {
     if (funcSymbol->isVariadric) {
         if (argumentList.count < funcSymbol->membersSymbolTable->count) {
             ReportError(
-                TokenGetLocation(leftParen),
+                leftParen.location,
                 "Function '%s' expects at least %d arguments but %d arguments were provided", 
                 funcSymbol->name.cstr, funcSymbol->membersSymbolTable->count, argumentList.count
             );
@@ -397,7 +395,7 @@ fun ASTNode* BindFunctionCallExpression(Binder* binder, SyntaxNode* syntax) {
     } else {
         if (argumentList.count != funcSymbol->membersSymbolTable->count) {
             ReportError(
-                TokenGetLocation(leftParen),
+                leftParen.location,
                 "Function '%s' expects %d arguments but %d arguments were provided", 
                 funcSymbol->name.cstr, funcSymbol->membersSymbolTable->count, argumentList.count
             );
@@ -411,14 +409,14 @@ fun ASTNode* BindFunctionCallExpression(Binder* binder, SyntaxNode* syntax) {
         let TypeConversionResult conversion = CanConvertTypeFromTo(argumentType, expectedType);
         if (conversion == TypeConversionResult::NonConvertible) {
             ReportError(
-                TokenGetLocation(leftParen),
+                leftParen.location,
                 "Passed incompatible type '%s' for argument %d to function '%s' - expected type '%s'", 
                 TypeGetText(argumentType).cstr, argumentIndex + 1, funcSymbol->name.cstr, TypeGetText(expectedType).cstr 
             );
         }
         if (conversion == TypeConversionResult::ExplicitlyConvertible) {
             ReportError(
-                TokenGetLocation(leftParen),
+                leftParen.location,
                 "Cannot implicitly convert type '%s' of argument %d  to expected type '%s' in function call of '%s'", 
                 TypeGetText(argumentType).cstr, argumentIndex + 1, TypeGetText(expectedType).cstr, funcSymbol->name.cstr
             );
@@ -440,14 +438,14 @@ fun ASTNode* BindArrayIndexingExpression(Binder* binder, SyntaxNode* syntax) {
     let ASTNode* index = BindExpression(binder, syntax->arrayIndexExpr.indexExpression);
     if (!IsNumberType(index->type)) {
         ReportError(
-            TokenGetLocation(leftBracket),
+            leftBracket.location,
             "Array index after '%s' must be number type", 
             TokenKindToString(leftBracket.kind).cstr
         );
     }
     if (left->symbol == nullptr || TypeGetIndirectionLevel(left->symbol->type) == 0) {
         ReportError(
-            TokenGetLocation(leftBracket),
+            leftBracket.location,
             "Left hand side of array index operator '%s' is not a known array or pointer", 
             TokenKindToString(leftBracket.kind).cstr
         );
@@ -471,7 +469,7 @@ fun ASTNode* BindMemberAccessExpression(Binder* binder, SyntaxNode* syntax) {
     let SyntaxToken accessorToken = syntax->memberAccessExpr.accessToken;
     if (container->type.kind != TypeKind::Struct && container->type.kind != TypeKind::Union) {
         ReportError(
-            TokenGetLocation(accessorToken),
+            accessorToken.location,
             "Attempt to access member of non union or struct identifier '%s'", 
             container->symbol->name.cstr
         );
@@ -481,14 +479,14 @@ fun ASTNode* BindMemberAccessExpression(Binder* binder, SyntaxNode* syntax) {
     assert(containerSymbol != nullptr);
     if (containerSymbol->kind != SymbolKind::Struct && containerSymbol->kind != SymbolKind::Union) {
         ReportError(
-            TokenGetLocation(accessorToken),
+            accessorToken.location,
             "Attempt to access member of non union or struct identifier '%s'", 
             containerSymbol->name.cstr
         );
     }
     if (!containerSymbol->alreadyDefined) {
         ReportError(
-            TokenGetLocation(accessorToken),
+            accessorToken.location,
             "Attempt to access member of forward declared but undefined union or struct '%s'", 
             containerSymbol->name.cstr
         );
@@ -497,14 +495,14 @@ fun ASTNode* BindMemberAccessExpression(Binder* binder, SyntaxNode* syntax) {
     let bool isArrow = accessorToken.kind == SyntaxKind::ArrowToken;
     if (isArrow && TypeGetIndirectionLevel(container->type) == 0) {
         ReportError(
-            TokenGetLocation(accessorToken),
+            accessorToken.location,
             "Member access of '%s' with '->' is only allowed for pointer types", 
             containerSymbol->name.cstr
         );
     }
     if (!isArrow && TypeGetIndirectionLevel(container->type) > 0) {
         ReportError(
-            TokenGetLocation(accessorToken),
+            accessorToken.location,
             "Member access of '%s' with '.' is only allowed for non-pointer types", 
             containerSymbol->name.cstr
         );
@@ -515,7 +513,7 @@ fun ASTNode* BindMemberAccessExpression(Binder* binder, SyntaxNode* syntax) {
     let Symbol* memberSymbol = GetSymbol(containerSymbol->membersSymbolTable, identifierText);
     if (memberSymbol == nullptr) {
         ReportError(
-            TokenGetLocation(memberIdentifier),
+            memberIdentifier.location,
             "Undeclared struct or union member '%s'", 
             identifierText.cstr
         );
@@ -538,7 +536,7 @@ fun ASTNode* BindUnaryExpression(Binder* binder, SyntaxNode* syntax) {
     let UnaryOperator op = GetUnaryOperationForToken(operatorToken, operand->type);
     if (op.operandMustBeLValue && operand->isRValue) {
         ReportError(
-            TokenGetLocation(operatorToken),
+            operatorToken.location,
             "Operand of operator '%s' must be an storage location", 
             TokenKindToString(operatorToken.kind).cstr
         );
@@ -561,14 +559,14 @@ fun ASTNode* BindBinaryExpression(Binder* binder, SyntaxNode* syntax) {
     let BinaryOperator op = GetBinaryOperationForToken(operatorToken, left->type, right->type);
     if (op.leftMustBeLValue && left->isRValue) {
         ReportError(
-            TokenGetLocation(operatorToken),
+            operatorToken.location,
             "Left argument of operator '%s' must be an storage location", 
             TokenKindToString(operatorToken.kind).cstr
         );
     }
     if (op.rightMustBeLValue && right->isRValue) {
         ReportError(
-            TokenGetLocation(operatorToken),
+            operatorToken.location,
             "Right argument of operator '%s' must be a storage location", 
             TokenKindToString(operatorToken.kind).cstr
         );
@@ -591,7 +589,7 @@ fun ASTNode* BindTernaryConditionalExpression(Binder* binder, SyntaxNode* syntax
     let Type type = GetTypeThatFitsBothTypes(thenExpression->type, elseExpression->type);
     if (IsVoidType(type)) {
         ReportError(
-            TokenGetLocation(syntax->ternaryConditionalExpr.questionmark),
+            syntax->ternaryConditionalExpr.questionmark.location,
             "Incompatible expression types in ternary operator - then branch: '%s', else branch: '%s'",
             TypeGetText(thenExpression->type).cstr, TypeGetText(elseExpression->type).cstr
         );
@@ -693,7 +691,7 @@ fun ASTNode* BindVariableDefinitionStatement(Binder* binder, SyntaxNode* syntax,
     if (isLocalPersist) {
         if (symbolScopeKind != SymbolScopeKind::Local) {
             ReportError(
-                TokenGetLocation(identifier),
+                identifier.location,
                 "Cannot mark global variable '%s' as local persistent", 
                 TokenGetText(identifier).cstr
             );
@@ -705,7 +703,7 @@ fun ASTNode* BindVariableDefinitionStatement(Binder* binder, SyntaxNode* syntax,
     let Symbol* varSymbol = AddSymbol(binder->symbolTable, TokenGetText(identifier), SymbolKind::Variable, symbolScopeKind, type);
     if (varSymbol == nullptr) {
         ReportError(
-            TokenGetLocation(identifier),
+            identifier.location,
             "Symbol was '%s' already declared in current scope", 
             TokenGetText(identifier).cstr
         );
@@ -713,7 +711,7 @@ fun ASTNode* BindVariableDefinitionStatement(Binder* binder, SyntaxNode* syntax,
 
     if (IsVoidType(type)) {
         ReportError(
-            TokenGetLocation(identifier),
+            identifier.location,
             "'void' not allowed as variables '%s' storage type", 
             TokenGetText(identifier).cstr
         );
@@ -729,7 +727,7 @@ fun ASTNode* BindVariableDefinitionStatement(Binder* binder, SyntaxNode* syntax,
         }
         if (arrayElementCountDefined && arrayElementCount <= 0) {
             ReportError(
-                TokenGetLocation(identifier),
+                identifier.location,
                 "Array size must be greater than zero for '%s'", 
                 TokenGetText(identifier).cstr
             );
@@ -848,7 +846,7 @@ fun ASTNode* BindReturnStatement(Binder* binder, SyntaxNode* syntax) {
 
     if (binder->currentFunctionSymbol == nullptr) {
         ReportError(
-            TokenGetLocation(syntax->returnStmt.returnKeyword),
+            syntax->returnStmt.returnKeyword.location,
             "Invalid 'return' statement found outside of function definition"
         );
     }
@@ -856,13 +854,13 @@ fun ASTNode* BindReturnStatement(Binder* binder, SyntaxNode* syntax) {
     let Type functionReturnType = binder->currentFunctionSymbol->type;
     if (IsVoidType(functionReturnType) && syntax->returnStmt.returnExpression != nullptr) {
         ReportError(
-            TokenGetLocation(syntax->returnStmt.returnKeyword),
+            syntax->returnStmt.returnKeyword.location,
             "Invalid return expression in void function"
         );
     }
     if (!IsVoidType(functionReturnType) && syntax->returnStmt.returnExpression == nullptr) {
         ReportError(
-            TokenGetLocation(syntax->returnStmt.returnKeyword),
+            syntax->returnStmt.returnKeyword.location,
             "Must return expression in non-void function"
         );
     }
@@ -874,14 +872,14 @@ fun ASTNode* BindReturnStatement(Binder* binder, SyntaxNode* syntax) {
         let TypeConversionResult conversion = CanConvertTypeFromTo(boundExpression->type, functionReturnType);
         if (conversion == TypeConversionResult::NonConvertible) {
             ReportError(
-                TokenGetLocation(syntax->returnStmt.returnKeyword),
+                syntax->returnStmt.returnKeyword.location,
                 "Incompatible types for return expression '%s'", 
                 TokenKindToString(syntax->returnStmt.returnKeyword.kind).cstr
             );
         }
         if (conversion == TypeConversionResult::ExplicitlyConvertible) {
             ReportError(
-                TokenGetLocation(syntax->returnStmt.returnKeyword),
+                syntax->returnStmt.returnKeyword.location,
                 "Types cannot be implicitly converted for return expression '%s'", 
                 TokenKindToString(syntax->returnStmt.returnKeyword.kind).cstr
             );
@@ -898,7 +896,7 @@ fun ASTNode* BindBreakStatement(Binder* binder, SyntaxNode* syntax) {
 
     if (binder->loopLevel == 0 && binder->switchCaseLevel == 0) {
         ReportError(
-            TokenGetLocation(syntax->breakStmt.breakKeyword),
+            syntax->breakStmt.breakKeyword.location,
             "Invalid 'break' statement found outside of loop or switch-case definition"
         );
     }
@@ -912,7 +910,7 @@ fun ASTNode* BindContinueStatement(Binder* binder, SyntaxNode* syntax) {
 
     if (binder->loopLevel == 0) {
         ReportError(
-            TokenGetLocation(syntax->continueStmt.continueKeyword),
+            syntax->continueStmt.continueKeyword.location,
             "Invalid 'continue' statement found outside of loop definition"
         );
     }
@@ -954,7 +952,7 @@ fun ASTNode* BindCaseStatement(Binder* binder, ASTNode* switchExpression, Syntax
         && caseExpression->kind != ASTNodeKind::CharacterLiteral 
         && caseExpression->kind != ASTNodeKind::EnumValueLiteral) {
             ReportError(
-                TokenGetLocation(caseExpression->token), 
+                caseExpression->token.location, 
                 "Expected literal in case label but got '%s'",
                 TokenKindToString(caseExpression->token.kind).cstr
             );
@@ -962,7 +960,7 @@ fun ASTNode* BindCaseStatement(Binder* binder, ASTNode* switchExpression, Syntax
         let TypeConversionResult conversion = CanConvertTypeFromTo(caseExpression->type, switchExpression->type);
         if (conversion != TypeConversionResult::Identical && conversion != TypeConversionResult::ImplictlyConvertible) {
             ReportError(
-                TokenGetLocation(caseExpression->token), 
+                caseExpression->token.location, 
                 "Cannot convert type '%s' of case label literal '%s' to its switch expression type '%s'",
                 TypeGetText(caseExpression->type).cstr, TokenGetText(caseExpression->token).cstr, TypeGetText(switchExpression->type).cstr
             );
@@ -998,7 +996,7 @@ fun ASTNode* BindSwitchStatement(Binder* binder, SyntaxNode* syntax) {
         let ASTNode* boundCaseStatement = BindCaseStatement(binder, switchExpression, caseStatement);
         if (defaultStatementEncountered) {
             ReportError(
-                TokenGetLocation(caseStatement->caseStmt.caseKeyword),
+                caseStatement->caseStmt.caseKeyword.location,
                 "Unexpected case statement after default statement was already defined"
             );
         }
@@ -1011,7 +1009,7 @@ fun ASTNode* BindSwitchStatement(Binder* binder, SyntaxNode* syntax) {
 
     if (caseStatements.count == 0) {
         ReportError(
-            TokenGetLocation(syntax->switchStmt.switchKeyword),
+            syntax->switchStmt.switchKeyword.location,
             "Empty switch statements are not allowed"
         );
     }
@@ -1023,7 +1021,7 @@ fun ASTNode* BindSwitchStatement(Binder* binder, SyntaxNode* syntax) {
             let ASTNode* b = caseStatements.nodes[inner];
             if (a->right && b->right && AreLiteralsEqual(a->right, b->right)) {
                 ReportError(
-                    TokenGetLocation(b->token),
+                    b->token.location,
                     "Duplicate switch case literal '%s'",
                     TokenGetText(b->right->token).cstr
                 );
@@ -1096,21 +1094,21 @@ fun ASTNode* BindStructOrUnionDefinitionStatement(Binder* binder, SyntaxNode* sy
     if (structSymbol != nullptr) {
         if (isUnion &&  structSymbol->kind != SymbolKind::Union) {
             ReportError(
-                TokenGetLocation(identifier),
+                identifier.location,
                 "Another symbol with the same name '%s' but different type was already declared in current scope", 
                 TokenGetText(identifier).cstr
             );
         }
         if (!isUnion &&  structSymbol->kind != SymbolKind::Struct) {
             ReportError(
-                TokenGetLocation(identifier),
+                identifier.location,
                 "Another symbol with the same name '%s' but different type was already declared in current scope", 
                 TokenGetText(identifier).cstr
             );
         }
         if (structSymbol->scopeKind != symbolScopeKind) {
             ReportError(
-                TokenGetLocation(identifier),
+                identifier.location,
                 "Struct or union '%s was previously declared but with different scope attribute", 
                 TokenGetText(identifier).cstr
             );
@@ -1144,14 +1142,14 @@ fun ASTNode* BindStructOrUnionDefinitionStatement(Binder* binder, SyntaxNode* sy
 
         if (structSymbol->membersSymbolTable->count == 0){
             ReportError(
-                TokenGetLocation(identifier),
+                identifier.location,
                 "Struct or union '%s' needs at least one member", 
                 name.cstr
             );
         }
         if (structSymbol->alreadyDefined) {
             ReportError(
-                TokenGetLocation(identifier),
+                identifier.location,
                 "Duplicate struct or union definition of '%s'", 
                 name.cstr
             );
@@ -1178,7 +1176,7 @@ fun ASTNode* BindEnumDefinitionStatement(Binder* binder, SyntaxNode* syntax) {
 
     if (binder->currentFunctionSymbol != nullptr) {
         ReportError(
-            TokenGetLocation(identifier),
+            identifier.location,
             "Unexpected enum declaration of '%s' while already parsing function", 
             name.cstr
         );
@@ -1188,14 +1186,14 @@ fun ASTNode* BindEnumDefinitionStatement(Binder* binder, SyntaxNode* syntax) {
     if (enumSymbol != nullptr) {
         if (enumSymbol->kind != SymbolKind::Enum) {
             ReportError(
-                TokenGetLocation(identifier),
+                identifier.location,
                 "Another symbol with the same name '%s' but different type was already declared in current scope",
                 TokenGetText(identifier).cstr
             );
         }
         if (enumSymbol->scopeKind != symbolScopeKind) {
             ReportError(
-                TokenGetLocation(identifier),
+                identifier.location,
                 "Enum '%s was previously declared but with different scope attribute", 
                 TokenGetText(identifier).cstr
             );
@@ -1225,7 +1223,7 @@ fun ASTNode* BindEnumDefinitionStatement(Binder* binder, SyntaxNode* syntax) {
             let Symbol* valueSymbol = AddSymbol(binder->symbolTable, valueName, SymbolKind::Enumvalue, SymbolScopeKind::Global, memberType);
             if (valueSymbol == nullptr) {
                 ReportError(
-                    TokenGetLocation(identifier),
+                    identifier.location,
                     "Symbol was '%s' already declared in current scope", 
                     TokenGetText(identifier).cstr
                 );
@@ -1236,7 +1234,7 @@ fun ASTNode* BindEnumDefinitionStatement(Binder* binder, SyntaxNode* syntax) {
                 if (valueToken.intvalue < valueCounter)
                 {
                     ReportError(
-                        TokenGetLocation(valueToken),
+                        valueToken.location,
                         "Assigned value of enum value literal '%s' must chosen such that all enum values of '%s' are unique - chosen value '%lld' would lead to duplicates", 
                         TokenGetText(memberClause->enumMember.identifier).cstr, enumSymbol->name.cstr, valueToken.intvalue
                     );
@@ -1253,7 +1251,7 @@ fun ASTNode* BindEnumDefinitionStatement(Binder* binder, SyntaxNode* syntax) {
 
         if (enumSymbol->membersSymbolTable->count == 0){
             ReportError(
-                TokenGetLocation(identifier),
+                identifier.location,
                 "Enum '%s' needs at least one member", 
                 name.cstr
             );
@@ -1261,7 +1259,7 @@ fun ASTNode* BindEnumDefinitionStatement(Binder* binder, SyntaxNode* syntax) {
 
         if (enumSymbol->alreadyDefined) {
             ReportError(
-                TokenGetLocation(identifier),
+                identifier.location,
                 "Duplicate enum definition of '%s'", 
                 name.cstr
             );
@@ -1288,14 +1286,14 @@ fun ASTNode* BindFunctionDefinitionStatement(Binder* binder, SyntaxNode* syntax)
     if (functionSymbol != nullptr) {
         if (functionSymbol->kind != SymbolKind::Function) {
             ReportError(
-                TokenGetLocation(identifier),
+                identifier.location,
                 "Another symbol with the same name '%s' but different type was already declared in current scope", 
                 TokenGetText(identifier).cstr
             );
         }
         if (functionSymbol->scopeKind != symbolScopeKind) {
             ReportError(
-                TokenGetLocation(identifier),
+                identifier.location,
                 "Function '%s was previously declared but with different scope attribute", 
                 TokenGetText(identifier).cstr
             );
@@ -1336,7 +1334,7 @@ fun ASTNode* BindFunctionDefinitionStatement(Binder* binder, SyntaxNode* syntax)
         // parameters match up with the previous defined type and parameters
         if (!TypesIdentical(returnType, functionSymbol->type)) {
             ReportError(
-                TokenGetLocation(identifier),
+                identifier.location,
                 "Return type of function '%s' does not match return type of a previous declaration", 
                 TokenGetText(identifier).cstr
             );
@@ -1344,7 +1342,7 @@ fun ASTNode* BindFunctionDefinitionStatement(Binder* binder, SyntaxNode* syntax)
 
         if (functionSymbol->isVariadric != isVariadric) {
             ReportError(
-                TokenGetLocation(identifier),
+                identifier.location,
                 "Vadriaticity of function '%s' does not match with a previous declaration", 
                 TokenGetText(identifier).cstr
             );
@@ -1352,7 +1350,7 @@ fun ASTNode* BindFunctionDefinitionStatement(Binder* binder, SyntaxNode* syntax)
 
         if (functionParamsSymbolTable->count != functionSymbol->membersSymbolTable->count) {
             ReportError(
-                TokenGetLocation(syntax->functionDeclarationStmt.leftParen),
+                syntax->functionDeclarationStmt.leftParen.location,
                 "Function '%s' was previously declared with %d parameters wheras new declaration has %d parameters", 
                 functionSymbol->name.cstr, functionSymbol->membersSymbolTable->count, functionParamsSymbolTable->count
             );
@@ -1364,7 +1362,7 @@ fun ASTNode* BindFunctionDefinitionStatement(Binder* binder, SyntaxNode* syntax)
 
             if (!TypesIdentical(paramType, previosType)) {
                 ReportError(
-                    TokenGetLocation(syntax->functionDeclarationStmt.leftParen),
+                    syntax->functionDeclarationStmt.leftParen.location,
                     "Previous function '%s' parameter %d declared type differs from current declared type", 
                     functionSymbol->name.cstr, paramIndex + 1
                 );
@@ -1378,14 +1376,14 @@ fun ASTNode* BindFunctionDefinitionStatement(Binder* binder, SyntaxNode* syntax)
     if (syntax->kind == SyntaxKind::FunctionDefinitionStatement) {
         if (isExternal) {
             ReportError(
-                TokenGetLocation(identifier),
+                identifier.location,
                 "Cannot define external function '%s'", 
                 TokenGetText(identifier).cstr
             );
         }
         if (functionSymbol->alreadyDefined) {
             ReportError(
-                TokenGetLocation(identifier),
+                identifier.location,
                 "Duplicate function definition of '%s'", 
                 TokenGetText(identifier).cstr
             );
@@ -1412,7 +1410,7 @@ fun ASTNode* BindFunctionDefinitionStatement(Binder* binder, SyntaxNode* syntax)
 fun ASTNode* BindModuleStatement(Binder* binder, SyntaxNode* syntax) {
     switch (syntax->kind) {
         case SyntaxKind::ImportDeclarationStatement:
-            return nullptr; // We ignore these as they are only relevant for the parser
+            return nullptr; // We ignore these as they are only relevant for the binder
         case SyntaxKind::GlobalVariableDeclarationStatement:
             return BindGlobalVariableDefinitionStatement(binder, syntax);
         case SyntaxKind::EnumDeclarationStatement:
@@ -1439,6 +1437,21 @@ fun ASTNode* BindModule(Binder* binder, ModuleStatementSyntax* syntax) {
         let ASTNode* boundStatement = BindModuleStatement(binder, statement);
         if (boundStatement != nullptr)
             ASTNodeArrayPush(&result->children, boundStatement);
+    }
+    return result;
+}
+
+fun ASTNode* BindCompilationUnit(Binder* binder, SyntaxTreeArray trees) {
+    let ASTNode* result = ASTNodeCreate2(ASTNodeKind::Module, binder->symbolTable, nullptr);
+    for (let int index = 0; index < trees.count; index += 1) {
+        let SyntaxTree* tree = trees.trees[index];
+        let ModuleStatementSyntax* syntax = tree->moduleRoot;
+        for (let int index = 0; index < syntax->globalStatements.count; index += 1) {
+            let SyntaxNode* statement = syntax->globalStatements.nodes[index];
+            let ASTNode* boundStatement = BindModuleStatement(binder, statement);
+            if (boundStatement != nullptr)
+                ASTNodeArrayPush(&result->children, boundStatement);
+        }
     }
     return result;
 }

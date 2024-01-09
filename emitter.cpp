@@ -1,7 +1,7 @@
 #include "definitions.hpp"
-// #if 0
-// import "definitions.hpp"
-// #endif
+#if 0
+import "definitions.hpp"
+#endif
 
 struct Emitter {
     FILE* outFile;

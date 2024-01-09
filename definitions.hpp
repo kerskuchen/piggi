@@ -1,9 +1,9 @@
 #pragma once
 
 #include "prelude.hpp"
-// #if 0
-// import "prelude.hpp"
-// #endif
+#if 0
+import "prelude.hpp"
+#endif
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Common stuff to keep our sanity
@@ -115,69 +115,91 @@ fun int FindCharPosInString(String str, char ch) {
     return -1;
 }
 
+fun bool StringStartsWith(String str, String prefix) {
+    if (str.length < prefix.length)
+        return false;
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Source 
+    for (let int pos = 0; pos < prefix.length; pos += 1) {
+        if (str.cstr[pos] != prefix.cstr[pos])
+            return false;
+    }
+    return true;
+}
 
-struct SourceFile {
-    String filepath;
-    String content;
-};
+fun bool StringEndsWith(String str, String suffix) {
+    if (str.length < suffix.length)
+        return false;
 
-struct SourceFileArray {
-    SourceFile* files;
+    for (let int pos = 0; pos < suffix.length; pos += 1) {
+        let int strIndex = str.length - suffix.length + pos;
+        let int suffixIndex = pos;
+        if (str.cstr[strIndex] != suffix.cstr[suffixIndex])
+            return false;
+    }
+    return true;
+}
+
+
+struct StringArray {
+    String* strings;
     int count;
     int capacity;
 };
 
-fun SourceFileArray SourceFileArrayCreate() {
-    let SourceFileArray result;
-    result.files = nullptr;
+fun StringArray StringArrayCreate() {
+    let StringArray result;
+    result.strings = nullptr;
     result.count = 0;
     result.capacity = 0;
     return result;
 }
 
-fun void SourceFileArrayGrow(SourceFileArray* array, int newCapacity) {
+fun void StringArrayGrow(StringArray* array, int newCapacity) {
     array->capacity = newCapacity;
-    array->files = (as SourceFile*) realloc(array->files, newCapacity * sizeof(SourceFile));
-    assert(array->files != nullptr);
+    array->strings = (as String*) realloc(array->strings, newCapacity * sizeof(String));
+    assert(array->strings != nullptr);
 }
 
-fun int SourceFileArrayPush(SourceFileArray* array, SourceFile file) {
+fun int StringArrayPush(StringArray* array, String string) {
     if (array->count == array->capacity) {
         let int newCapacity = 2 * array->capacity;
         if (newCapacity == 0)
             newCapacity = 64;
-        SourceFileArrayGrow(array, newCapacity);
+        StringArrayGrow(array, newCapacity);
     }
     let int insertionIndex = array->count;
-    array->files[insertionIndex] = file;
+    array->strings[insertionIndex] = string;
     array->count += 1;
     return insertionIndex;
 }
 
-// TODO: Later we want to get rid of this source concept and parse each file separately like we did
-// in our TS compiler. Currently this is hard to wrap our head around and pretty slow to index.
-struct Source {
-    SourceFileArray files;
-    String content;
-};
-
-fun Source SourceCreateEmpty() {
-    let Source result;
-    result.files = SourceFileArrayCreate();
-    result.content = StringCreateEmpty();
-    return result;
-}
-
-fun bool SourceContainsFile(Source source, String filepath) {
-    for (let int index = 0; index < source.files.count; index += 1) {
-        if (StringEquals(source.files.files[index].filepath, filepath))
+fun bool StringArrayContains(StringArray* array, String value) {
+    for (let int index = 0; index < array->count; index += 1) {
+        if (StringEquals(array->strings[index], value))
             return true;
     }
+
     return false;
 }
+
+fun String StringArrayPop(StringArray* array) {
+    if (array->count > 0) {
+        array->count -= 1;
+        return array->strings[array->count];
+    }
+    assert(array->count > 0);
+    exit(1);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Source 
+
+struct Source {
+    String modulename;
+    String filepath;
+    String content;
+};
 
 fun String SourceGetSubstring(Source source, int start, int end) {
     return StringGetSubstring(source.content, start, end);
@@ -189,64 +211,67 @@ fun char SourceGetCharAtIndex(Source source, int charPos) {
 
 struct SourceLocation {
     Source source;
-    int charPos;
-    char ch;
-    String filepath;
-    LineAndColumnNumber fileLineColumn;
-};
-
-
-fun SourceLocation SourceGetLocationForCharPos(Source source, int charPos) {
-    let SourceLocation result;
-    result.source = source;
-    result.charPos = charPos;
-    result.ch = SourceGetCharAtIndex(source, charPos);
-    result.filepath = StringCreateEmpty();
-    result.fileLineColumn.lineNumber = -1;
-    result.fileLineColumn.columnNumber = -1;
-
-    let int remainder = charPos;
-    for (let int fileIndex = 0; fileIndex < source.files.count; fileIndex += 1) {
-        let String filepath = source.files.files[fileIndex].filepath;
-        let String fileContent = source.files.files[fileIndex].content;
-        let int fileLength = fileContent.length;
-        if (remainder < fileLength) {
-            result.filepath = filepath;
-            result.fileLineColumn = StringGetLineAndColumnNumberAtPos(fileContent, remainder);
-            result.ch = fileContent.cstr[remainder];
-            break;
-        }
-        remainder -= fileLength;
-    }
-
-    return result;
-}
-
-
-struct SourceLocation2 {
-    Source source;
     int start;
     int end;
 };
 
-fun SourceLocation2 SourceLocation2Create(Source source, int start, int end) {
-    let SourceLocation2 result;
+fun SourceLocation SourceLocationCreate(Source source, int start, int end) {
+    let SourceLocation result;
     result.source = source;
     result.start = start;
     result.end = end;
     return result;
 }
 
+fun LineAndColumnNumber LocationGetLineColumn(SourceLocation location) {
+    return StringGetLineAndColumnNumberAtPos(location.source.content, location.start);
+}
+
+struct SourceArray {
+    Source* files;
+    int count;
+    int capacity;
+};
+
+fun SourceArray SourceArrayCreate() {
+    let SourceArray result;
+    result.files = nullptr;
+    result.count = 0;
+    result.capacity = 0;
+    return result;
+}
+
+fun void SourceArrayGrow(SourceArray* array, int newCapacity) {
+    array->capacity = newCapacity;
+    array->files = (as Source*) realloc(array->files, newCapacity * sizeof(Source));
+    assert(array->files != nullptr);
+}
+
+fun int SourceArrayPush(SourceArray* array, Source file) {
+    if (array->count == array->capacity) {
+        let int newCapacity = 2 * array->capacity;
+        if (newCapacity == 0)
+            newCapacity = 64;
+        SourceArrayGrow(array, newCapacity);
+    }
+    let int insertionIndex = array->count;
+    array->files[insertionIndex] = file;
+    array->count += 1;
+    return insertionIndex;
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Errors 
 
 fun void ReportLocation(SourceLocation location) {
-    fprintf(stderr, "%s(%d)", location.filepath.cstr, location.fileLineColumn.lineNumber);
+    let LineAndColumnNumber fileLineColumn = LocationGetLineColumn(location);
+    fprintf(stderr, "%s(%d)", location.source.filepath.cstr, fileLineColumn.lineNumber);
 }
 
 fun void ReportError(SourceLocation location, char* format, ...) {
     ReportLocation(location);
-    fprintf(stderr, ": Error - ", location.filepath.cstr, location.fileLineColumn.lineNumber);
+    fprintf(stderr, ": Error - ");
     let va_list args;
     va_start(args, format);
     vfprintf(stderr, format, args);
@@ -260,6 +285,7 @@ fun void ReportError(SourceLocation location, char* format, ...) {
 // Syntax 
 
 enum class SyntaxKind {
+    MissingToken,
     BadToken,
 
     // ---------------------------------------------------------------------------------------------
@@ -460,6 +486,40 @@ struct SyntaxTree {
     Source source;
     ModuleStatementSyntax* moduleRoot;
 };
+
+struct SyntaxTreeArray {
+    SyntaxTree** trees;
+    int count;
+    int capacity;
+};
+
+fun SyntaxTreeArray SyntaxTreeArrayCreate() {
+    let SyntaxTreeArray result;
+    result.trees = nullptr;
+    result.count = 0;
+    result.capacity = 0;
+    return result;
+}
+
+fun void SyntaxTreeArrayGrow(SyntaxTreeArray* array, int newCapacity) {
+    array->capacity = newCapacity;
+    array->trees = (as SyntaxTree**) realloc(array->trees, newCapacity * sizeof(SyntaxTree*));
+    assert(array->trees != nullptr);
+}
+
+fun int SyntaxTreeArrayPush(SyntaxTreeArray* array, SyntaxTree* tree) {
+    if (array->count == array->capacity) {
+        let int newCapacity = 2 * array->capacity;
+        if (newCapacity == 0)
+            newCapacity = 64;
+        SyntaxTreeArrayGrow(array, newCapacity);
+    }
+    let int insertionIndex = array->count;
+    array->trees[insertionIndex] = tree;
+    array->count += 1;
+    return insertionIndex;
+}
+
 struct SyntaxInfo {
     SyntaxKind kind;
     SyntaxTree* tree;
@@ -499,10 +559,10 @@ fun int SyntaxNodeArrayPush(SyntaxNodeArray* array, SyntaxNode* node) {
 
 struct SyntaxTrivia {
     SyntaxKind kind;
-    SourceLocation2 location;
+    SourceLocation location;
 };
 
-fun SyntaxTrivia SyntaxTriviaCreate(SyntaxKind kind, SourceLocation2 location) {
+fun SyntaxTrivia SyntaxTriviaCreate(SyntaxKind kind, SourceLocation location) {
     let SyntaxTrivia result;
     result.kind = kind;
     result.location = location;
@@ -545,7 +605,7 @@ struct SyntaxToken
 {
     SyntaxKind kind;
     SyntaxTree* tree;
-    SourceLocation2 location;
+    SourceLocation location;
 
     SyntaxTriviaArray leadingTrivia;
     SyntaxTriviaArray trailingTrivia;
@@ -556,6 +616,28 @@ struct SyntaxToken
 
     String debugString;
 };
+
+fun SyntaxToken SyntaxTokenCreateMissing() {
+    let SyntaxToken result;
+    result.kind = SyntaxKind::MissingToken;
+    result.tree = nullptr;
+
+    result.location.source.content = StringCreateEmpty();
+    result.location.source.filepath = StringCreateEmpty();
+    result.location.source.modulename = StringCreateEmpty();
+    result.location.start = 0;
+    result.location.end = 0;
+
+    result.leadingTrivia = SyntaxTriviaArrayCreate();
+    result.trailingTrivia = SyntaxTriviaArrayCreate();
+
+    result.intvalue = 0;
+    result.intvalueIsHex = false;
+    result.stringValueWithoutQuotes = StringCreateEmpty();
+
+    result.debugString = StringCreateEmpty();
+    return result;
+}
 
 fun SyntaxToken SyntaxTokenCreateEmpty(SyntaxTree* tree) {
     let SyntaxToken result;
@@ -862,10 +944,6 @@ fun SyntaxKind GetKeywordForIdentifier(String identifier) {
 
 fun String TokenGetText(SyntaxToken token) {
     return SourceGetSubstring(token.location.source, token.location.start, token.location.end);
-}
-
-fun SourceLocation TokenGetLocation(SyntaxToken token) {
-    return SourceGetLocationForCharPos(token.location.source, token.location.start);
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -2118,7 +2196,7 @@ fun UnaryOperator GetUnaryOperationForToken(SyntaxToken token, Type operandType)
     }
 
     ReportError(
-        TokenGetLocation(token), 
+        token.location, 
         "No applicable unary operation for combination token '%s', type '%s'", 
         TokenKindToString(token.kind).cstr, TypeGetText(operandType).cstr
     );
@@ -2150,14 +2228,14 @@ fun BinaryOperator GetBinaryOperationForToken(SyntaxToken token, Type leftType, 
         let TypeConversionResult conversion = CanConvertTypeFromTo(rightType, leftType);
         if (conversion == TypeConversionResult::NonConvertible) {
             ReportError(
-                TokenGetLocation(token),
+                token.location,
                 "Incompatible types for assignment '%s' = '%s'", 
                 TypeGetText(leftType).cstr, TypeGetText(rightType).cstr
             );
         }
         if (conversion == TypeConversionResult::ExplicitlyConvertible) {
             ReportError(
-                TokenGetLocation(token),
+                token.location,
                 "Cannot implicitly convert types for assignment '%s' = '%s'", 
                 TypeGetText(leftType).cstr, TypeGetText(rightType).cstr
             );
@@ -2405,7 +2483,7 @@ fun BinaryOperator GetBinaryOperationForToken(SyntaxToken token, Type leftType, 
     }
 
     ReportError(
-        TokenGetLocation(token),
+        token.location,
         "No applicable binary operation for combination token '%s', left type '%s', right type '%s'", 
         TokenKindToString(token.kind).cstr, TypeGetText(leftType).cstr, TypeGetText(rightType).cstr
     );

@@ -1,75 +1,97 @@
 #include "parser.cpp"
 #include "emitter.cpp"
-#include "preprocessor.cpp"
 #include "binder.cpp"
 
-// #if 0
-// import "parser.cpp"
-// import "parser2.cpp"
-// import "emitter.cpp"
-// import "preprocessor.cpp"
-// import "binder.cpp"
-// #endif
+#if 0
+import "parser.cpp"
+import "emitter.cpp"
+import "binder.cpp"
+#endif
 
-/*
-TODO:
+fun String ReadFileToString(String filepath) {
+    let char* buffer = nullptr;
+    let FILE* handle = fopen (filepath.cstr, "rb");
+    if (handle == nullptr) {
+        fprintf(stderr, "Unable to open file '%s'\n", filepath.cstr);
+        exit(1);
+    }
 
-* token create empty vs token create missing
-* make let and letpersist keywords instead of let + localpersist
-* test extern things more thorougly (structs/unions, enums, functions and also global variables)
-* introduce concept of truthyness for logical operators || && and conditions like in if, while, for
-* debugging facilities like dumping AST and SymbolTable
-* think about the order we want to implement stuff for the language. especially stuff that
-  forces us to depart from the c/c += 1 syntax. if we do this step we should have some alternative
-  ready. at the very least syntax highlighting would be a must. either through vscode or through
-  a custom editor (maybe this is fun? https://viewsourcecode.org/snaptoken/kilo/)
-* add some features that look enough like C += 1 that we can compile it as C += 1
-    - implement function overloading
-    - implement operator overloading
-    - implement generics 
-* - get rid of the 'include' file concept. for this we need:
-  - slowly change the architecture to scan and parse files on their own
-  - first make the grammar of the language such that we know what a statement/expression is without 
-    a symbol or type table (like we did in the TS compiler)
-  - for this we need to split AST into pure syntax tree and a bound tree (like in TS compiler)
-  - scan and parse files on their own and look for import statements (like in the TS compiler)
-  - get rid of the 'Source' thing with its details and file inclusion
-* centralize error reporting
-* introduce trivia in tokens
-* make source fully tokenizable so that each token maps to source and all token lengt = source length
-* improve error reporting by introducing source spans
-* implement 'using' typedef thingy if necessary 
-  (https://github.com/DoctorWkt/acwj/tree/master/34_Enums_and_Typedefs)
-* think about array size initialization and constant folding and whether we need this or not.
-  currently we cannot do 
-  let int SOME_CONSTANT = 128;
-  let int arr[SOME_CONSTANT + 4];
-  (https://github.com/DoctorWkt/acwj/tree/master/44_Fold_Optimisation)
-  (https://github.com/DoctorWkt/acwj/blob/master/45_Globals_Again/Readme.md)
-  we can also go the route to just always heap alloc our arrays and make them stretchy
-* 
+    fseek(handle, 0, SEEK_END);
+    let longint length = (as longint)ftell(handle);
+    fseek(handle, 0, SEEK_SET);
+    buffer = (as char*)malloc(length + 1);
+    if (buffer)
+        fread(buffer, 1, length, handle);
 
-DONE:
+    buffer[length] = '\0';
+    fclose(handle);
 
-x get rid of all the parentheses in the output. we could use the fact that our precedences match
-  that of C itself. therefore we could make parenthesized expression explicit in the AST/emitter
-  and only use parentheses for ASTKind::ParenthesizesExpression. We would need to be 
-  careful though with the type and lvalueness of such an expression. So we need to make sure
-  that postfix operators like [] and -> still work for parenthesized expressions
-  
-*/
+    let String result;
+    result.cstr = buffer;
+    result.length = (as int)length;
+    return result;
+}
 
-fun void Compile(String inputFilepath, String outputFilepath) {
-    let Source source = PreprocessFile(inputFilepath);
+fun Source LoadSource(String modulename, String filepath) {
+    let String content = ReadFileToString(filepath);
 
+    let Source result;
+    result.modulename = modulename;
+    result.filepath = filepath;
+    result.content = content;
+    return result;
+}
+
+fun Source LoadModule(String modulename) {
+    // TODO: Actually do some searching first if the filepath cannot be found
+    // For example we may want to search "math.pig" also in subfolders called "math"
+    let String modulepath = modulename;
+    let String extensionSource = StringCreateFromCStr(".cpp");
+    let String extensionHeader = StringCreateFromCStr(".hpp");
+    if (!StringEndsWith(modulepath, extensionHeader) && !StringEndsWith(modulepath, extensionSource)) 
+        modulepath = StringAppend(modulepath, extensionHeader);
+
+    return LoadSource(modulename, modulepath);
+}
+
+fun void CollectSyntaxTreesRecursive(SyntaxTreeArray* result, StringArray* visited, String modulename)
+{
+    if (StringArrayContains(visited, modulename))
+        return;
+    else 
+        StringArrayPush(visited, modulename);
+
+    let Source source = LoadModule(modulename);
     let Parser parser = ParserCreate(source);
     let SyntaxTree* syntaxTree = ParseModule(&parser);
 
+    for (let int index = 0; index < syntaxTree->moduleRoot->globalStatements.count; index += 1) {
+        let SyntaxNode* statement = syntaxTree->moduleRoot->globalStatements.nodes[index]; 
+        if (statement->kind == SyntaxKind::ImportDeclarationStatement) {
+            let String importmodulename = statement->importStmt.modulenameLiteral.stringValueWithoutQuotes;
+            CollectSyntaxTreesRecursive(result, visited, importmodulename);
+        }
+    }
+
+    SyntaxTreeArrayPush(result, syntaxTree);
+}
+
+fun SyntaxTreeArray CollectSyntaxTrees(String rootModule)
+{
+    let SyntaxTreeArray result = SyntaxTreeArrayCreate();
+    let StringArray visited = StringArrayCreate();
+    CollectSyntaxTreesRecursive(&result, &visited, rootModule);
+    return result;
+}
+
+
+fun void Compile(String inputFilepath, String outputFilepath) {
+    let SyntaxTreeArray trees = CollectSyntaxTrees(inputFilepath);
     let SymbolTable* symbolTable = SymbolTableCreate(nullptr);
-    // TODO: We can define builtin things here. the question is if we need to. 
+    // TODO: We can define builtin things in the symboltable here. the question is if we need to. 
     //       we just could declare stuff in a header now that we can parse those
-    let Binder binder = BinderCreate(source, symbolTable);
-    let ASTNode* boundTree = BindModule(&binder, syntaxTree->moduleRoot);
+    let Binder binder = BinderCreate(symbolTable);
+    let ASTNode* boundTree = BindCompilationUnit(&binder, trees);
 
     let Emitter emitter = EmitterCreate(outputFilepath);
     EmitRoot(&emitter, boundTree);
@@ -78,13 +100,13 @@ fun void Compile(String inputFilepath, String outputFilepath) {
 fun void main(int argc, char** argv)
 {
     if (argc == 1 || argc % 2 != 1) {
-      fprintf(stderr, "Expects a multiple of two arguments: <inputfilepath> <outputfilepath>\n");
-      exit(1);
+        fprintf(stderr, "Expects a multiple of two arguments: <inputfilepath> <outputfilepath>\n");
+        exit(1);
     }
 
     let int counter = 1;
     while (counter < argc) {
-      Compile(StringCreateFromCStr(argv[counter]), StringCreateFromCStr(argv[counter + 1]));
-      counter += 2;
+        Compile(StringCreateFromCStr(argv[counter]), StringCreateFromCStr(argv[counter + 1]));
+        counter += 2;
     }
 }

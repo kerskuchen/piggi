@@ -1,9 +1,9 @@
 #include "definitions.hpp"
 #include "scanner.cpp"
-// #if 0
-// import "definitions.hpp"
-// import "scanner.cpp"
-// #endif
+#if 0
+import "definitions.hpp"
+import "scanner.cpp"
+#endif
 
 struct Parser {
     Scanner scanner;
@@ -26,7 +26,7 @@ fun Parser ParserCreate(Source source) {
     let Parser result;
     result.tree = tree;
     result.scanner = ScannerCreate(tree);
-    result.tokenPrev = SyntaxTokenCreateEmpty(tree);
+    result.tokenPrev = SyntaxTokenCreateMissing();
     result.tokenCur = NextToken(&result.scanner);
     result.tokenNext = NextToken(&result.scanner);
     result.tokenNextAfter = NextToken(&result.scanner);
@@ -54,7 +54,7 @@ fun SyntaxToken MatchAndAdvanceToken(Parser* parser, SyntaxKind kind) {
     } 
 
     ReportError(
-        TokenGetLocation(parser->tokenCur),
+        parser->tokenCur.location,
         "Expected token '%s' but got token '%s'", 
         TokenKindToString(kind).cstr, TokenKindToString(parser->tokenCur.kind).cstr
     );
@@ -89,7 +89,7 @@ fun SyntaxNode* ParseTypeExpression(Parser* parser) {
             break;
         default: 
             ReportError(
-                TokenGetLocation(parser->tokenCur),
+                parser->tokenCur.location,
                 "Expected primitive type or identifier token - got token '%s'", 
                 TokenGetText(parser->tokenCur).cstr
             );
@@ -369,7 +369,7 @@ fun SyntaxNode* ParseVariableDefinitionStatement(Parser* parser, bool skipLet, b
     let SyntaxNode* result = SyntaxNodeCreate(SyntaxKind::VariableDeclarationStatement, parser->tree);
 
     if (skipLet) {
-        result->variableDeclarationStmt.letKeyword = SyntaxTokenCreateEmpty(parser->tree);
+        result->variableDeclarationStmt.letKeyword = SyntaxTokenCreateMissing();
     } else {
         if (parser->tokenCur.kind == SyntaxKind::LetLocalPersistKeyword) 
             result->variableDeclarationStmt.letKeyword = MatchAndAdvanceToken(parser, SyntaxKind::LetLocalPersistKeyword);
@@ -391,26 +391,26 @@ fun SyntaxNode* ParseVariableDefinitionStatement(Parser* parser, bool skipLet, b
             result->variableDeclarationStmt.equalsToken = MatchAndAdvanceToken(parser, SyntaxKind::EqualsToken);
             result->variableDeclarationStmt.initializerExpression = ParseArrayLiteralExpression(parser);
         } else {
-            result->variableDeclarationStmt.equalsToken = SyntaxTokenCreateEmpty(parser->tree);
+            result->variableDeclarationStmt.equalsToken = SyntaxTokenCreateMissing();
             result->variableDeclarationStmt.initializerExpression = nullptr;
         }
     } else {
         // Regular non-array variable
-        result->variableDeclarationStmt.leftBracket = SyntaxTokenCreateEmpty(parser->tree);
-        result->variableDeclarationStmt.arraySizeLiteral = SyntaxTokenCreateEmpty(parser->tree);
-        result->variableDeclarationStmt.rightBracket = SyntaxTokenCreateEmpty(parser->tree);
+        result->variableDeclarationStmt.leftBracket = SyntaxTokenCreateMissing();
+        result->variableDeclarationStmt.arraySizeLiteral = SyntaxTokenCreateMissing();
+        result->variableDeclarationStmt.rightBracket = SyntaxTokenCreateMissing();
 
         if (parser->tokenCur.kind == SyntaxKind::EqualsToken && allowInitializer) {
             result->variableDeclarationStmt.equalsToken = MatchAndAdvanceToken(parser, SyntaxKind::EqualsToken);
             result->variableDeclarationStmt.initializerExpression = ParseExpression(parser);
         } else {
-            result->variableDeclarationStmt.equalsToken = SyntaxTokenCreateEmpty(parser->tree);
+            result->variableDeclarationStmt.equalsToken = SyntaxTokenCreateMissing();
             result->variableDeclarationStmt.initializerExpression = nullptr;
         }
     }
 
-    if (terminator == SyntaxKind::BadToken) 
-        result->variableDeclarationStmt.terminatorToken = SyntaxTokenCreateEmpty(parser->tree);
+    if (terminator == SyntaxKind::MissingToken) 
+        result->variableDeclarationStmt.terminatorToken = SyntaxTokenCreateMissing();
     else
         result->variableDeclarationStmt.terminatorToken = MatchAndAdvanceToken(parser, terminator);
 
@@ -425,11 +425,12 @@ fun SyntaxNode* ParseIfStatement(Parser* parser) {
     result->ifStmt.rightParen = MatchAndAdvanceToken(parser, SyntaxKind::RightParenToken);
 
     result->ifStmt.thenBlock = ParseStatement(parser);
-    result->ifStmt.elseBlock = nullptr;
-    result->ifStmt.elseKeyword = SyntaxTokenCreateEmpty(parser->tree);
     if (parser->tokenCur.kind == SyntaxKind::ElseKeyword) {
         result->ifStmt.elseKeyword = MatchAndAdvanceToken(parser, SyntaxKind::ElseKeyword);
         result->ifStmt.elseBlock = ParseStatement(parser);
+    } else {
+        result->ifStmt.elseBlock = nullptr;
+        result->ifStmt.elseKeyword = SyntaxTokenCreateMissing();
     }
     return result;
 }
@@ -486,7 +487,7 @@ fun SyntaxNode* ParseReturnStatement(Parser* parser) {
     result->returnStmt.returnKeyword = MatchAndAdvanceToken(parser, SyntaxKind::ReturnKeyword);
     if (parser->functionLevel == 0) {
         ReportError(
-            TokenGetLocation(result->returnStmt.returnKeyword),
+            result->returnStmt.returnKeyword.location,
             "Invalid 'return' keyword found outside of function definition"
         );
     }
@@ -503,7 +504,7 @@ fun SyntaxNode* ParseBreakStatement(Parser* parser) {
     result->breakStmt.breakKeyword = MatchAndAdvanceToken(parser, SyntaxKind::BreakKeyword);
     if (parser->loopLevel == 0 && parser->switchCaseLevel == 0) {
         ReportError(
-            TokenGetLocation(result->breakStmt.breakKeyword),
+            result->breakStmt.breakKeyword.location,
             "Invalid 'break' keyword found outside of loop or switch-case definition"
         );
     }
@@ -516,7 +517,7 @@ fun SyntaxNode* ParseContinueStatement(Parser* parser) {
     result->continueStmt.continueKeyword = MatchAndAdvanceToken(parser, SyntaxKind::ContinueKeyword);
     if (parser->loopLevel == 0) {
         ReportError(
-            TokenGetLocation(result->continueStmt.continueKeyword),
+            result->continueStmt.continueKeyword.location,
             "Invalid 'continue' keyword found outside of loop definition"
         );
     }
@@ -530,7 +531,7 @@ fun SyntaxNode* ParseBlockStatement(Parser* parser, bool inSwitch) {
         result->blockStmt.leftBrace = MatchAndAdvanceToken(parser, SyntaxKind::LeftBraceToken);
     } else {
         // We allow omitting the braces in switch statements
-        result->blockStmt.leftBrace = SyntaxTokenCreateEmpty(parser->tree);
+        result->blockStmt.leftBrace = SyntaxTokenCreateMissing();
     }
 
     result->blockStmt.statements = SyntaxNodeArrayCreate();
@@ -543,7 +544,7 @@ fun SyntaxNode* ParseBlockStatement(Parser* parser, bool inSwitch) {
         SyntaxNodeArrayPush(&result->blockStmt.statements, statement);
     }
 
-    if (result->blockStmt.leftBrace.kind != SyntaxKind::BadToken ) {
+    if (result->blockStmt.leftBrace.kind != SyntaxKind::MissingToken ) {
         // If we start with a brace we also must end with a brace
         result->blockStmt.rightBrace = MatchAndAdvanceToken(parser, SyntaxKind::RightBraceToken);
     }
@@ -556,7 +557,7 @@ fun SyntaxNode* ParseCaseStatement(Parser* parser, SyntaxNode* switchExpression)
 
     if (parser->switchCaseLevel == 0) {
         ReportError(
-            TokenGetLocation(result->caseStmt.caseKeyword), 
+            result->caseStmt.caseKeyword.location, 
             "Unexpected 'case' label keyword outside of switch statement"
         );
     }
@@ -571,7 +572,7 @@ fun SyntaxNode* ParseCaseStatement(Parser* parser, SyntaxNode* switchExpression)
         default:
             ReportError(
                 // TODO we want the location of the failed expression here instead of the case token
-                TokenGetLocation(result->caseStmt.caseKeyword), 
+                result->caseStmt.caseKeyword.location, 
                 "Expected literal token in case label but got '%s' instead",
                 "TODO - we need to get the string of an expression"
                 // TokenKindToString(result->caseStmt.literalExpression).cstr
@@ -587,7 +588,7 @@ fun SyntaxNode* ParseDefaultStatement(Parser* parser, SyntaxNode* switchExpressi
     result->defaultStmt.defaultKeyword = MatchAndAdvanceToken(parser, SyntaxKind::DefaultKeyword);
     if (parser->switchCaseLevel == 0) {
         ReportError(
-            TokenGetLocation(result->defaultStmt.defaultKeyword), 
+            result->defaultStmt.defaultKeyword.location, 
             "Unexpected 'default' case label keyword outside of switch statement"
         );
     }
@@ -691,14 +692,14 @@ fun SyntaxNode* ParseEnumMemberClause(Parser* parser) {
         result->enumMember.equals = MatchAndAdvanceToken(parser, SyntaxKind::EqualsToken);
         result->enumMember.integerLiteral = MatchAndAdvanceToken(parser, SyntaxKind::IntegerLiteralToken);
     } else {
-        result->enumMember.equals = SyntaxTokenCreateEmpty(parser->tree);
-        result->enumMember.integerLiteral = SyntaxTokenCreateEmpty(parser->tree);
+        result->enumMember.equals = SyntaxTokenCreateMissing();
+        result->enumMember.integerLiteral = SyntaxTokenCreateMissing();
     }
 
     if (parser->tokenCur.kind == SyntaxKind::CommaToken)
         result->enumMember.comma = MatchAndAdvanceToken(parser, SyntaxKind::CommaToken);
     else
-        result->enumMember.comma = SyntaxTokenCreateEmpty(parser->tree);
+        result->enumMember.comma = SyntaxTokenCreateMissing();
 
     return result;
 }
@@ -749,7 +750,7 @@ fun SyntaxNode* ParseFunctionDefinitionStatement(Parser* parser, SyntaxToken ext
             break;
         }
 
-        let SyntaxNode* parameter = ParseVariableDefinitionStatement(parser, true, false, SyntaxKind::BadToken);
+        let SyntaxNode* parameter = ParseVariableDefinitionStatement(parser, true, false, SyntaxKind::MissingToken);
         SyntaxNodeArrayPush(&result->functionDeclarationStmt.params, parameter);
 
         if (parser->tokenCur.kind == SyntaxKind::CommaToken) {
@@ -784,7 +785,7 @@ fun SyntaxNode* ParseGlobalVariableDefinitionStatement(Parser* parser, SyntaxTok
 fun SyntaxNode* ParseGlobalDefinitionStatement(Parser* parser) {
     assert(parser->functionLevel == 0);
 
-    let SyntaxToken externKeyword = SyntaxTokenCreateEmpty(parser->tree);
+    let SyntaxToken externKeyword = SyntaxTokenCreateMissing();
     if (parser->tokenCur.kind == SyntaxKind::ExternKeyword) 
         externKeyword = AdvanceToken(parser);
 
@@ -817,11 +818,11 @@ fun SyntaxNode* ParseModuleStatement(Parser* parser) {
         case SyntaxKind::FunKeyword:
         case SyntaxKind::LetKeyword:
             return ParseGlobalDefinitionStatement(parser);
-        case SyntaxKind::IncludeDirectiveKeyword:
+        case SyntaxKind::ImportKeyword:
             return ParseImportDeclarationStatement(parser);
         default:
             ReportError(
-                TokenGetLocation(parser->tokenCur),
+                parser->tokenCur.location,
                 "Expected global module definition got unexpected token '%s' instead",
                 TokenGetText(parser->tokenCur).cstr
             );
@@ -893,6 +894,8 @@ fun SyntaxTree* ParseModule(Parser* parser) {
                 foundDirectives = true;
             }
         } while (foundDirectives);
+        if (parser->tokenCur.kind == SyntaxKind::EndOfFileToken)
+            break;
         let SyntaxNode* statement = ParseModuleStatement(parser);
         SyntaxNodeArrayPush(&result->moduleStmt.globalStatements, statement);
     }
@@ -900,7 +903,7 @@ fun SyntaxTree* ParseModule(Parser* parser) {
     if (parser->tokenCur.kind != SyntaxKind::EndOfFileToken)
     {
         ReportError(
-            TokenGetLocation(parser->tokenCur),
+            parser->tokenCur.location,
             "Expected EOF token after parsing file, instead got '%s'", 
             TokenKindToString(parser->tokenCur.kind).cstr
         );

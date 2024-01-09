@@ -1,9 +1,9 @@
 #pragma once
 
 #include "definitions.hpp"
-// #if 0
-// import "definitions.hpp"
-// #endif
+#if 0
+import "definitions.hpp"
+#endif
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Helpers
@@ -89,6 +89,14 @@ fun char AdvanceChar(Scanner* scanner) {
     return result;
 }
 
+fun SourceLocation GetCurrentLocation(Scanner* scanner) {
+    let SourceLocation result;
+    result.source = scanner->source;
+    result.start = scanner->start;
+    result.end = scanner->pos;
+    return result;
+}
+
 //--------------------------------------------------------------------------------------------------
 // Trivia
 
@@ -151,9 +159,10 @@ fun void ReadMultiLineComment(Scanner* scanner)
         switch (CurrentChar(scanner)) {
             case '\0':
             {
-                let SourceLocation location = SourceGetLocationForCharPos(scanner->source, scanner->pos);
-                // let SourceLocation2 location = SourceLocation2Create(scanner->source, scanner->start, 2);
-                ReportError(location, "Unterminated multiline comment");
+                ReportError(
+                    GetCurrentLocation(scanner), 
+                    "Unterminated multiline comment"
+                );
                 return;
             }
             case '*':
@@ -214,8 +223,7 @@ fun SyntaxTriviaArray ReadTrivia(Scanner* scanner, bool isLeading)
         }
 
         if (scanner->pos > scanner->start) {
-            let SourceLocation2 location = SourceLocation2Create(scanner->source, scanner->start, scanner->pos);
-            let SyntaxTrivia trivia = SyntaxTriviaCreate(scanner->token.kind, location);
+            let SyntaxTrivia trivia = SyntaxTriviaCreate(scanner->token.kind, GetCurrentLocation(scanner));
             SyntaxTriviaArrayPush(&result, trivia);
         }
     }
@@ -227,8 +235,11 @@ fun SyntaxTriviaArray ReadTrivia(Scanner* scanner, bool isLeading)
 
 fun longint ReadPositiveIntegerLiteralWithRadix(Scanner* scanner, int radix) {
     if (FindCharPosInString(StringCreateFromCStr("0123456789ABCDEF"), ToUpper(CurrentChar(scanner))) == -1) {
-        let SourceLocation location = SourceGetLocationForCharPos(scanner->source, scanner->pos);
-        ReportError(location, "Unexpected character in integer literal '%c'", CurrentChar(scanner));
+        ReportError(
+            GetCurrentLocation(scanner), 
+            "Unexpected character in integer literal '%c'", 
+            CurrentChar(scanner)
+        );
     }
 
     let longint result = 0;
@@ -238,8 +249,11 @@ fun longint ReadPositiveIntegerLiteralWithRadix(Scanner* scanner, int radix) {
         if (digit == -1)
             break;
         if (digit >= radix) {
-            let SourceLocation location = SourceGetLocationForCharPos(scanner->source, scanner->pos);
-            ReportError(location, "Invalid digit in integer literal '%c'", CurrentChar(scanner));
+            ReportError(
+                GetCurrentLocation(scanner), 
+                "Invalid digit in integer literal '%c'", 
+                CurrentChar(scanner)
+            );
         }
 
         result = result * radix + digit;
@@ -299,14 +313,19 @@ fun char ReadCharWithEscapeSequence(Scanner* scanner) {
             case 'x': {
                 let longint number = ReadPositiveIntegerLiteralWithRadix(scanner, 16);
                 if (number > UCHAR_MAX) {
-                    let SourceLocation location = SourceGetLocationForCharPos(scanner->source, scanner->pos);
-                    ReportError(location, "Hexadecimal character literal cannot be bigger than '\\xFF'");
+                    ReportError(
+                        GetCurrentLocation(scanner), 
+                        "Hexadecimal character literal cannot be bigger than '\\xFF'"
+                    );
                 }
                 return (as char)number;
             }
             default:
-                let SourceLocation location = SourceGetLocationForCharPos(scanner->source, scanner->pos);
-                ReportError(location, "Unknown escape sequence '\\%c'", escape);
+                ReportError(
+                    GetCurrentLocation(scanner), 
+                    "Unknown escape sequence '\\%c'", 
+                    escape
+                );
         }
     }
     return ch;
@@ -319,8 +338,11 @@ fun void ReadCharacterLiteral(Scanner* scanner) {
     let int end = scanner->pos;
     let char closingQuote = AdvanceChar(scanner);
     if (closingQuote != '\'') {
-        let SourceLocation location = SourceGetLocationForCharPos(scanner->source, scanner->start);
-        ReportError(location, "Expected closing quote \"'\" character after character literal but got '%c'", closingQuote);
+        ReportError(
+            GetCurrentLocation(scanner), 
+            "Expected closing quote \"'\" character after character literal but got '%c'", 
+            closingQuote
+        );
     }
 
     scanner->token.kind = SyntaxKind::CharacterLiteralToken;
@@ -345,8 +367,10 @@ fun void ReadStringLiteral(Scanner* scanner) {
     let int end = scanner->pos;
     let char closingQuote = AdvanceChar(scanner);
     if (closingQuote != '\"') {
-        let SourceLocation location = SourceGetLocationForCharPos(scanner->source, scanner->start);
-        ReportError(location, "Unterminated string literal");
+        ReportError(
+            GetCurrentLocation(scanner), 
+            "Unterminated string literal"
+        );
     }
 
     scanner->token.kind = SyntaxKind::StringLiteralToken;
@@ -365,8 +389,11 @@ fun void ReadPreprocessorDirective(Scanner* scanner) {
     if (keywordKind != SyntaxKind::EndOfFileToken) {
         scanner->token.kind = keywordKind;
     } else {
-        let SourceLocation location = SourceGetLocationForCharPos(scanner->source, scanner->start);
-        ReportError(location, "Unknown preprocesser directive '%s'", identifier.cstr);
+        ReportError(
+            GetCurrentLocation(scanner), 
+            "Unknown preprocesser directive '%s'", 
+            identifier.cstr
+        );
     }
 }
 
@@ -623,8 +650,11 @@ fun SyntaxToken ReadToken(Scanner* scanner) {
                 ReadStringLiteral(scanner);
                 break;
             }
-            let SourceLocation location = SourceGetLocationForCharPos(scanner->source, scanner->start);
-            ReportError(location, "Unexpected character '%c'", ch);
+            ReportError(
+                GetCurrentLocation(scanner), 
+                "Unexpected character '%c'", 
+                ch
+            );
     }
 
     scanner->token.location.start = scanner->start;

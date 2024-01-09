@@ -1,4 +1,7 @@
 #include "prelude.hpp"
+#if 0
+import "prelude.hpp"
+#endif
 
 fun void PrintNumber(longint value) {
     fprintf(stdout, "%lld\n", value);
