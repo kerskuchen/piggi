@@ -139,7 +139,7 @@ export class DiagnosticBag
         this.diagnostics = other.diagnostics.concat(this.diagnostics)
     }
 
-    Report(location: SourceLocation, message: string)
+    ReportError(location: SourceLocation, message: string)
     {
         let diagnostic = new Diagnostic(location, message)
         this.diagnostics.push(diagnostic)
