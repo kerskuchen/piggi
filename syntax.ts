@@ -6,7 +6,6 @@ import { SourceLocation, DiagnosticBag, Source } from "./common.ts"
 
 export enum SyntaxKind
 {
-    MissingToken = "MissingToken",
     BadToken = "BadToken",
 
     // ---------------------------------------------------------------------------------------------
@@ -71,7 +70,6 @@ export enum SyntaxKind
     /////// Punctuation
     QuestionmarkToken = "QuestionmarkToken",
     ColonToken = "ColonToken",
-    ColonColonToken = "ColonColonToken",
     ArrowToken = "ArrowToken",
     DotToken = "DotToken",
     DotDotToken = "DotDotToken",
@@ -130,6 +128,7 @@ export enum SyntaxKind
     DefaultKeyword = "DefaultKeyword",
 
     // Misc
+    InKeyword = "InKeyword",
     AsKeyword = "AsKeyword",
     SizeOfKeyword = "SizeOfKeyword",
 
@@ -154,16 +153,17 @@ export enum SyntaxKind
     TypeExpression = "TypeExpression",
 
     // Literals
-    NullLiteralExpression = "NullLiteralExpression",
-    IntegerLiteralExpression = "IntegerLiteralExpression",
-    CharacterLiteralExpression = "CharacterLiteralExpression",
-    BoolLiteralExpression = "BoolLiteralExpression",
-    StringLiteralExpression = "StringLiteralExpression",
-    EnumValueLiteralExpression = "EnumValueLiteralExpression",
-    ArrayLiteralExpression = "ArrayLiteralExpression",
+    NullLiteral = "NullLiteral",
+    IntegerLiteral = "IntegerLiteral",
+    CharacterLiteral = "CharacterLiteral",
+    BoolLiteral = "BoolLiteral",
+    StringLiteral = "StringLiteral",
+    EnumValueLiteral = "EnumValueLiteral",
+    ArrayLiteral = "ArrayLiteral",
 
     // Misc
     EnumMemberClauseSyntax = "EnumMemberClauseSyntax",
+    FunctionParameterClauseSyntax = "FunctionParameterClauseSyntax",
 
     // Statements
     BlockStatement = "BlockStatement",
@@ -187,11 +187,11 @@ export enum SyntaxKind
     GlobalVariableDeclarationStatement = "GlobalVariableDeclarationStatement",
     EnumDeclarationStatement = "EnumDeclarationStatement",
     EnumDefinitionStatement = "EnumDefinitionStatement",
-    StructOrUnionDeclarationStatement = "StructOrUnionDeclarationStatement",
-    StructOrUniontDefinitionStatement = "StructOrUniontDefinitionStatement",
+    StructDeclarationStatement = "StructDeclarationStatement",
+    StructDefinitionStatement = "StructtDefinitionStatement",
     FunctionDeclarationStatement = "FunctionDeclarationStatement",
     FunctionDefinitionStatement = "FunctionDefinitionStatement",
-};
+}
 
 export class SyntaxFacts
 {
@@ -270,8 +270,6 @@ export class SyntaxFacts
                 return "?"
             case SyntaxKind.ColonToken:
                 return ":"
-            case SyntaxKind.ColonColonToken:
-                return "."
             case SyntaxKind.ArrowToken:
                 return "->"
             case SyntaxKind.DotToken:
@@ -351,6 +349,8 @@ export class SyntaxFacts
                 return "as"
             case SyntaxKind.SizeOfKeyword:
                 return "sizeof"
+            case SyntaxKind.InKeyword:
+                return "in"
 
             case SyntaxKind.LetKeyword:
                 return "let"
@@ -432,6 +432,8 @@ export class SyntaxFacts
                 return SyntaxKind.AsKeyword
             case SyntaxFacts.TokenKindToString(SyntaxKind.SizeOfKeyword):
                 return SyntaxKind.SizeOfKeyword
+            case SyntaxFacts.TokenKindToString(SyntaxKind.InKeyword):
+                return SyntaxKind.InKeyword
 
             case SyntaxFacts.TokenKindToString(SyntaxKind.FunKeyword):
                 return SyntaxKind.FunKeyword
@@ -455,6 +457,107 @@ export class SyntaxFacts
         }
 
         return SyntaxKind.IdentifierToken
+    }
+
+    static GetUnaryOperatorPrecedence(kind: SyntaxKind): number
+    {
+        switch (kind) {
+            case SyntaxKind.PlusToken:      // Identity
+            case SyntaxKind.MinusToken:     // Negation
+            case SyntaxKind.BangToken:      // Logical negation
+            case SyntaxKind.TildeToken:     // Bitwise negation
+            case SyntaxKind.StarToken:      // Dereference
+            case SyntaxKind.AmpersandToken: // Addressof
+                return 13
+            default:
+                return 0
+        }
+    }
+
+    static IsBinaryOperatorRightAssociative(kind: SyntaxKind): boolean 
+    {
+        switch (kind) {
+            case SyntaxKind.EqualsToken:
+            case SyntaxKind.PlusEqualsToken:
+            case SyntaxKind.MinusEqualsToken:
+            case SyntaxKind.StarEqualsToken:
+            case SyntaxKind.SlashEqualsToken:
+            case SyntaxKind.PercentEqualsToken:
+            case SyntaxKind.HatEqualsToken:
+            case SyntaxKind.AmpersandEqualsToken:
+            case SyntaxKind.PipeEqualsToken:
+            case SyntaxKind.LessLessEqualsToken:
+            case SyntaxKind.GreaterGreaterEqualsToken:
+                return true
+
+            default:
+                return false
+        }
+    }
+
+    static GetBinaryOperatorPrecedence(kind: SyntaxKind): number
+    {
+        switch (kind) {
+            case SyntaxKind.StarToken:
+            case SyntaxKind.SlashToken:
+            case SyntaxKind.PercentToken:
+                return 12
+
+            case SyntaxKind.PlusToken:
+            case SyntaxKind.MinusToken:
+                return 11
+
+            // BitshiftIng
+            case SyntaxKind.LessLessToken:
+            case SyntaxKind.GreaterGreaterToken:
+                return 10
+
+            case SyntaxKind.LessToken:
+            case SyntaxKind.LessEqualsToken:
+            case SyntaxKind.GreaterToken:
+            case SyntaxKind.GreaterEqualsToken:
+                return 9
+
+            case SyntaxKind.EqualsEqualsToken:
+            case SyntaxKind.BangEqualsToken:
+                return 8
+
+            case SyntaxKind.AmpersandToken: // Bitwise AND
+                return 7
+
+            case SyntaxKind.HatToken:       // Bitwise XOR
+                return 6
+
+            case SyntaxKind.PipeToken:      // Bitwise OR
+                return 5
+
+            case SyntaxKind.AmpersandAmpersandToken: // Logical AND
+                return 4
+
+            case SyntaxKind.PipePipeToken: // Logical OR
+                return 3
+
+            // Ternary conditional (is handled in in the parser as special node)
+            // case SyntaxKind.QuestionMarkToken:
+            //  return 2
+
+            // Assignment (is handled in in the parser as special node)
+            // case SyntaxKind.EqualsToken: 
+            // case SyntaxKind.PlusEqualsToken: 
+            // case SyntaxKind.MinusEqualsToken: 
+            // case SyntaxKind.StarEqualsToken: 
+            // case SyntaxKind.SlashEqualsToken:
+            // case SyntaxKind.PercentEqualsToken:
+            // case SyntaxKind.HatEqualsToken:
+            // case SyntaxKind.AmpersandEqualsToken:
+            // case SyntaxKind.PipeEqualsToken:
+            // case SyntaxKind.LessLessEqualsToken:
+            // case SyntaxKind.GreaterGreaterEqualsToken:
+            //      return 1;
+
+            default:
+                return 0
+        }
     }
 }
 
@@ -651,10 +754,9 @@ export class SyntaxTree
     {
     }
 
-    AssignRoot(root: SyntaxNode, diagnostics: DiagnosticBag)
+    AssignRoot(root: SyntaxNode)
     {
         this._root = root
-        this.diagnostics.Append(diagnostics)
         this.CreateParentsDictionary(this.root)
     }
 
@@ -672,11 +774,555 @@ export class SyntaxTree
     }
 }
 
+export abstract class ExpressionSyntax extends SyntaxNode
+{
+    private _expressionDummy = 0 // Or else derived classes of this can also pass as StatementSyntax
+}
+export abstract class StatementSyntax extends SyntaxNode
+{
+    private _statementDummy = 0 // Or else derived classes of this can also pass as ExpressionSyntax
+}
+export abstract class ModuleMemberSyntax extends SyntaxNode
+{
+    private _memberDummy = 0 // Or else derived classes of this can also pass as other non MemberSyntax
+}
+
+export class ModuleSyntax extends SyntaxNode
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public moduleName: string,
+        public members: ModuleMemberSyntax[],
+        public endOfFileToken: SyntaxToken
+    )
+    {
+        super(SyntaxKind.Module, syntaxTree)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Literals
+
+export class StringLiteralSyntax extends ExpressionSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public stringLiteralTokens: SyntaxToken[],
+    )
+    {
+        super(SyntaxKind.StringLiteral, syntaxTree)
+    }
+}
+
+export class NullLiteralSyntax extends ExpressionSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public nullLiteral: SyntaxToken,
+    )
+    {
+        super(SyntaxKind.NullLiteral, syntaxTree)
+    }
+}
+
+export class IntegerLiteralSyntax extends ExpressionSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public integerLiteral: SyntaxToken,
+    )
+    {
+        super(SyntaxKind.IntegerLiteral, syntaxTree)
+    }
+}
+
+export class CharacterLiteralSyntax extends ExpressionSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public characterLiteral: SyntaxToken,
+    )
+    {
+        super(SyntaxKind.CharacterLiteral, syntaxTree)
+    }
+}
+
+export class BoolLiteralSyntax extends ExpressionSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public boolLiteral: SyntaxToken,
+    )
+    {
+        super(SyntaxKind.BoolLiteral, syntaxTree)
+    }
+}
+
+export class ArrayLiteralSyntax extends ExpressionSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public leftBrace: SyntaxToken,
+        public elemsWithSeparators: SyntaxNode[],
+        public rightBrace: SyntaxToken,
+    )
+    {
+        super(SyntaxKind.ArrayLiteral, syntaxTree)
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Expressions
+
+export class NameExpressionSyntax extends ExpressionSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public identifier: SyntaxToken,
+    )
+    {
+        super(SyntaxKind.NameExpression, syntaxTree)
+    }
+}
+
+export class UnaryExpressionSyntax extends ExpressionSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public operator: SyntaxToken,
+        public operand: ExpressionSyntax,
+    )
+    {
+        super(SyntaxKind.UnaryExpression, syntaxTree)
+    }
+}
+
+export class BinaryExpressionSyntax extends ExpressionSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public left: ExpressionSyntax,
+        public operator: SyntaxToken,
+        public right: ExpressionSyntax,
+    )
+    {
+        super(SyntaxKind.BinaryExpression, syntaxTree)
+    }
+}
+
+export class ParenthesizedExpressionSyntax extends ExpressionSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public leftParen: SyntaxToken,
+        public operator: ExpressionSyntax,
+        public rightParen: SyntaxToken,
+    )
+    {
+        super(SyntaxKind.ParenthesizedExpression, syntaxTree)
+    }
+}
+
+export class FuncCallExpressionSyntax extends ExpressionSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public func: ExpressionSyntax,
+        public leftParen: SyntaxToken,
+        public argumentsWithSeparators: SyntaxNode[],
+        public rightParen: SyntaxToken,
+    )
+    {
+        super(SyntaxKind.FuncCallExpression, syntaxTree)
+    }
+}
+
+export class ArrayIndexExpressionSyntax extends ExpressionSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public array: ExpressionSyntax,
+        public leftBracket: SyntaxToken,
+        public indexExpression: ExpressionSyntax,
+        public rightBracket: SyntaxToken,
+    )
+    {
+        super(SyntaxKind.ArrayIndexExpression, syntaxTree)
+    }
+}
+
+export class MemberAccessExpressionSyntax extends ExpressionSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public container: ExpressionSyntax,
+        public dot: SyntaxToken,
+        public memberIdentifier: SyntaxToken,
+    )
+    {
+        super(SyntaxKind.MemberAccessExpression, syntaxTree)
+    }
+}
+
+export class TypeCastExpressionSyntax extends ExpressionSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public expression: ExpressionSyntax,
+        public asKeyword: SyntaxToken,
+        public targetType: ExpressionSyntax,
+    )
+    {
+        super(SyntaxKind.TypeCastExpression, syntaxTree)
+    }
+}
+
+export class TernaryConditionalExpressionSyntax extends ExpressionSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public condition: ExpressionSyntax,
+        public questionmark: SyntaxToken,
+        public thenExpression: ExpressionSyntax,
+        public colon: SyntaxToken,
+        public elseExpression: ExpressionSyntax,
+    )
+    {
+        super(SyntaxKind.TernaryConditionalExpression, syntaxTree)
+    }
+}
+
+export class SizeofExpressionSyntax extends ExpressionSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public sizeofKeyword: SyntaxToken,
+        public leftParen: SyntaxToken,
+        public typeExpression: ExpressionSyntax,
+        public rightParen: SyntaxToken,
+    )
+    {
+        super(SyntaxKind.SizeOfExpression, syntaxTree)
+    }
+}
+
+export class TypeExpressionSyntax extends ExpressionSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public baseType: SyntaxToken | ArrayTypeExpression,
+        public starTokens: SyntaxToken[],
+    )
+    {
+        super(SyntaxKind.TypeExpression, syntaxTree)
+    }
+}
+
+export class ArrayTypeExpression extends ExpressionSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public leftBracket: SyntaxToken,
+        public elemType: TypeExpressionSyntax,
+        public semicolon: SyntaxToken | null,
+        public arraySizeLiteral: SyntaxToken | null,
+        public righBracket: SyntaxToken,
+    )
+    {
+        super(SyntaxKind.TypeExpression, syntaxTree)
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Statements
 
+export class BlockStatementSyntax extends StatementSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public leftBrace: SyntaxToken | null,
+        public statements: StatementSyntax[],
+        public righBrace: SyntaxToken | null,
+    )
+    {
+        super(SyntaxKind.BlockStatement, syntaxTree)
+    }
+}
+
+export class ExpressionStatementSyntax extends StatementSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public expression: ExpressionSyntax,
+    )
+    {
+        super(SyntaxKind.ExpressionStatement, syntaxTree)
+    }
+}
+
+export class IfStatementSyntax extends StatementSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public ifKeyword: SyntaxToken,
+        public condition: ExpressionSyntax,
+        public thenStatement: StatementSyntax,
+        public elseKeyword: SyntaxToken | null,
+        public elseStatement: StatementSyntax | null,
+    )
+    {
+        super(SyntaxKind.IfStatement, syntaxTree)
+    }
+}
+
+export class DoWhileStatementSyntax extends StatementSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public doKeyword: SyntaxToken,
+        public body: StatementSyntax,
+        public whileKeyword: SyntaxToken,
+        public condition: ExpressionSyntax,
+    )
+    {
+        super(SyntaxKind.IfStatement, syntaxTree)
+    }
+}
+
+export class WhileStatementSyntax extends StatementSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public whileKeyword: SyntaxToken,
+        public condition: ExpressionSyntax,
+        public body: StatementSyntax,
+    )
+    {
+        super(SyntaxKind.IfStatement, syntaxTree)
+    }
+}
+
+export class ForStatementSyntax extends StatementSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public forKeyword: SyntaxToken,
+        public iteratorIdent: SyntaxToken,
+        public inKeyword: SyntaxToken,
+        public lowerBound: ExpressionSyntax,
+        public dotdot: SyntaxToken,
+        public equals: SyntaxToken | null,
+        public upperBound: ExpressionSyntax,
+        public body: StatementSyntax,
+    )
+    {
+        super(SyntaxKind.ForStatement, syntaxTree)
+    }
+}
+
+export class ReturnStatementSyntax extends StatementSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public returnKeyword: SyntaxToken,
+        public returnExpression: ExpressionSyntax | null,
+    )
+    {
+        super(SyntaxKind.ReturnStatement, syntaxTree)
+    }
+}
+
+export class BreakStatementSyntax extends StatementSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public breakKeyword: SyntaxToken,
+    )
+    {
+        super(SyntaxKind.BreakStatement, syntaxTree)
+    }
+}
+
+export class ContinueStatementSyntax extends StatementSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public continueKeyword: SyntaxToken,
+    )
+    {
+        super(SyntaxKind.ContinueStatement, syntaxTree)
+    }
+}
+
+export class SwitchStatementSyntax extends StatementSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public switchKeyword: SyntaxToken,
+        public switchExpression: ExpressionSyntax,
+        public leftBrace: SyntaxToken,
+        public caseStatements: StatementSyntax[],
+        public rightBrace: SyntaxToken,
+    )
+    {
+        super(SyntaxKind.SwitchStatement, syntaxTree)
+    }
+}
+
+export class CaseStatementSyntax extends StatementSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public caseOrDefaultKeyword: SyntaxToken,
+        public caseExpression: ExpressionSyntax | null,
+        public colon: SyntaxToken,
+        public body: StatementSyntax | null,
+    )
+    {
+        let kind = caseOrDefaultKeyword.kind == SyntaxKind.DefaultKeyword
+            ? SyntaxKind.DefaultKeyword
+            : SyntaxKind.CaseStatement
+        super(kind, syntaxTree)
+    }
+}
+
+export class VariableDeclarationStatementSyntax extends StatementSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public letKeyword: SyntaxToken | null,
+        public identifier: SyntaxToken,
+        public colon: SyntaxToken,
+        public type: TypeExpressionSyntax,
+        public equals: SyntaxToken | null,
+        public initializer: ExpressionSyntax | null,
+    )
+    {
+        super(SyntaxKind.VariableDeclarationStatement, syntaxTree)
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Module
+
+export class ImportDeclarationStatementSyntax extends ModuleMemberSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public importKeyword: SyntaxToken,
+        public modulenameLiteral: SyntaxToken,
+    )
+    {
+        super(SyntaxKind.ImportDeclarationStatement, syntaxTree)
+    }
+}
+
+export class GlobalVariableDeclarationStatementSyntax extends ModuleMemberSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public externKeyword: SyntaxToken | null,
+        public declaration: VariableDeclarationStatementSyntax,
+    )
+    {
+        super(SyntaxKind.GlobalVariableDeclarationStatement, syntaxTree)
+    }
+}
+
+export class EnumValueClauseSyntax extends SyntaxNode
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public valueIdentifier: SyntaxToken,
+        public equals: SyntaxNode | null,
+        public integerLiteral: SyntaxNode | null,
+        public comma: SyntaxNode | null,
+    )
+    {
+        super(SyntaxKind.EnumMemberClauseSyntax, syntaxTree)
+    }
+}
+
+export class EnumDeclarationStatementSyntax extends ModuleMemberSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public externKeyword: SyntaxToken | null,
+        public enumKeyword: SyntaxToken,
+        public identifier: SyntaxNode | null,
+    )
+    {
+        super(SyntaxKind.EnumDeclarationStatement, syntaxTree)
+    }
+}
+
+export class EnumDefinitionStatementSyntax extends ModuleMemberSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public enumDeclaration: EnumDeclarationStatementSyntax,
+        public leftBrace: SyntaxToken,
+        public values: EnumValueClauseSyntax[],
+        public rightBrace: SyntaxToken,
+    )
+    {
+        super(SyntaxKind.EnumDefinitionStatement, syntaxTree)
+    }
+}
+
+export class StructDeclarationStatementSyntax extends ModuleMemberSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public externKeyword: SyntaxToken | null,
+        public structKeyword: SyntaxToken,
+        public identifier: SyntaxNode | null,
+    )
+    {
+        super(SyntaxKind.StructDeclarationStatement, syntaxTree)
+    }
+}
+
+export class StructDefinitionStatementSyntax extends ModuleMemberSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public structDeclaration: StructDeclarationStatementSyntax,
+        public leftBrace: SyntaxToken,
+        public membersAndSeparators: SyntaxNode[],
+        public rightBrace: SyntaxNode,
+    )
+    {
+        super(SyntaxKind.StructDefinitionStatement, syntaxTree)
+    }
+}
+
+export class FunctionDeclarationStatementSyntax extends ModuleMemberSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public externKeyword: SyntaxToken | null,
+        public funKeyword: SyntaxToken,
+        public identifier: SyntaxNode | null,
+        public leftParen: SyntaxToken,
+        public paramsAndSeparators: SyntaxNode[],
+        public rightParen: SyntaxNode,
+        public colon: SyntaxNode | null,
+        public type: TypeExpressionSyntax | null,
+    )
+    {
+        super(SyntaxKind.FunctionDeclarationStatement, syntaxTree)
+    }
+}
+
+export class FunctionDefinitionStatementSyntax extends ModuleMemberSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public funcDecl: FunctionDeclarationStatementSyntax,
+        public body: BlockStatementSyntax,
+    )
+    {
+        super(SyntaxKind.FunctionDefinitionStatement, syntaxTree)
+    }
+}

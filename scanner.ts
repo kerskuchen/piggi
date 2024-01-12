@@ -269,14 +269,8 @@ export class Scanner
                 this.Advance()
                 break
             case ':':
-                if (this.Lookahead() == ':') {
-                    this.token.kind = SyntaxKind.ColonColonToken
-                    this.Advance()
-                    this.Advance()
-                } else {
-                    this.token.kind = SyntaxKind.ColonToken
-                    this.Advance()
-                }
+                this.token.kind = SyntaxKind.ColonToken
+                this.Advance()
                 break
             case ';':
                 this.token.kind = SyntaxKind.SemicolonToken
