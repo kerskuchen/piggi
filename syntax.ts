@@ -720,7 +720,10 @@ export class SyntaxToken extends SyntaxNode
 
     GetText(): string
     {
-        return this.text!
+        if (this.isMissing)
+            return "<missing token>"
+        else
+            return this.text!
     }
 
     GetLocation(): SourceLocation
@@ -806,7 +809,7 @@ export class StringLiteralSyntax extends ExpressionSyntax
 {
     constructor(
         syntaxTree: SyntaxTree,
-        public stringLiteralTokens: SyntaxToken[],
+        public stringLiteral: SyntaxToken,
     )
     {
         super(SyntaxKind.StringLiteral, syntaxTree)
@@ -914,7 +917,7 @@ export class ParenthesizedExpressionSyntax extends ExpressionSyntax
     constructor(
         syntaxTree: SyntaxTree,
         public leftParen: SyntaxToken,
-        public operator: ExpressionSyntax,
+        public inner: ExpressionSyntax,
         public rightParen: SyntaxToken,
     )
     {
@@ -969,7 +972,7 @@ export class TypeCastExpressionSyntax extends ExpressionSyntax
         syntaxTree: SyntaxTree,
         public expression: ExpressionSyntax,
         public asKeyword: SyntaxToken,
-        public targetType: ExpressionSyntax,
+        public targetType: TypeExpressionSyntax,
     )
     {
         super(SyntaxKind.TypeCastExpression, syntaxTree)
@@ -997,7 +1000,7 @@ export class SizeofExpressionSyntax extends ExpressionSyntax
         syntaxTree: SyntaxTree,
         public sizeofKeyword: SyntaxToken,
         public leftParen: SyntaxToken,
-        public typeExpression: ExpressionSyntax,
+        public typeExpression: TypeExpressionSyntax,
         public rightParen: SyntaxToken,
     )
     {
@@ -1009,7 +1012,7 @@ export class TypeExpressionSyntax extends ExpressionSyntax
 {
     constructor(
         syntaxTree: SyntaxTree,
-        public baseType: SyntaxToken | ArrayTypeExpression,
+        public baseType: SyntaxToken | ArrayTypeExpressionSyntax,
         public starTokens: SyntaxToken[],
     )
     {
@@ -1017,14 +1020,14 @@ export class TypeExpressionSyntax extends ExpressionSyntax
     }
 }
 
-export class ArrayTypeExpression extends ExpressionSyntax
+export class ArrayTypeExpressionSyntax extends ExpressionSyntax
 {
     constructor(
         syntaxTree: SyntaxTree,
         public leftBracket: SyntaxToken,
         public elemType: TypeExpressionSyntax,
-        public semicolon: SyntaxToken | null,
-        public arraySizeLiteral: SyntaxToken | null,
+        public semicolon: SyntaxToken,
+        public arraySizeLiteral: SyntaxToken,
         public righBracket: SyntaxToken,
     )
     {

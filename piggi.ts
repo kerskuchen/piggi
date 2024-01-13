@@ -51,8 +51,6 @@ function CollectSyntaxTrees(rootModuleName: string): SyntaxTree[]
     return result
 }
 
-
-
 function Main()
 {
     let trees = CollectSyntaxTrees("test")

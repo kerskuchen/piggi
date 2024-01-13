@@ -2,7 +2,7 @@
 
 import { DiagnosticBag, Source, SourceLocation } from "./common.ts"
 import { Scanner } from "./scanner.ts"
-import { SyntaxKind, SyntaxToken, SyntaxTrivia, SyntaxTree, BinaryExpressionSyntax, BlockStatementSyntax, BreakStatementSyntax, ContinueStatementSyntax, DoWhileStatementSyntax, ExpressionStatementSyntax, ExpressionSyntax, ForStatementSyntax, IfStatementSyntax, ModuleMemberSyntax, ModuleSyntax, NameExpressionSyntax, ParenthesizedExpressionSyntax, ReturnStatementSyntax, StatementSyntax, TypeCastExpressionSyntax, UnaryExpressionSyntax, VariableDeclarationStatementSyntax, WhileStatementSyntax, ImportDeclarationStatementSyntax, GlobalVariableDeclarationStatementSyntax, StructDeclarationStatementSyntax, StructDefinitionStatementSyntax, FunctionDeclarationStatementSyntax, FunctionDefinitionStatementSyntax, TypeExpressionSyntax, EnumDeclarationStatementSyntax, EnumDefinitionStatementSyntax, EnumValueClauseSyntax, SwitchStatementSyntax, CaseStatementSyntax, TernaryConditionalExpressionSyntax, FuncCallExpressionSyntax, MemberAccessExpressionSyntax, ArrayIndexExpressionSyntax, ArrayLiteralSyntax, IntegerLiteralSyntax, CharacterLiteralSyntax, StringLiteralSyntax, BoolLiteralSyntax, NullLiteralSyntax, SizeofExpressionSyntax, ArrayTypeExpression } from "./syntax.ts"
+import { SyntaxKind, SyntaxToken, SyntaxTrivia, SyntaxTree, BinaryExpressionSyntax, BlockStatementSyntax, BreakStatementSyntax, ContinueStatementSyntax, DoWhileStatementSyntax, ExpressionStatementSyntax, ExpressionSyntax, ForStatementSyntax, IfStatementSyntax, ModuleMemberSyntax, ModuleSyntax, NameExpressionSyntax, ParenthesizedExpressionSyntax, ReturnStatementSyntax, StatementSyntax, TypeCastExpressionSyntax, UnaryExpressionSyntax, VariableDeclarationStatementSyntax, WhileStatementSyntax, ImportDeclarationStatementSyntax, GlobalVariableDeclarationStatementSyntax, StructDeclarationStatementSyntax, StructDefinitionStatementSyntax, FunctionDeclarationStatementSyntax, FunctionDefinitionStatementSyntax, TypeExpressionSyntax, EnumDeclarationStatementSyntax, EnumDefinitionStatementSyntax, EnumValueClauseSyntax, SwitchStatementSyntax, CaseStatementSyntax, TernaryConditionalExpressionSyntax, FuncCallExpressionSyntax, MemberAccessExpressionSyntax, ArrayIndexExpressionSyntax, ArrayLiteralSyntax, IntegerLiteralSyntax, CharacterLiteralSyntax, StringLiteralSyntax, BoolLiteralSyntax, NullLiteralSyntax, SizeofExpressionSyntax, ArrayTypeExpressionSyntax } from "./syntax.ts"
 import { SyntaxFacts } from "./syntax.ts"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -770,12 +770,8 @@ export class Parser
 
     private ParseStringLiteral(): StringLiteralSyntax
     {
-        let stringLiterals = []
-        while (this.Current().kind == SyntaxKind.StringLiteralToken) {
-            let literal = this.MatchAndAdvanceToken(SyntaxKind.StringLiteralToken)
-            stringLiterals.push(literal)
-        }
-        return new StringLiteralSyntax(this.tree, stringLiterals)
+        let stringLiteral = this.MatchAndAdvanceToken(SyntaxKind.StringLiteralToken)
+        return new StringLiteralSyntax(this.tree, stringLiteral)
     }
 
     private ParseCharacterLiteral(): CharacterLiteralSyntax
@@ -827,18 +823,14 @@ export class Parser
         return new TypeExpressionSyntax(this.tree, baseType, starTokens)
     }
 
-    private ParseArrayTypeExpression(): ArrayTypeExpression
+    private ParseArrayTypeExpression(): ArrayTypeExpressionSyntax
     {
         let leftBracket = this.MatchAndAdvanceToken(SyntaxKind.LeftBracketToken)
         let elemType = this.ParseTypeExpression()
-        let semicolon = null
-        let arraySizeLiteral = null
-        if (this.Current().kind == SyntaxKind.SemicolonToken) {
-            semicolon = this.MatchAndAdvanceToken(SyntaxKind.SemicolonToken)
-            arraySizeLiteral = this.MatchAndAdvanceToken(SyntaxKind.IntegerLiteralToken)
-        }
+        let semicolon = this.MatchAndAdvanceToken(SyntaxKind.SemicolonToken)
+        let arraySizeLiteral = this.MatchAndAdvanceToken(SyntaxKind.IntegerLiteralToken)
         let rightBracket = this.MatchAndAdvanceToken(SyntaxKind.RightBracketToken)
-        return new ArrayTypeExpression(this.tree, leftBracket, elemType, semicolon, arraySizeLiteral, rightBracket)
+        return new ArrayTypeExpressionSyntax(this.tree, leftBracket, elemType, semicolon, arraySizeLiteral, rightBracket)
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////

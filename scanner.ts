@@ -1,6 +1,6 @@
 // deno-lint-ignore-file prefer-const
 
-import { DiagnosticBag, Source, SourceLocation } from "./common.ts"
+import { Source, SourceLocation } from "./common.ts"
 import { SyntaxKind, SyntaxTree, SyntaxToken, SyntaxTrivia, SyntaxFacts } from "./syntax.ts"
 
 function IsDigit(c: string)
