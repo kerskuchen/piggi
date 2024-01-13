@@ -19,6 +19,9 @@ export class Parser
     switchCaseLevel = 0
     functionLevel = 0
 
+    debugToParse: SyntaxToken[] = []
+    debugAlreadyParsed: SyntaxToken[] = []
+
     constructor(public source: Source)
     {
         this.tree = new SyntaxTree(source)
@@ -69,8 +72,11 @@ export class Parser
             throw new Error(`All tokens text length = ${tokenTextLengthSum} != ${this.source.content.length} = source text length`)
         }
 
-        for (let token of this.tokens)
-            console.log(token.PrettyPrint())
+        // for (let token of this.tokens)
+        //     console.log(token.PrettyPrint())
+
+        this.debugToParse = this.tokens
+        this.debugAlreadyParsed = []
 
         let root = this.ParseModule(this.tree.source.modulename)
 
@@ -185,7 +191,13 @@ export class Parser
 
         let leftParen = this.MatchAndAdvanceToken(SyntaxKind.LeftParenToken)
         let paramsAndSeparators = []
-        while (this.Current().kind != SyntaxKind.RightBraceToken && this.Current().kind != SyntaxKind.EndOfFileToken) {
+        while (this.Current().kind != SyntaxKind.RightParenToken && this.Current().kind != SyntaxKind.EndOfFileToken) {
+            if (this.Current().kind == SyntaxKind.DotDotToken) {
+                let dotdot = this.MatchAndAdvanceToken(SyntaxKind.DotDotToken)
+                paramsAndSeparators.push(dotdot)
+                break
+            }
+
             let param = this.ParseVariableDeclarationStatement(true, false)
             paramsAndSeparators.push(param)
 
@@ -200,7 +212,7 @@ export class Parser
 
         let colon: SyntaxToken | null = null
         let type: TypeExpressionSyntax | null = null
-        if (this.Current().kind != SyntaxKind.ColonToken) {
+        if (this.Current().kind == SyntaxKind.ColonToken) {
             colon = this.MatchAndAdvanceToken(SyntaxKind.ColonToken)
             type = this.ParseTypeExpression()
         }
@@ -242,13 +254,13 @@ export class Parser
 
         let equals: SyntaxToken | null = null
         let integerLiteral: SyntaxToken | null = null
-        if (this.Current().kind != SyntaxKind.EqualsToken) {
+        if (this.Current().kind == SyntaxKind.EqualsToken) {
             equals = this.MatchAndAdvanceToken(SyntaxKind.EqualsToken)
-            integerLiteral = this.MatchAndAdvanceToken(SyntaxKind.IntegerLiteral)
+            integerLiteral = this.MatchAndAdvanceToken(SyntaxKind.IntegerLiteralToken)
         }
 
         let comma: SyntaxToken | null = null
-        if (this.Current().kind != SyntaxKind.CommaToken) {
+        if (this.Current().kind == SyntaxKind.CommaToken) {
             comma = this.MatchAndAdvanceToken(SyntaxKind.CommaToken)
         }
 
@@ -331,7 +343,7 @@ export class Parser
                 case SyntaxKind.IntegerLiteral:
                 case SyntaxKind.StringLiteral:
                 case SyntaxKind.CharacterLiteral:
-                case SyntaxKind.EnumValueLiteral:
+                case SyntaxKind.MemberAccessExpression:
                     break
                 default:
                     this.tree.diagnostics.ReportError(
@@ -441,7 +453,7 @@ export class Parser
         let lowerBound = this.ParseExpression()
         let dotdot = this.MatchAndAdvanceToken(SyntaxKind.DotDotToken)
         let equals: SyntaxToken | null = null
-        if (this.Current().kind != SyntaxKind.EndOfFileToken)
+        if (this.Current().kind == SyntaxKind.EqualsToken)
             equals = this.MatchAndAdvanceToken(SyntaxKind.EqualsToken)
         let upperBound = this.ParseExpression()
         this.loopLevel += 1
@@ -846,7 +858,12 @@ export class Parser
     private AdvanceToken(): SyntaxToken
     {
         let token = this.Current()
-        this.position++
+        if (this.position < this.tokens.length)
+            this.position++
+
+        this.debugToParse = this.tokens.slice(0, this.position)
+        this.debugAlreadyParsed = this.tokens.slice(this.position)
+
         return token
     }
 
@@ -857,7 +874,7 @@ export class Parser
 
         this.diagnostics.ReportError(
             this.Current().GetLocation(),
-            `Expected token '${this.Current().kind}' but got token 'this.Current().kind'`
+            `Expected token '${kind}' but got token '${this.Current().kind}'`
         )
 
         // Return dummy token to avoid having holes in the syntax tree

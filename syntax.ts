@@ -158,7 +158,6 @@ export enum SyntaxKind
     CharacterLiteral = "CharacterLiteral",
     BoolLiteral = "BoolLiteral",
     StringLiteral = "StringLiteral",
-    EnumValueLiteral = "EnumValueLiteral",
     ArrayLiteral = "ArrayLiteral",
 
     // Misc
@@ -309,7 +308,7 @@ export class SyntaxFacts
             case SyntaxKind.IntKeyword:
                 return "int"
             case SyntaxKind.LongKeyword:
-                return "longint"
+                return "long"
             case SyntaxKind.VoidKeyword:
                 return "void"
             case SyntaxKind.NullKeyword:
@@ -744,17 +743,17 @@ export class SyntaxToken extends SyntaxNode
 export class SyntaxTree
 {
     diagnostics: DiagnosticBag = new DiagnosticBag()
-    _root: SyntaxNode | null = null
+    _root: ModuleSyntax | null = null
     _parents = new Map<SyntaxNode, SyntaxNode>()
 
-    get root(): SyntaxNode { return this._root! }
+    get root(): ModuleSyntax { return this._root! }
     get parents(): Map<SyntaxNode, SyntaxNode> { return this._parents! }
 
     constructor(public source: Source)
     {
     }
 
-    AssignRoot(root: SyntaxNode)
+    AssignRoot(root: ModuleSyntax)
     {
         this._root = root
         this.CreateParentsDictionary(this.root)
@@ -1210,7 +1209,7 @@ export class ImportDeclarationStatementSyntax extends ModuleMemberSyntax
     constructor(
         syntaxTree: SyntaxTree,
         public importKeyword: SyntaxToken,
-        public modulenameLiteral: SyntaxToken,
+        public modulenameIdent: SyntaxToken,
     )
     {
         super(SyntaxKind.ImportDeclarationStatement, syntaxTree)

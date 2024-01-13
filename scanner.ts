@@ -409,11 +409,11 @@ export class Scanner
                 } else if (ch == '"') {
                     this.ReadStringLiteral()
                 } else {
+                    this.Advance()
                     this.tree.diagnostics.ReportError(
                         this.GetLocation(),
                         `Unexpected character '${ch}'`,
                     )
-                    this.Advance()
                 }
             }
         }

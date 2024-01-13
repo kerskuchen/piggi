@@ -22,7 +22,7 @@ export class Source
         let lineIndex = 0
         let columnIndex = 0
         let curPos = 0
-        while (curPos <= charPos) {
+        while (curPos < charPos) {
             if (this.content[curPos] == '\n') {
                 lineIndex += 1
                 columnIndex = 0
@@ -120,6 +120,28 @@ export class Diagnostic
     {
         return SourceLocation.Compare(a.location, b.location)
     }
+
+    Print()
+    {
+        let location = this.location
+        let source = location.source
+        let filepath = location.source.filepath
+
+        let startLineColumnIndex = source.GetLineColumnIndex(location.start)
+        let endLineColumnIndex = source.GetLineColumnIndex(location.end)
+
+        // TODO: This does not work for multiline locations yet
+        let line = source.GetLineLocation(startLineColumnIndex.line).GetText()
+        let prefix = line.substring(0, startLineColumnIndex.column)
+        let error = line.substring(startLineColumnIndex.column, endLineColumnIndex.column)
+        let suffix = line.substring(endLineColumnIndex.column)
+
+        let message = ""
+        message += `${filepath}:${startLineColumnIndex.line + 1}:${startLineColumnIndex.column + 1}: "${this.message}"\n`
+        message += `${prefix}${error}${suffix}`
+        message += `${prefix.replaceAll(/./g, " ")}${error.replaceAll(/./g, "~").replace("~", "^")}${suffix.replaceAll(/./g, " ")}`
+        console.error(message)
+    }
 }
 
 export class DiagnosticBag
@@ -142,29 +164,23 @@ export class DiagnosticBag
     ReportError(location: SourceLocation, message: string)
     {
         let diagnostic = new Diagnostic(location, message)
+
+        // TODO: remove this when not testing
+        diagnostic.Print()
+        Deno.exit()
+
         this.diagnostics.push(diagnostic)
     }
 
-    Print()
+    Print(maxErrorsToPrint = 1000)
     {
+        let numPrinted = 0
         for (let diagnostic of this.diagnostics.toSorted(Diagnostic.Compare)) {
-            let location = diagnostic.location
-            let source = location.source
-            let filepath = location.source.filepath
+            if (numPrinted > maxErrorsToPrint)
+                break
 
-            let startLineColumnIndex = source.GetLineColumnIndex(location.start)
-            let endLineColumnIndex = source.GetLineColumnIndex(location.end)
-
-            console.error(`${filepath}:${startLineColumnIndex.line}:${startLineColumnIndex.column}: "` + diagnostic.message + '"')
-
-            // TODO: This does not work for multiline locations yet
-            let line = source.GetLineLocation(startLineColumnIndex.line).GetText()
-            let prefix = line.substring(0, startLineColumnIndex.column)
-            let error = line.substring(startLineColumnIndex.column, endLineColumnIndex.column)
-            let suffix = line.substring(endLineColumnIndex.column)
-
-            console.error(prefix + error + suffix)
-            console.error(prefix.replaceAll(/./g, " ") + error.replaceAll(/./g, "~").replace("~", "^") + suffix.replaceAll(/./g, " "))
+            diagnostic.Print()
+            numPrinted += 1
         }
     }
 }
