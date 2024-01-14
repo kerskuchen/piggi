@@ -1,7 +1,9 @@
 // deno-lint-ignore-file prefer-const
 
+import { Binder } from "./binder.ts"
 import { Source } from "./common.ts"
 import { Parser } from "./parser.ts"
+import { SymbolTable } from "./symbols.ts"
 import { ImportDeclarationStatementSyntax, SyntaxKind, SyntaxTree } from "./syntax.ts"
 
 function LoadSource(moduleName: string): Source
@@ -53,14 +55,20 @@ function CollectSyntaxTrees(rootModuleName: string): SyntaxTree[]
 
 function Main()
 {
-    let trees = CollectSyntaxTrees("test")
+    let rootModuleName = "test"
+    let trees = CollectSyntaxTrees(rootModuleName)
     for (let tree of trees) {
-        Deno.writeTextFileSync("bin/" + tree.source.modulename + "_syntaxdump.txt", tree.root.PrettyPrint())
+        Deno.writeTextFileSync("bin/" + tree.source.modulename + "_syntaxdump.txt", tree.root.DumpTree())
     }
-    for (let tree of trees) {
-        if (tree.diagnostics.hasErrors) {
-            tree.diagnostics.Print()
-        }
+
+    let symbolTable = new SymbolTable(null)
+    let binder = new Binder(symbolTable)
+    let compilation = binder.BindCompilationUnit(trees)
+
+    Deno.writeTextFileSync("bin/" + rootModuleName + "_boundtreedump.txt", compilation.DumpTree())
+
+    if (binder.diagnostics.hasErrors) {
+        binder.diagnostics.Print()
     }
 }
 

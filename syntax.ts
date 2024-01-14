@@ -1,6 +1,6 @@
 // deno-lint-ignore-file prefer-const
 
-import { SourceLocation, DiagnosticBag, Source, IndentedTextWriter } from "./common.ts"
+import { SourceLocation, DiagnosticBag, Source } from "./common.ts"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -150,7 +150,6 @@ export enum SyntaxKind
     // Literals
     NullLiteral = "NullLiteral",
     NumberLiteral = "IntegerLiteral",
-    CharacterLiteral = "CharacterLiteral",
     BoolLiteral = "BoolLiteral",
     StringLiteral = "StringLiteral",
     ArrayLiteral = "ArrayLiteral",
@@ -293,11 +292,11 @@ export class SyntaxFacts
                 return "str-lit"
 
             case SyntaxKind.NumberKeyword:
-                return "long"
+                return "number"
             case SyntaxKind.StringKeyword:
-                return "void"
+                return "string"
             case SyntaxKind.NullKeyword:
-                return "nullptr"
+                return "null"
             case SyntaxKind.BoolKeyword:
                 return "bool"
             case SyntaxKind.TrueKeyword:
@@ -438,9 +437,7 @@ export class SyntaxFacts
             case SyntaxKind.MinusToken:     // Negation
             case SyntaxKind.BangToken:      // Logical negation
             case SyntaxKind.TildeToken:     // Bitwise negation
-            case SyntaxKind.StarToken:      // Dereference
-            case SyntaxKind.AmpersandToken: // Addressof
-                return 13
+                return 14
             default:
                 return 0
         }
@@ -470,6 +467,10 @@ export class SyntaxFacts
     static GetBinaryOperatorPrecedence(kind: SyntaxKind): number
     {
         switch (kind) {
+            // TODO: Add exponentiation ** 
+            // case SyntaxKind.StarStarToken:
+            //    return 13
+
             case SyntaxKind.StarToken:
             case SyntaxKind.SlashToken:
             case SyntaxKind.PercentToken:
@@ -601,7 +602,7 @@ export abstract class SyntaxNode
         return result
     }
 
-    PrettyPrint(indent = "", isLast = true): string
+    DumpTree(indent = "", isLast = true): string
     {
         let result = ""
 
@@ -660,7 +661,7 @@ export abstract class SyntaxNode
 
         let lastChild = children[children.length - 1]
         for (let child of this.GetChildren())
-            result += child.PrettyPrint(indent, child === lastChild)
+            result += child.DumpTree(indent, child === lastChild)
 
         return result
     }
@@ -813,17 +814,6 @@ export class NumberLiteralSyntax extends ExpressionSyntax
     )
     {
         super(SyntaxKind.NumberLiteral, syntaxTree)
-    }
-}
-
-export class CharacterLiteralSyntax extends ExpressionSyntax
-{
-    constructor(
-        syntaxTree: SyntaxTree,
-        public characterLiteral: SyntaxToken,
-    )
-    {
-        super(SyntaxKind.CharacterLiteral, syntaxTree)
     }
 }
 
@@ -1005,7 +995,7 @@ export class NullableTypeExpressionSyntax extends ExpressionSyntax
 {
     constructor(
         syntaxTree: SyntaxTree,
-        public innerType: TypeExpressionSyntax,
+        public baseType: TypeExpressionSyntax,
         public questionMark: SyntaxToken,
     )
     {
@@ -1078,7 +1068,7 @@ export class DoWhileStatementSyntax extends StatementSyntax
         public condition: ExpressionSyntax,
     )
     {
-        super(SyntaxKind.IfStatement, syntaxTree)
+        super(SyntaxKind.DoWhileStatement, syntaxTree)
     }
 }
 
@@ -1091,7 +1081,7 @@ export class WhileStatementSyntax extends StatementSyntax
         public body: StatementSyntax,
     )
     {
-        super(SyntaxKind.IfStatement, syntaxTree)
+        super(SyntaxKind.WhileStatement, syntaxTree)
     }
 }
 
@@ -1154,7 +1144,7 @@ export class SwitchStatementSyntax extends StatementSyntax
         public switchKeyword: SyntaxToken,
         public switchExpression: ExpressionSyntax,
         public leftBrace: SyntaxToken,
-        public caseStatements: StatementSyntax[],
+        public caseStatements: CaseStatementSyntax[],
         public rightBrace: SyntaxToken,
     )
     {
@@ -1169,7 +1159,7 @@ export class CaseStatementSyntax extends StatementSyntax
         public caseOrDefaultKeyword: SyntaxToken,
         public caseExpression: ExpressionSyntax | null,
         public colon: SyntaxToken,
-        public body: StatementSyntax | null,
+        public body: BlockStatementSyntax | null,
     )
     {
         let kind = caseOrDefaultKeyword.kind == SyntaxKind.DefaultKeyword
@@ -1228,7 +1218,7 @@ export class EnumValueClauseSyntax extends SyntaxNode
         syntaxTree: SyntaxTree,
         public valueIdentifier: SyntaxToken,
         public equals: SyntaxNode | null,
-        public integerLiteral: SyntaxNode | null,
+        public integerLiteral: SyntaxToken | null,
         public comma: SyntaxNode | null,
     )
     {
@@ -1242,7 +1232,7 @@ export class EnumDeclarationStatementSyntax extends ModuleMemberSyntax
         syntaxTree: SyntaxTree,
         public externKeyword: SyntaxToken | null,
         public enumKeyword: SyntaxToken,
-        public identifier: SyntaxNode | null,
+        public identifier: SyntaxToken,
     )
     {
         super(SyntaxKind.EnumDeclarationStatement, syntaxTree)
@@ -1269,7 +1259,7 @@ export class StructDeclarationStatementSyntax extends ModuleMemberSyntax
         syntaxTree: SyntaxTree,
         public externKeyword: SyntaxToken | null,
         public structKeyword: SyntaxToken,
-        public identifier: SyntaxNode | null,
+        public identifier: SyntaxToken,
     )
     {
         super(SyntaxKind.StructDeclarationStatement, syntaxTree)
@@ -1296,12 +1286,12 @@ export class FunctionDeclarationStatementSyntax extends ModuleMemberSyntax
         syntaxTree: SyntaxTree,
         public externKeyword: SyntaxToken | null,
         public funKeyword: SyntaxToken,
-        public identifier: SyntaxNode | null,
+        public identifier: SyntaxToken,
         public leftParen: SyntaxToken,
         public paramsAndSeparators: SyntaxNode[],
         public rightParen: SyntaxNode,
         public colon: SyntaxNode | null,
-        public type: TypeExpressionSyntax | null,
+        public returnType: TypeExpressionSyntax | null,
     )
     {
         super(SyntaxKind.FunctionDeclarationStatement, syntaxTree)

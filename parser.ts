@@ -2,7 +2,7 @@
 
 import { DiagnosticBag, Source, SourceLocation } from "./common.ts"
 import { Scanner } from "./scanner.ts"
-import { SyntaxKind, SyntaxToken, SyntaxTrivia, SyntaxTree, BinaryExpressionSyntax, BlockStatementSyntax, BreakStatementSyntax, ContinueStatementSyntax, DoWhileStatementSyntax, ExpressionStatementSyntax, ExpressionSyntax, ForStatementSyntax, IfStatementSyntax, ModuleMemberSyntax, ModuleSyntax, NameExpressionSyntax, ParenthesizedExpressionSyntax, ReturnStatementSyntax, StatementSyntax, TypeCastExpressionSyntax, UnaryExpressionSyntax, VariableDeclarationStatementSyntax, WhileStatementSyntax, ImportDeclarationStatementSyntax, GlobalVariableDeclarationStatementSyntax, StructDeclarationStatementSyntax, StructDefinitionStatementSyntax, FunctionDeclarationStatementSyntax, FunctionDefinitionStatementSyntax, TypeExpressionSyntax, EnumDeclarationStatementSyntax, EnumDefinitionStatementSyntax, EnumValueClauseSyntax, SwitchStatementSyntax, CaseStatementSyntax, TernaryConditionalExpressionSyntax, FuncCallExpressionSyntax, MemberAccessExpressionSyntax, ArrayIndexExpressionSyntax, ArrayLiteralSyntax, NumberLiteralSyntax, CharacterLiteralSyntax, StringLiteralSyntax, BoolLiteralSyntax, NullLiteralSyntax, SizeofExpressionSyntax, ArrayTypeExpressionSyntax, BaseTypeExpressionSyntax, NullableTypeExpressionSyntax } from "./syntax.ts"
+import { SyntaxKind, SyntaxToken, SyntaxTrivia, SyntaxTree, BinaryExpressionSyntax, BlockStatementSyntax, BreakStatementSyntax, ContinueStatementSyntax, DoWhileStatementSyntax, ExpressionStatementSyntax, ExpressionSyntax, ForStatementSyntax, IfStatementSyntax, ModuleMemberSyntax, ModuleSyntax, NameExpressionSyntax, ParenthesizedExpressionSyntax, ReturnStatementSyntax, StatementSyntax, TypeCastExpressionSyntax, UnaryExpressionSyntax, VariableDeclarationStatementSyntax, WhileStatementSyntax, ImportDeclarationStatementSyntax, GlobalVariableDeclarationStatementSyntax, StructDeclarationStatementSyntax, StructDefinitionStatementSyntax, FunctionDeclarationStatementSyntax, FunctionDefinitionStatementSyntax, TypeExpressionSyntax, EnumDeclarationStatementSyntax, EnumDefinitionStatementSyntax, EnumValueClauseSyntax, SwitchStatementSyntax, CaseStatementSyntax, TernaryConditionalExpressionSyntax, FuncCallExpressionSyntax, MemberAccessExpressionSyntax, ArrayIndexExpressionSyntax, ArrayLiteralSyntax, NumberLiteralSyntax, StringLiteralSyntax, BoolLiteralSyntax, NullLiteralSyntax, ArrayTypeExpressionSyntax, BaseTypeExpressionSyntax, NullableTypeExpressionSyntax } from "./syntax.ts"
 import { SyntaxFacts } from "./syntax.ts"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -192,12 +192,6 @@ export class Parser
         let leftParen = this.MatchAndAdvanceToken(SyntaxKind.LeftParenToken)
         let paramsAndSeparators = []
         while (this.Current().kind != SyntaxKind.RightParenToken && this.Current().kind != SyntaxKind.EndOfFileToken) {
-            if (this.Current().kind == SyntaxKind.DotDotToken) {
-                let dotdot = this.MatchAndAdvanceToken(SyntaxKind.DotDotToken)
-                paramsAndSeparators.push(dotdot)
-                break
-            }
-
             let param = this.ParseVariableDeclarationStatement(true, false)
             paramsAndSeparators.push(param)
 
@@ -342,7 +336,6 @@ export class Parser
             switch (caseExpression.kind) {
                 case SyntaxKind.NumberLiteral:
                 case SyntaxKind.StringLiteral:
-                case SyntaxKind.CharacterLiteral:
                 case SyntaxKind.MemberAccessExpression:
                     break
                 default:
@@ -728,8 +721,8 @@ export class Parser
         let boolLiteral
         if (this.Current().kind == SyntaxKind.TrueKeyword)
             boolLiteral = this.MatchAndAdvanceToken(SyntaxKind.TrueKeyword)
-        else (this.Current().kind == SyntaxKind.FalseKeyword)
-        boolLiteral = this.MatchAndAdvanceToken(SyntaxKind.FalseKeyword)
+        else
+            boolLiteral = this.MatchAndAdvanceToken(SyntaxKind.FalseKeyword)
 
         return new BoolLiteralSyntax(this.tree, boolLiteral)
     }

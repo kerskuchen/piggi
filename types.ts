@@ -1,193 +1,137 @@
 // deno-lint-ignore-file prefer-const
 
-export enum TypeKind
-{
-    Basic = "Base",
-    Indirection = "Indirection",
-    Array = "Array",
-}
-
-export enum BasicTypeKind
+export enum BaseTypeKind
 {
     Void = "Void",
+    Any = "Any",
+    Null = "Null",
     Bool = "Bool",
-    Char = "Char",
-    Byte = "Byte",
-    Short = "Short",
-    Int = "Int",
-    Long = "Long",
-    CString = "CString",
+    Number = "Number",
+    String = "String",
 
     Struct = "Struct",
-    Union = "Union",
     Enum = "Enum",
 };
 
-function IsBaseTypeKindNumber(basicKind: BasicTypeKind): boolean
+function IsBaseTypeKindUserDefined(baseKind: BaseTypeKind): boolean
 {
-    switch (basicKind) {
-        case BasicTypeKind.Bool:
-        case BasicTypeKind.Byte:
-        case BasicTypeKind.Short:
-        case BasicTypeKind.Int:
-        case BasicTypeKind.Long:
+    switch (baseKind) {
+        case BaseTypeKind.Struct:
+        case BaseTypeKind.Enum:
             return true
-    }
-    return false
-}
-
-function IsBaseTypeKindPrimitive(basicKind: BasicTypeKind): boolean
-{
-    switch (basicKind) {
-        case BasicTypeKind.Void:
-        case BasicTypeKind.Bool:
-        case BasicTypeKind.Char:
-        case BasicTypeKind.Byte:
-        case BasicTypeKind.Short:
-        case BasicTypeKind.Int:
-        case BasicTypeKind.Long:
-        case BasicTypeKind.CString:
-            return true
-        case BasicTypeKind.Struct:
-        case BasicTypeKind.Union:
-        case BasicTypeKind.Enum:
+        case BaseTypeKind.Void:
+        case BaseTypeKind.Any:
+        case BaseTypeKind.Null:
+        case BaseTypeKind.Bool:
+        case BaseTypeKind.Number:
+        case BaseTypeKind.String:
             return false
         default:
-            throw new Error(`Unexpected type kind ${basicKind}`)
+            throw new Error(`Unexpected type kind ${baseKind}`)
     }
 }
 
-function BytesCountOfNumberType(basicKind: BasicTypeKind)
+function IsBaseTypeKindPrimitive(baseKind: BaseTypeKind): boolean
 {
-    switch (basicKind) {
-        case BasicTypeKind.Byte:
-            return 1
-        case BasicTypeKind.Short:
-            return 2
-        case BasicTypeKind.Int:
-            return 4
-        case BasicTypeKind.Long:
-            return 8
+    switch (baseKind) {
+        case BaseTypeKind.Bool:
+        case BaseTypeKind.Number:
+        case BaseTypeKind.String:
+            return true
+        case BaseTypeKind.Void:
+        case BaseTypeKind.Any:
+        case BaseTypeKind.Null:
+        case BaseTypeKind.Struct:
+        case BaseTypeKind.Enum:
+            return false
+        default:
+            throw new Error(`Unexpected type kind ${baseKind}`)
     }
-    throw new Error("Not a number type")
 }
 
 export enum TypeConversionResult
 {
-    NonConvertible,
-    Identical,
-    ImplictlyConvertible,
-    ExplicitlyConvertible,
+    NonConvertible = "NonConvertible",
+    Identical = "Identical",
+    ImplictlyConvertible = "ImplictlyConvertible",
+    ExplicitlyConvertible = "ExplicitlyConvertible",
 };
 
 export abstract class Type
 {
-    protected constructor(
-        public kind: TypeKind
-    ) { }
+    static builtinTypes: Map<BaseTypeKind, Type> = new Map()
 
-    static FromPrimitive(basicKind: BasicTypeKind): Type
+    protected constructor()
     {
-        if (!IsBaseTypeKindPrimitive(basicKind))
-            throw new Error(`Unexpected non-primitive type ${basicKind}`)
-        return new BasicType(basicKind, null)
     }
 
-    static FromPrimitivePointer(basicKind: BasicTypeKind, indirectionLevel: number): Type
+    static Init()
     {
-        if (!IsBaseTypeKindPrimitive(basicKind))
-            throw new Error(`Unexpected non-primitive type ${basicKind}`)
-        return new IndirectionType(new BasicType(basicKind, null), indirectionLevel)
+        if (Type.builtinTypes.size == 0) {
+            Type.builtinTypes.set(BaseTypeKind.Void, new BaseType(BaseTypeKind.Void, null))
+            Type.builtinTypes.set(BaseTypeKind.Any, new BaseType(BaseTypeKind.Any, null))
+            Type.builtinTypes.set(BaseTypeKind.Null, new BaseType(BaseTypeKind.Null, null))
+            Type.builtinTypes.set(BaseTypeKind.Bool, new BaseType(BaseTypeKind.Bool, null))
+            Type.builtinTypes.set(BaseTypeKind.Number, new BaseType(BaseTypeKind.Number, null))
+            Type.builtinTypes.set(BaseTypeKind.String, new BaseType(BaseTypeKind.String, null))
+        }
     }
 
+    static get Void() { return Type.builtinTypes.get(BaseTypeKind.Void)! }
+    static get Any() { return Type.builtinTypes.get(BaseTypeKind.Any)! }
+    static get Null() { return Type.builtinTypes.get(BaseTypeKind.Null)! }
+    static get Bool() { return Type.builtinTypes.get(BaseTypeKind.Bool)! }
+    static get Number() { return Type.builtinTypes.get(BaseTypeKind.Number)! }
+    static get String() { return Type.builtinTypes.get(BaseTypeKind.String)! }
 
-    static TypesIdentical(a: Type, b: Type): boolean
+    static Identical(a: Type, b: Type): boolean
     {
-        if (a instanceof BasicType && b instanceof BasicType) {
-            return a.basicKind == b.basicKind
+        if (a instanceof BaseType && b instanceof BaseType) {
+            return a.baseKind == b.baseKind
                 && a.name == b.name
         } else if (a instanceof ArrayType && b instanceof ArrayType) {
-            return a.elementCount == b.elementCount && this.TypesIdentical(a.elementType, b.elementType)
-        } else if (a instanceof IndirectionType && b instanceof IndirectionType) {
-            return a.indirectionLevel == b.indirectionLevel && this.TypesIdentical(a.elementType, b.elementType)
+            return this.Identical(a.elementType, b.elementType)
+        } else if (a instanceof NullableType && b instanceof NullableType) {
+            return this.Identical(a.elementType, b.elementType)
         }
         return false
     }
 
-    GetIndirectionLevel(): number
-    {
-        if (this instanceof ArrayType) {
-            return 1
-        } else if (this instanceof BasicType) {
-            if (this.basicKind == BasicTypeKind.CString)
-                return 1
-            else
-                return 0
-        } else if (this instanceof IndirectionType) {
-            return this.indirectionLevel
-        }
-        throw new Error("unreachable")
-    }
+    IsBaseType(): boolean { return this instanceof BaseType }
+    IsArray(): boolean { return this instanceof ArrayType }
+    IsNullable(): boolean { return this instanceof NullableType }
+    IsVoid(): boolean { return this == Type.Void }
+    IsAny(): boolean { return this == Type.Any }
+    IsNull(): boolean { return this == Type.Null }
+    IsBool(): boolean { return this == Type.Bool }
+    IsNumber(): boolean { return this == Type.Number }
+    IsString(): boolean { return this == Type.String }
 
-    IsVoidPointer(): boolean
+    IsPrimitive(): boolean
     {
-        if (this instanceof IndirectionType) {
-            if (this.indirectionLevel != 0)
-                return false
-            if (this.elementType instanceof BasicType)
-                return this.elementType.basicKind == BasicTypeKind.Void
+        if (this instanceof BaseType) {
+            return IsBaseTypeKindPrimitive(this.baseKind)
         }
         return false
     }
-
-    IsVoidType()
+    IsUserDefined(): boolean
     {
-        if (this instanceof BasicType) {
-            return this.basicKind == BasicTypeKind.Void
+        if (this instanceof BaseType) {
+            return IsBaseTypeKindUserDefined(this.baseKind)
         }
         return false
     }
-
-    IsEnumType(): boolean
+    IsEnum(): boolean
     {
-        if (this instanceof BasicType) {
-            return this.basicKind == BasicTypeKind.Enum
+        if (this instanceof BaseType) {
+            return this.baseKind == BaseTypeKind.Enum
         }
         return false
     }
-
-    IsStructType(): boolean
+    IsStruct(): boolean
     {
-        if (this instanceof BasicType) {
-            return this.basicKind == BasicTypeKind.Struct
-        }
-        return false
-    }
-
-
-    IsCharType(): boolean
-    {
-        if (this instanceof BasicType) {
-            return this.basicKind == BasicTypeKind.Char
-        }
-        return false
-    }
-
-    IsNumberType(): boolean
-    {
-        if (this instanceof BasicType) {
-            return IsBaseTypeKindNumber(this.basicKind)
-        }
-        return false
-    }
-
-    IsPointerType()
-    {
-        if (this instanceof IndirectionType) {
-            if (this.indirectionLevel > 0)
-                return true
-        } else if (this instanceof BasicType) {
-            return this.basicKind == BasicTypeKind.CString
+        if (this instanceof BaseType) {
+            return this.baseKind == BaseTypeKind.Struct
         }
         return false
     }
@@ -195,181 +139,120 @@ export abstract class Type
     PrettyPrint(): string
     {
         if (this instanceof ArrayType) {
-            return `[${this.elementType.PrettyPrint()}, ${this.elementCount}}]`
-        } else if (this instanceof BasicType) {
+            return `${this.elementType.PrettyPrint()}[]`
+        } else if (this instanceof BaseType) {
             return this.name
-        } else if (this instanceof IndirectionType) {
-            let result = this.elementType.PrettyPrint()
-            for (let index = 0; index < this.indirectionLevel; index += 1) {
-                result += "*"
-            }
-            return result
+        } else if (this instanceof NullableType) {
+            return `${this.elementType.PrettyPrint()}?`
         }
-        throw new Error("unreachable")
+        throw new Error("Unreachable - Unknown type given")
     }
 
-    IncreaseIndirection(): Type 
+    CanImplicitlyConvertTo(target: Type): boolean
     {
-        return new IndirectionType(this, 1)
+        let conversion = this.ConvertTo(target)
+        return conversion == TypeConversionResult.Identical || conversion == TypeConversionResult.ImplictlyConvertible
     }
 
-    DecreaseIndirection(): Type
+    CanExplicitlyConvertTo(target: Type): boolean
     {
-        if (this instanceof IndirectionType) {
-            if (this.indirectionLevel == 1)
-                return this.elementType
-            else
-                return new IndirectionType(this.elementType, this.indirectionLevel - 1)
-        } else {
-            throw new Error(`Cannot decrease indirection on type ${this.PrettyPrint()}`)
-        }
+        let conversion = this.ConvertTo(target)
+        return conversion != TypeConversionResult.NonConvertible
     }
 
-    static GetTypeThatFitsBothTypes(a: Type, b: Type): Type | null
+    ConvertTo(target: Type): TypeConversionResult
     {
-        if (a.IsVoidType() || b.IsVoidType())
-            return null
-
-        if (Type.TypesIdentical(a, b))
-            return a
-
-        if (a.IsNumberType() && b.IsNumberType()) {
-            if (BytesCountOfNumberType((a as BasicType).basicKind) <= BytesCountOfNumberType((b as BasicType).basicKind))
-                return b
-            else
-                return a
-        }
-
-        if (a.IsPointerType() && b.IsVoidPointer())
-            return a
-        if (a.IsVoidPointer() && b.IsPointerType())
-            return b
-
-        return null
-    }
-
-    CanConvertTo(target: Type): TypeConversionResult
-    {
-        if (this.IsVoidType() || target.IsVoidType())
-            return TypeConversionResult.NonConvertible
-
-        if (Type.TypesIdentical(this, target))
+        if (Type.Identical(this, target))
             return TypeConversionResult.Identical
 
-        if (this instanceof BasicType && target instanceof BasicType) {
-            // We can convert numbers implicitly if they are smaller
-            if (this.IsNumberType() && target.IsNumberType()) {
-                if (BytesCountOfNumberType(this.basicKind) <= BytesCountOfNumberType(target.basicKind))
-                    return TypeConversionResult.ImplictlyConvertible
-                else
-                    return TypeConversionResult.ExplicitlyConvertible
-            }
-
-            // We can convert chars explicitly
-            if (this.basicKind == BasicTypeKind.Char && target.IsNumberType()) {
-                return TypeConversionResult.ExplicitlyConvertible
-            }
-            if (this.IsNumberType() && target.basicKind == BasicTypeKind.Char) {
-                return TypeConversionResult.ExplicitlyConvertible
-            }
-
-            // We can convert enums explicitly
-            if (this.basicKind == BasicTypeKind.Enum && target.IsNumberType()) {
-                return TypeConversionResult.ExplicitlyConvertible
-            }
-            if (this.IsNumberType() && target.basicKind == BasicTypeKind.Enum) {
-                return TypeConversionResult.ExplicitlyConvertible
-            }
+        if (target.IsNullable()) {
+            if (this.IsNull())
+                return TypeConversionResult.ImplictlyConvertible
+            if (Type.Identical(this, target.GetInnerType()))
+                return TypeConversionResult.ImplictlyConvertible
         }
 
-        // Void pointers are always implicitly convertible to other pointers
-        if (this.IsPointerType() && target.IsVoidPointer())
-            return TypeConversionResult.ImplictlyConvertible
-        if (this.IsVoidPointer() && target.IsPointerType())
+        if (target.IsAny())
             return TypeConversionResult.ImplictlyConvertible
 
-        // [type; _] -> type* implicitly
-        if (this.GetIndirectionLevel() == target.GetIndirectionLevel()) {
-            if (this instanceof ArrayType && target instanceof IndirectionType) {
-                if (Type.TypesIdentical(this.elementType, target.elementType))
-                    return TypeConversionResult.ImplictlyConvertible
-            }
-        }
+        if (this instanceof BaseType && target instanceof BaseType) {
+            if (this.IsPrimitive() && target.IsString())
+                return TypeConversionResult.ExplicitlyConvertible
 
-        // char* -> const cha* implicitly
-        if (this instanceof IndirectionType && target instanceof BasicType) {
-            if (target.basicKind == BasicTypeKind.CString) {
-                if (this.indirectionLevel == 1 && this.elementType instanceof BasicType) {
-                    if (this.elementType.basicKind == BasicTypeKind.Char)
-                        return TypeConversionResult.ImplictlyConvertible
-                }
+            if (this.IsBool() && target.IsNumber())
+                return TypeConversionResult.ExplicitlyConvertible
+
+            if (this.IsEnum() && target.IsNumber()) {
+                return TypeConversionResult.ExplicitlyConvertible
             }
         }
 
         return TypeConversionResult.NonConvertible
     }
 
+    GetInnerType(): Type
+    {
+        if (this instanceof ArrayType) {
+            return this.elementType
+        } else if (this instanceof NullableType) {
+            return this.elementType
+        } else {
+            throw new Error("Base type has no inner type")
+        }
+    }
 }
 
 export class ArrayType extends Type
 {
     constructor(
         public elementType: Type,
-        public elementCount: number,
-    ) { super(TypeKind.Array) }
+    ) { super() }
 }
 
-export class IndirectionType extends Type
+export class NullableType extends Type
 {
     constructor(
         public elementType: Type,
-        public indirectionLevel: number, // How many * come after type: int**** -> indirectionLevel == 4
-    ) { super(TypeKind.Indirection) }
+    ) { super() }
 }
 
-export class BasicType extends Type
+export class BaseType extends Type
 {
     public name: string
 
     constructor(
-        public basicKind: BasicTypeKind,
+        public baseKind: BaseTypeKind,
         name: string | null,
     )
     {
-        super(TypeKind.Basic)
+        super()
 
-        if (IsBaseTypeKindPrimitive(basicKind)) {
-            if (name != null)
-                throw new Error(`Unexpected custom name ${name} in primitive type ${basicKind}`)
-        } else {
+        if (IsBaseTypeKindUserDefined(baseKind)) {
             if (name == null)
-                throw new Error(`Invalid custom type ${basicKind} with missing name`)
+                throw new Error(`Invalid user defined type '${baseKind}' with missing name`)
+        } else {
+            if (name != null)
+                throw new Error(`Unexpected user defined name '${name}' in primitive type ${baseKind}`)
         }
 
-        switch (basicKind) {
-            case BasicTypeKind.Void:
+        switch (baseKind) {
+            case BaseTypeKind.Void:
                 this.name = "void"
                 break
-            case BasicTypeKind.Bool:
+            case BaseTypeKind.Any:
+                this.name = "any"
+                break
+            case BaseTypeKind.Null:
+                this.name = "null"
+                break
+            case BaseTypeKind.Bool:
                 this.name = "bool"
                 break
-            case BasicTypeKind.Char:
-                this.name = "char"
+            case BaseTypeKind.Number:
+                this.name = "number"
                 break
-            case BasicTypeKind.Byte:
-                this.name = "byte"
-                break
-            case BasicTypeKind.Short:
-                this.name = "short"
-                break
-            case BasicTypeKind.Int:
-                this.name = "int"
-                break
-            case BasicTypeKind.Long:
-                this.name = "long"
-                break
-            case BasicTypeKind.CString:
-                this.name = "cstring"
+            case BaseTypeKind.String:
+                this.name = "string"
                 break
             default:
                 this.name = name!

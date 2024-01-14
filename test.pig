@@ -71,13 +71,6 @@ fun TestWhileLoops()
             break
     }
     Assert(index == 5)
-
-    let j: byte = 120
-    Assert(j == 120)
-    while j != 5 {
-        j += 1
-    }
-    Assert(j == 5)
 }
 
 fun TestForLoops()
@@ -95,25 +88,25 @@ fun TestIf()
     let i: number = 1
     let j: number = 2
     if (i < j) 
-        Assert(1)
+        Assert(true)
     else 
-        Assert(0)
+        Assert(false)
     
     if (2 > 1) {
-        Assert(1)
-        Assert(2)
-        Assert(3)
+        Assert(true)
+        Assert(true)
+        Assert(true)
     } else {
-        Assert(0)
+        Assert(false)
     }
 
     if (1==0)
-        Assert(0)
+        Assert(false)
     else
         if (1==1)
-            Assert(1)
+            Assert(true)
         else
-            Assert(0)
+            Assert(false)
 }
 
 struct ResultType
@@ -130,17 +123,17 @@ fun Foo(): number {
 fun EarlyReturn()
 {
     return
-    Assert(0)
+    Assert(false)
 }
-fun MustNotBeCalled(): number {
-    Assert(0)
-    return 1
+fun MustNotBeCalled(): bool {
+    Assert(false)
+    return true
 }
-fun ReturnsOne(): number {
-    return 1
+fun ReturnsTrue(): bool {
+    return true
 }
-fun ReturnsZero(): number {
-    return 0
+fun ReturnsFalse(): bool {
+    return false
 }
 fun ReturnComplexResult(): ResultType {
     let result: ResultType
@@ -159,8 +152,8 @@ fun TestFunctionCalls()
     Assert(mymy.first == 1)
     Assert(mymy.second == 2)
 
-    let dummy: number = ReturnsOne() && ReturnsZero() && MustNotBeCalled()
-    Assert(dummy == 0)
+    let dummy: bool = ReturnsTrue() && ReturnsFalse() && MustNotBeCalled()
+    Assert(dummy == false)
 }
 
 let glob_d: number = 100 + 20 + 3 
@@ -185,7 +178,7 @@ fun TestArrays()
     let d: number
 
     b[5] = 123 
-    Assert(b[5] = 123)
+    Assert(b[5] == 123)
     d = 2
     c[5] = 2
     d = b[d + c[5] + 1]
@@ -239,16 +232,16 @@ fun TestStrings()
 
 fun TestOperators()
 {
-    Assert(0 ^ 1 == 1)
+    Assert((0 ^ 1) == 1)
     Assert(1 << 1 == 2)
     Assert(2 >> 1 == 1)
     Assert(~0 == -1)
-    Assert(!0 == 1)
-    Assert(!1 == 0)
-    Assert((0 || 0) == 0)
-    Assert((0 || 1) == 1)
-    Assert((0 && 1) == 0)
-    Assert((1 && 1) == 1)
+    Assert(!false == true)
+    Assert(!true == false)
+    Assert((false || false) == false)
+    Assert((false || true)  == true)
+    Assert((false && true)  == false)
+    Assert((true  && true)  == true)
     Assert((0 | 0) == 0)
     Assert((0 | 1) == 1)
     Assert((0 & 1) == 0)
@@ -265,7 +258,7 @@ fun TestScopeShadowing()
     {
         let scope_test: number = 3
         Assert(scope_test == 3)
-        if (1) {
+        if (true) {
             let scope_test: number = 4
             Assert(scope_test == 4)
         } 
@@ -305,7 +298,7 @@ fun TestForwardDeclaredFunction()
     let result: number = ForwardDeclaredFunction(1, 2, 3)
     Assert(result == 6)
 }
-fun ForwardDeclaredFunction(a: number , b: number , c: number): number
+fun ForwardDeclaredFunction(a: number, b: number, c: number): number
 {
     return a + b + c
 }
@@ -323,8 +316,8 @@ struct MyStruct {
 }
 struct SelfReferential {
     value: number[],
-    next: SelfReferential,
-    previous: SelfReferential,
+    next: SelfReferential?,
+    previous: SelfReferential?,
 }
 fun TestStructs()
 {
@@ -335,32 +328,26 @@ fun TestStructs()
     Assert(a == 10)
 
     let mymy: MyOtherStruct
-    mymy.other = myp
+    mymy.other = my
     Assert(mymy.other.a == 5)
 
     let b: number = mymy.other.a + 5
     Assert(b == 10)
 
     let one: SelfReferential
-    one.value[0] = 1
-    one.value[1] = 1
-    one.value[2] = 1
+    one.value = [1, 1, 1]
     let two: SelfReferential
-    two.value[0] = 2
-    two.value[1] = 2
-    two.value[2] = 2
+    two.value = [2, 2, 2]
     let tre: SelfReferential
-    tre.value[0] = 3
-    tre.value[1] = 3
-    tre.value[2] = 3
+    tre.value = [3, 3, 3]
 
     one.previous = null
-    one.next = &two
+    one.next = two
 
-    two.previous = &one
-    two.next = &tre
+    two.previous = one
+    two.next = tre
 
-    tre.previous = &two
+    tre.previous = two
     tre.next = null
 
     Assert(one.value[0] == 1)
@@ -418,31 +405,31 @@ fun TestSwitchStatements()
     switch (a) {
         case 1: // Fallthrough
         case 3:
-            Assert(0)
+            Assert(false)
             break
         case 5:
-            Assert(1)
+            Assert(true)
             break
         default:
-            Assert(0)
+            Assert(false)
             break
     }
 
     let numnum: MyEnum = MyEnum.Five
     switch (numnum) {
         case MyEnum.One: { {
-                Assert(0)
+                Assert(false)
                 break
             }
         }
         case MyEnum.Three:
-            Assert(0)
+            Assert(false)
             break
         case MyEnum.Five:
-            Assert(1)
+            Assert(true)
             break
         default:
-            Assert(0)
+            Assert(false)
             break
     }
 
@@ -458,8 +445,9 @@ struct Square {
 
 fun TestCasting()
 {
-    let a: byte = (127 + 4) as byte
-    Assert(a == 4)
+    let a: number = true as number
+    Assert(a == 1)
+    Assert(false as number == 0)
 
     let b: number = MyEnum.Five as number
     Assert(b == 5)
@@ -469,8 +457,9 @@ fun TestCasting()
     square.width = 5
     let shape: Shape? = null
     Assert(shape == null)
-    shape = square as Shape
-    Assert(shape.area == 25)
+    // TODO
+    // shape = square as Shape
+    // Assert(shape.area == 25)
 }
 
 fun LocalPersistFunc(): number
@@ -495,14 +484,14 @@ fun TestPrecedence()
     let b: number? = null
     let c: number? = null
     if (a == null || b == null || c == null) {
-        Assert(1)
+        Assert(true)
     } else {
-        Assert(0)
+        Assert(false)
     }
     if (a == null && b == null && c == null) {
-        Assert(1)
+        Assert(true)
     } else {
-        Assert(0)
+        Assert(false)
     }
 }
 
@@ -513,25 +502,19 @@ fun main() {
     TestWhileLoops()
     TestIf()
     TestFunctionCalls()
-    TestPonumberers()
     TestGlobals()
-    TestPonumbererMath()
-    TestLValues()
     TestParenthesis()
     TestArrays()
     TestStrings()
     TestOperators()
     TestScopeShadowing()
     TestParams()
-    TestMultiponumberer()
     TestStructs()
-    TestUnions()
     TestSwitchStatements()
     TestCasting()
-    TestSizeof()
     TestLocalPersist()
 
-    PrnumberString("=====================================")
-    PrnumberString("ALL TESTS PASSED")
-    PrnumberString("=====================================")
+    PrintValue("=====================================")
+    PrintValue("ALL TESTS PASSED")
+    PrintValue("=====================================")
 }
