@@ -2,7 +2,7 @@
 
 import { DiagnosticBag, Source, SourceLocation } from "./common.ts"
 import { Scanner } from "./scanner.ts"
-import { SyntaxKind, SyntaxToken, SyntaxTrivia, SyntaxTree, BinaryExpressionSyntax, BlockStatementSyntax, BreakStatementSyntax, ContinueStatementSyntax, DoWhileStatementSyntax, ExpressionStatementSyntax, ExpressionSyntax, ForStatementSyntax, IfStatementSyntax, ModuleMemberSyntax, ModuleSyntax, NameExpressionSyntax, ParenthesizedExpressionSyntax, ReturnStatementSyntax, StatementSyntax, TypeCastExpressionSyntax, UnaryExpressionSyntax, VariableDeclarationStatementSyntax, WhileStatementSyntax, ImportDeclarationStatementSyntax, GlobalVariableDeclarationStatementSyntax, StructDeclarationStatementSyntax, StructDefinitionStatementSyntax, FunctionDeclarationStatementSyntax, FunctionDefinitionStatementSyntax, TypeExpressionSyntax, EnumDeclarationStatementSyntax, EnumDefinitionStatementSyntax, EnumValueClauseSyntax, SwitchStatementSyntax, CaseStatementSyntax, TernaryConditionalExpressionSyntax, FuncCallExpressionSyntax, MemberAccessExpressionSyntax, ArrayIndexExpressionSyntax, ArrayLiteralSyntax, IntegerLiteralSyntax, CharacterLiteralSyntax, StringLiteralSyntax, BoolLiteralSyntax, NullLiteralSyntax, SizeofExpressionSyntax, ArrayTypeExpressionSyntax } from "./syntax.ts"
+import { SyntaxKind, SyntaxToken, SyntaxTrivia, SyntaxTree, BinaryExpressionSyntax, BlockStatementSyntax, BreakStatementSyntax, ContinueStatementSyntax, DoWhileStatementSyntax, ExpressionStatementSyntax, ExpressionSyntax, ForStatementSyntax, IfStatementSyntax, ModuleMemberSyntax, ModuleSyntax, NameExpressionSyntax, ParenthesizedExpressionSyntax, ReturnStatementSyntax, StatementSyntax, TypeCastExpressionSyntax, UnaryExpressionSyntax, VariableDeclarationStatementSyntax, WhileStatementSyntax, ImportDeclarationStatementSyntax, GlobalVariableDeclarationStatementSyntax, StructDeclarationStatementSyntax, StructDefinitionStatementSyntax, FunctionDeclarationStatementSyntax, FunctionDefinitionStatementSyntax, TypeExpressionSyntax, EnumDeclarationStatementSyntax, EnumDefinitionStatementSyntax, EnumValueClauseSyntax, SwitchStatementSyntax, CaseStatementSyntax, TernaryConditionalExpressionSyntax, FuncCallExpressionSyntax, MemberAccessExpressionSyntax, ArrayIndexExpressionSyntax, ArrayLiteralSyntax, NumberLiteralSyntax, CharacterLiteralSyntax, StringLiteralSyntax, BoolLiteralSyntax, NullLiteralSyntax, SizeofExpressionSyntax, ArrayTypeExpressionSyntax, BaseTypeExpressionSyntax, NullableTypeExpressionSyntax } from "./syntax.ts"
 import { SyntaxFacts } from "./syntax.ts"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -256,7 +256,7 @@ export class Parser
         let integerLiteral: SyntaxToken | null = null
         if (this.Current().kind == SyntaxKind.EqualsToken) {
             equals = this.MatchAndAdvanceToken(SyntaxKind.EqualsToken)
-            integerLiteral = this.MatchAndAdvanceToken(SyntaxKind.IntegerLiteralToken)
+            integerLiteral = this.MatchAndAdvanceToken(SyntaxKind.NumberLiteralToken)
         }
 
         let comma: SyntaxToken | null = null
@@ -340,7 +340,7 @@ export class Parser
         if (caseOrDefaultKeyword.kind == SyntaxKind.CaseKeyword) {
             caseExpression = this.ParseExpression()
             switch (caseExpression.kind) {
-                case SyntaxKind.IntegerLiteral:
+                case SyntaxKind.NumberLiteral:
                 case SyntaxKind.StringLiteral:
                 case SyntaxKind.CharacterLiteral:
                 case SyntaxKind.MemberAccessExpression:
@@ -400,39 +400,18 @@ export class Parser
     private ParseBreakStatement(): StatementSyntax 
     {
         let breakKeyword = this.MatchAndAdvanceToken(SyntaxKind.BreakKeyword)
-        // TODO: move these errors into binder because technically the syntax is still ok
-        if (this.loopLevel == 0 && this.switchCaseLevel == 0) {
-            this.tree.diagnostics.ReportError(
-                breakKeyword.GetLocation(),
-                "Invalid 'break' keyword found outside of loop or switch-case definition"
-            )
-        }
         return new BreakStatementSyntax(this.tree, breakKeyword)
     }
 
     private ParseContinueStatement(): StatementSyntax 
     {
         let continueKeyword = this.MatchAndAdvanceToken(SyntaxKind.ContinueKeyword)
-        // TODO: move these errors into binder because technically the syntax is still ok
-        if (this.loopLevel == 0) {
-            this.tree.diagnostics.ReportError(
-                continueKeyword.GetLocation(),
-                "Invalid 'continue' keyword found outside of loop definition"
-            )
-        }
         return new ContinueStatementSyntax(this.tree, continueKeyword)
     }
 
     private ParseReturnStatement(): StatementSyntax 
     {
         let returnKeyword = this.MatchAndAdvanceToken(SyntaxKind.ReturnKeyword)
-        // TODO: move these errors into binder because technically the syntax is still ok
-        if (this.functionLevel == 0) {
-            this.tree.diagnostics.ReportError(
-                returnKeyword.GetLocation(),
-                "Invalid 'return' keyword found outside of function definition"
-            )
-        }
         let returnExpression: ExpressionSyntax | null = null
         if (this.Current().kind != SyntaxKind.EndOfFileToken) {
             // NOTE: The return keyword and an expression coming after it both belong to the return 
@@ -689,19 +668,15 @@ export class Parser
                 return this.ParseParenthesizedExpression()
             case SyntaxKind.IdentifierToken:
                 return this.ParseNameExpression()
-            case SyntaxKind.SizeOfKeyword:
-                return this.ParseSizeOfExpression()
-            case SyntaxKind.LeftBraceToken:
+            case SyntaxKind.LeftBracketToken:
                 return this.ParseArrayLiteral()
             case SyntaxKind.NullKeyword:
                 return this.ParseNullLiteral()
             case SyntaxKind.FalseKeyword:
             case SyntaxKind.TrueKeyword:
                 return this.ParseBoolLiteral()
-            case SyntaxKind.IntegerLiteralToken:
-                return this.ParseIntegerLiteral()
-            case SyntaxKind.CharacterLiteralToken:
-                return this.ParseCharacterLiteral()
+            case SyntaxKind.NumberLiteralToken:
+                return this.ParseNumberLiteral()
             case SyntaxKind.StringLiteralToken:
                 return this.ParseStringLiteral()
             default:
@@ -723,20 +698,11 @@ export class Parser
         return new NameExpressionSyntax(this.tree, identifierToken)
     }
 
-    private ParseSizeOfExpression(): SizeofExpressionSyntax
-    {
-        let sizeofKeyword = this.MatchAndAdvanceToken(SyntaxKind.SizeOfKeyword)
-        let leftParen = this.MatchAndAdvanceToken(SyntaxKind.LeftParenToken)
-        let typeExpression = this.ParseTypeExpression()
-        let rightParen = this.MatchAndAdvanceToken(SyntaxKind.RightParenToken)
-        return new SizeofExpressionSyntax(this.tree, sizeofKeyword, leftParen, typeExpression, rightParen)
-    }
-
     private ParseArrayLiteral(): ArrayLiteralSyntax
     {
-        let leftBrace = this.MatchAndAdvanceToken(SyntaxKind.LeftBraceToken)
+        let leftBracket = this.MatchAndAdvanceToken(SyntaxKind.LeftBracketToken)
         let elemsWithSeparators = []
-        while (this.Current().kind != SyntaxKind.RightBraceToken) {
+        while (this.Current().kind != SyntaxKind.RightBracketToken) {
             let expression = this.ParseExpression()
             elemsWithSeparators.push(expression)
 
@@ -747,8 +713,8 @@ export class Parser
                 break
             }
         }
-        let rightBrace = this.MatchAndAdvanceToken(SyntaxKind.RightBraceToken)
-        return new ArrayLiteralSyntax(this.tree, leftBrace, elemsWithSeparators, rightBrace)
+        let rightBracket = this.MatchAndAdvanceToken(SyntaxKind.RightBracketToken)
+        return new ArrayLiteralSyntax(this.tree, leftBracket, elemsWithSeparators, rightBracket)
     }
 
     private ParseNullLiteral(): NullLiteralSyntax
@@ -774,63 +740,46 @@ export class Parser
         return new StringLiteralSyntax(this.tree, stringLiteral)
     }
 
-    private ParseCharacterLiteral(): CharacterLiteralSyntax
+    private ParseNumberLiteral(): NumberLiteralSyntax
     {
-        let characterLiteral = this.MatchAndAdvanceToken(SyntaxKind.CharacterLiteralToken)
-        return new CharacterLiteralSyntax(this.tree, characterLiteral)
-    }
-
-    private ParseIntegerLiteral(): IntegerLiteralSyntax
-    {
-        let integerLiteral = this.MatchAndAdvanceToken(SyntaxKind.IntegerLiteralToken)
-        return new IntegerLiteralSyntax(this.tree, integerLiteral)
+        let numberLiteral = this.MatchAndAdvanceToken(SyntaxKind.NumberLiteralToken)
+        return new NumberLiteralSyntax(this.tree, numberLiteral)
     }
 
     private ParseTypeExpression(): TypeExpressionSyntax
     {
-        let baseType
-        if (this.Current().kind == SyntaxKind.LeftBracketToken) {
-            baseType = this.ParseArrayTypeExpression()
-        } else {
-            switch (this.Current().kind) {
-                case SyntaxKind.VoidKeyword:
-                case SyntaxKind.CharKeyword:
-                case SyntaxKind.BoolKeyword:
-                case SyntaxKind.ByteKeyword:
-                case SyntaxKind.ShortKeyword:
-                case SyntaxKind.IntKeyword:
-                case SyntaxKind.LongKeyword:
-                case SyntaxKind.CStringKeyword:
-                case SyntaxKind.IdentifierToken:
-                    baseType = this.AdvanceToken()
-                    break
-                default:
-                    this.tree.diagnostics.ReportError(
-                        this.Current().GetLocation(),
-                        `Expected primitive type or identifier token - got '${this.Current().GetLocation().GetText()}' instead`
-                    )
-                    baseType = this.MatchAndAdvanceToken(SyntaxKind.IntKeyword)
-                    break
+        let typeIdentifier
+        switch (this.Current().kind) {
+            case SyntaxKind.AnyKeyword:
+            case SyntaxKind.BoolKeyword:
+            case SyntaxKind.NumberKeyword:
+            case SyntaxKind.StringKeyword:
+            case SyntaxKind.IdentifierToken:
+                typeIdentifier = this.AdvanceToken()
+                break
+            default:
+                this.tree.diagnostics.ReportError(
+                    this.Current().GetLocation(),
+                    `Expected primitive type or identifier token - got '${this.Current().GetLocation().GetText()}' instead`
+                )
+                typeIdentifier = this.MatchAndAdvanceToken(SyntaxKind.AnyKeyword)
+                break
+        }
+
+        let result: TypeExpressionSyntax = new BaseTypeExpressionSyntax(this.tree, typeIdentifier)
+        while (this.Current().kind == SyntaxKind.QuestionmarkToken
+            || this.Current().kind == SyntaxKind.LeftBracketToken) {
+            if (this.Current().kind == SyntaxKind.QuestionmarkToken) {
+                let questionMark = this.MatchAndAdvanceToken(SyntaxKind.QuestionmarkToken)
+                result = new NullableTypeExpressionSyntax(this.tree, result, questionMark)
+            }
+            if (this.Current().kind == SyntaxKind.LeftBracketToken) {
+                let leftBracket = this.MatchAndAdvanceToken(SyntaxKind.LeftBracketToken)
+                let righBracket = this.MatchAndAdvanceToken(SyntaxKind.RightBracketToken)
+                result = new ArrayTypeExpressionSyntax(this.tree, result, leftBracket, righBracket)
             }
         }
-
-        let starTokens = []
-        while (this.Current().kind == SyntaxKind.StarToken) {
-            let star = this.MatchAndAdvanceToken(SyntaxKind.StarToken)
-            starTokens.push(star)
-        }
-
-        return new TypeExpressionSyntax(this.tree, baseType, starTokens)
-    }
-
-    private ParseArrayTypeExpression(): ArrayTypeExpressionSyntax
-    {
-        let leftBracket = this.MatchAndAdvanceToken(SyntaxKind.LeftBracketToken)
-        let elemType = this.ParseTypeExpression()
-        let semicolon = this.MatchAndAdvanceToken(SyntaxKind.SemicolonToken)
-        let arraySizeLiteral = this.MatchAndAdvanceToken(SyntaxKind.IntegerLiteralToken)
-        let rightBracket = this.MatchAndAdvanceToken(SyntaxKind.RightBracketToken)
-        return new ArrayTypeExpressionSyntax(this.tree, leftBracket, elemType, semicolon, arraySizeLiteral, rightBracket)
+        return result
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////

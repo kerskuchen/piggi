@@ -1,6 +1,6 @@
 // deno-lint-ignore-file prefer-const
 
-import { SourceLocation, DiagnosticBag, Source } from "./common.ts"
+import { SourceLocation, DiagnosticBag, Source, IndentedTextWriter } from "./common.ts"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -83,8 +83,8 @@ export enum SyntaxKind
     RightBracketToken = "RightBracketToken",
 
     /////// Literals
-    IntegerLiteralToken = "IntegerLiteralToken",
-    CharacterLiteralToken = "CharacterLiteralToken",
+
+    NumberLiteralToken = "NumberLiteralToken",
     StringLiteralToken = "StringLiteralToken",
 
     /////// Keywords and identifiers
@@ -92,17 +92,13 @@ export enum SyntaxKind
     IdentifierToken = "IdentifierToken",
 
     // Primitive types
-    VoidKeyword = "VoidKeyword",
-    CharKeyword = "CharKeyword",
-    ByteKeyword = "ByteKeyword",
-    ShortKeyword = "ShortKeyword",
-    IntKeyword = "IntKeyword",
-    LongKeyword = "LongKeyword",
+    NumberKeyword = "NumberKeyword",
+    StringKeyword = "StringKeyword",
     NullKeyword = "NullKeyword",
-    CStringKeyword = "CStringKeyword",
     BoolKeyword = "BoolKeyword",
     TrueKeyword = "TrueKeyword",
     FalseKeyword = "FalseKeyword",
+    AnyKeyword = "AnyKeyword",
 
     // Declarations
     LetKeyword = "LetKeyword",
@@ -130,7 +126,6 @@ export enum SyntaxKind
     // Misc
     InKeyword = "InKeyword",
     AsKeyword = "AsKeyword",
-    SizeOfKeyword = "SizeOfKeyword",
 
     // Storage location
     ExternKeyword = "ExternKeyword",
@@ -154,7 +149,7 @@ export enum SyntaxKind
 
     // Literals
     NullLiteral = "NullLiteral",
-    IntegerLiteral = "IntegerLiteral",
+    NumberLiteral = "IntegerLiteral",
     CharacterLiteral = "CharacterLiteral",
     BoolLiteral = "BoolLiteral",
     StringLiteral = "StringLiteral",
@@ -292,35 +287,25 @@ export class SyntaxFacts
             case SyntaxKind.RightBracketToken:
                 return "]"
 
-            case SyntaxKind.IntegerLiteralToken:
+            case SyntaxKind.NumberLiteralToken:
                 return "int-lit"
-            case SyntaxKind.CharacterLiteralToken:
-                return "chr-lit"
             case SyntaxKind.StringLiteralToken:
                 return "str-lit"
 
-            case SyntaxKind.CharKeyword:
-                return "char"
-            case SyntaxKind.ByteKeyword:
-                return "byte"
-            case SyntaxKind.ShortKeyword:
-                return "short"
-            case SyntaxKind.IntKeyword:
-                return "int"
-            case SyntaxKind.LongKeyword:
+            case SyntaxKind.NumberKeyword:
                 return "long"
-            case SyntaxKind.VoidKeyword:
+            case SyntaxKind.StringKeyword:
                 return "void"
             case SyntaxKind.NullKeyword:
                 return "nullptr"
-            case SyntaxKind.CStringKeyword:
-                return "cstring"
             case SyntaxKind.BoolKeyword:
                 return "bool"
             case SyntaxKind.TrueKeyword:
                 return "true"
             case SyntaxKind.FalseKeyword:
                 return "false"
+            case SyntaxKind.AnyKeyword:
+                return "any"
 
             case SyntaxKind.IfKeyword:
                 return "if"
@@ -346,8 +331,6 @@ export class SyntaxFacts
                 return "default"
             case SyntaxKind.AsKeyword:
                 return "as"
-            case SyntaxKind.SizeOfKeyword:
-                return "sizeof"
             case SyntaxKind.InKeyword:
                 return "in"
 
@@ -382,28 +365,20 @@ export class SyntaxFacts
     static GetKeywordForIdentifier(identifier: string): SyntaxKind
     {
         switch (identifier) {
-            case SyntaxFacts.TokenKindToString(SyntaxKind.CharKeyword):
-                return SyntaxKind.CharKeyword
-            case SyntaxFacts.TokenKindToString(SyntaxKind.ByteKeyword):
-                return SyntaxKind.ByteKeyword
-            case SyntaxFacts.TokenKindToString(SyntaxKind.ShortKeyword):
-                return SyntaxKind.ShortKeyword
-            case SyntaxFacts.TokenKindToString(SyntaxKind.IntKeyword):
-                return SyntaxKind.IntKeyword
-            case SyntaxFacts.TokenKindToString(SyntaxKind.LongKeyword):
-                return SyntaxKind.LongKeyword
-            case SyntaxFacts.TokenKindToString(SyntaxKind.VoidKeyword):
-                return SyntaxKind.VoidKeyword
+            case SyntaxFacts.TokenKindToString(SyntaxKind.NumberKeyword):
+                return SyntaxKind.NumberKeyword
+            case SyntaxFacts.TokenKindToString(SyntaxKind.StringKeyword):
+                return SyntaxKind.StringKeyword
             case SyntaxFacts.TokenKindToString(SyntaxKind.NullKeyword):
                 return SyntaxKind.NullKeyword
-            case SyntaxFacts.TokenKindToString(SyntaxKind.CStringKeyword):
-                return SyntaxKind.CStringKeyword
             case SyntaxFacts.TokenKindToString(SyntaxKind.BoolKeyword):
                 return SyntaxKind.BoolKeyword
             case SyntaxFacts.TokenKindToString(SyntaxKind.TrueKeyword):
                 return SyntaxKind.TrueKeyword
             case SyntaxFacts.TokenKindToString(SyntaxKind.FalseKeyword):
                 return SyntaxKind.FalseKeyword
+            case SyntaxFacts.TokenKindToString(SyntaxKind.AnyKeyword):
+                return SyntaxKind.AnyKeyword
 
             case SyntaxFacts.TokenKindToString(SyntaxKind.IfKeyword):
                 return SyntaxKind.IfKeyword
@@ -429,8 +404,6 @@ export class SyntaxFacts
                 return SyntaxKind.DefaultKeyword
             case SyntaxFacts.TokenKindToString(SyntaxKind.AsKeyword):
                 return SyntaxKind.AsKeyword
-            case SyntaxFacts.TokenKindToString(SyntaxKind.SizeOfKeyword):
-                return SyntaxKind.SizeOfKeyword
             case SyntaxFacts.TokenKindToString(SyntaxKind.InKeyword):
                 return SyntaxKind.InKeyword
 
@@ -653,9 +626,9 @@ export abstract class SyntaxNode
         if (this instanceof SyntaxToken) {
             result += " "
             result += `'${this.GetText()}'`
-            if (this.intValue !== null) {
+            if (this.numValue !== null) {
                 result += " "
-                result += this.intValueIsHex ? "0x" + this.intValue.toString(16) : this.intValue
+                result += this.numValueIsHex ? "0x" + this.numValue.toString(16) : this.numValue
             }
             if (this.stringValue !== null) {
                 result += " "
@@ -696,9 +669,9 @@ export abstract class SyntaxNode
 export class SyntaxToken extends SyntaxNode
 {
     // NOTE: A token is missing if it was inserted by the parser and doesn't appear in source.
-    public isMissing: boolean
-    public intValue: number | null = null
-    public intValueIsHex = false
+    public numValue: number | null = null
+    public numValueIsHex = false
+    public numValueIsFloat = false
     public stringValue: string | null = null
 
     constructor(
@@ -710,8 +683,9 @@ export class SyntaxToken extends SyntaxNode
         public trailingTrivia: SyntaxTrivia[])
     {
         super(kind, tree)
-        this.isMissing = text == null
     }
+
+    public IsMissing() { return this.text == null }
 
     static CreateEmpty(tree: SyntaxTree): SyntaxToken
     {
@@ -720,8 +694,12 @@ export class SyntaxToken extends SyntaxNode
 
     GetText(): string
     {
-        if (this.isMissing)
+        if (this.text == null)
             return "<missing token>"
+        else if (this.kind == SyntaxKind.EndOfFileToken)
+            return "<EOF>"
+        else if (this.text == "")
+            throw new Error("Empty token text")
         else
             return this.text!
     }
@@ -827,14 +805,14 @@ export class NullLiteralSyntax extends ExpressionSyntax
     }
 }
 
-export class IntegerLiteralSyntax extends ExpressionSyntax
+export class NumberLiteralSyntax extends ExpressionSyntax
 {
     constructor(
         syntaxTree: SyntaxTree,
-        public integerLiteral: SyntaxToken,
+        public numberLiteral: SyntaxToken,
     )
     {
-        super(SyntaxKind.IntegerLiteral, syntaxTree)
+        super(SyntaxKind.NumberLiteral, syntaxTree)
     }
 }
 
@@ -864,9 +842,9 @@ export class ArrayLiteralSyntax extends ExpressionSyntax
 {
     constructor(
         syntaxTree: SyntaxTree,
-        public leftBrace: SyntaxToken,
+        public leftBracket: SyntaxToken,
         public elemsWithSeparators: SyntaxNode[],
-        public rightBrace: SyntaxToken,
+        public rightBracket: SyntaxToken,
     )
     {
         super(SyntaxKind.ArrayLiteral, syntaxTree)
@@ -1008,12 +986,27 @@ export class SizeofExpressionSyntax extends ExpressionSyntax
     }
 }
 
-export class TypeExpressionSyntax extends ExpressionSyntax
+export abstract class TypeExpressionSyntax extends ExpressionSyntax
+{
+}
+
+export class BaseTypeExpressionSyntax extends ExpressionSyntax
 {
     constructor(
         syntaxTree: SyntaxTree,
-        public baseType: SyntaxToken | ArrayTypeExpressionSyntax,
-        public starTokens: SyntaxToken[],
+        public typeIdentifier: SyntaxToken,
+    )
+    {
+        super(SyntaxKind.TypeExpression, syntaxTree)
+    }
+}
+
+export class NullableTypeExpressionSyntax extends ExpressionSyntax
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public innerType: TypeExpressionSyntax,
+        public questionMark: SyntaxToken,
     )
     {
         super(SyntaxKind.TypeExpression, syntaxTree)
@@ -1024,10 +1017,8 @@ export class ArrayTypeExpressionSyntax extends ExpressionSyntax
 {
     constructor(
         syntaxTree: SyntaxTree,
-        public leftBracket: SyntaxToken,
         public elemType: TypeExpressionSyntax,
-        public semicolon: SyntaxToken,
-        public arraySizeLiteral: SyntaxToken,
+        public leftBracket: SyntaxToken,
         public righBracket: SyntaxToken,
     )
     {

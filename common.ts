@@ -26,8 +26,9 @@ export class Source
             if (this.content[curPos] == '\n') {
                 lineIndex += 1
                 columnIndex = 0
+            } else {
+                columnIndex += 1
             }
-            columnIndex += 1
             curPos += 1
         }
         return new LineColumnIndex(lineIndex, columnIndex)

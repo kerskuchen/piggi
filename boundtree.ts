@@ -3,7 +3,7 @@
 import { BoundBinaryOperator, BoundUnaryOperator } from "./binder.ts"
 import { Symbol, SymbolTable } from "./old/symbols.ts"
 import { SyntaxNode } from "./syntax.ts"
-import { ArrayType, BasicTypeKind, Type } from "./types.ts"
+import { BasicTypeKind, Type } from "./types.ts"
 
 export enum BoundUnaryOperatorKind
 {

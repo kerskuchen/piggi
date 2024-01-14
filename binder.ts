@@ -979,7 +979,7 @@ export class Binder
             // Array definition
             let longint arrayElementCount = -1
             let bool arrayElementCountDefined = false
-            if (syntax.variableDeclarationStmt.arraySizeLiteral.kind == SyntaxKind.IntegerLiteralToken) {
+            if (syntax.variableDeclarationStmt.arraySizeLiteral.kind == SyntaxKind.NumerLiteralToken) {
                 arrayElementCount = syntax.variableDeclarationStmt.arraySizeLiteral.intvalue
                 arrayElementCountDefined = true
             }
@@ -1511,7 +1511,7 @@ export class Binder
                     )
                 }
 
-                if (memberClause.enumMember.integerLiteral.kind == SyntaxKind.IntegerLiteralToken) {
+                if (memberClause.enumMember.integerLiteral.kind == SyntaxKind.NumerLiteralToken) {
                     let SyntaxToken valueToken = memberClause.enumMember.integerLiteral
                     if (valueToken.intvalue < valueCounter) {
                         this.diagnostics.ReportError(

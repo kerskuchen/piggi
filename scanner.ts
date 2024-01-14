@@ -199,6 +199,8 @@ export class Scanner
                     this.token.kind = SyntaxKind.PlusEqualsToken
                     this.Advance()
                     this.Advance()
+                } else if (IsDigit(this.Lookahead())) {
+                    this.ReadNumberLiteral()
                 } else {
                     this.token.kind = SyntaxKind.PlusToken
                     this.Advance()
@@ -214,7 +216,7 @@ export class Scanner
                     this.Advance()
                     this.Advance()
                 } else if (IsDigit(this.Lookahead())) {
-                    this.ReadIntegerLiteral()
+                    this.ReadNumberLiteral()
                 } else {
                     this.token.kind = SyntaxKind.MinusToken
                     this.Advance()
@@ -401,11 +403,13 @@ export class Scanner
             default: {
                 let ch = this.Current()
                 if (IsDigit(ch)) {
-                    this.ReadIntegerLiteral()
+                    this.ReadNumberLiteral()
                 } else if (IsLetter(ch) || (ch == '_')) {
                     this.ReadIdentifierOrKeyword()
-                } else if (ch == '\'') {
-                    this.ReadCharacterLiteral()
+                } else if (ch == "`") {
+                    this.ReadStringLiteral()
+                } else if (ch == "'") {
+                    this.ReadStringLiteral()
                 } else if (ch == '"') {
                     this.ReadStringLiteral()
                 } else {
@@ -433,24 +437,24 @@ export class Scanner
 
     private ReadStringLiteral()
     {
-        this.Advance() // Skip opening quote
+        let startingQuote = this.Advance()
 
         let start = this.pos
         while (this.Current() != '\0' && this.Current() != '\n') {
             let ch = this.Current()
-            if (ch == '\\' && this.Lookahead() == '"') {
+            if (ch == '\\' && this.Lookahead() == startingQuote) {
                 this.Advance()
                 this.Advance()
                 continue
             }
-            if (ch == '"')
+            if (ch == startingQuote)
                 break
             this.Advance()
         }
         let end = this.pos
 
         let closingQuote = this.Current()
-        if (closingQuote != '"')
+        if (closingQuote != startingQuote)
             this.tree.diagnostics.ReportError(this.GetLocation(), "Unterminated string literal")
         else
             this.Advance()
@@ -459,134 +463,53 @@ export class Scanner
         this.token.stringValue = this.source.content.substring(start, end)
     }
 
-    private ReadIntegerLiteral()
+    private ReadNumberLiteral()
     {
-        let isNegative = false
         if (this.Current() == '-') {
-            isNegative = true
+            this.Advance()
+        } else if (this.Current() == '+') {
             this.Advance()
         }
 
-        let radix = 10
+        let isFloat = false
+        let isHex = false
         if (this.Current() == '0' && this.Lookahead() == 'x') {
-            radix = 16
+            isHex = true
             this.Advance()
             this.Advance()
-        }
-
-        let intvalue = this.ReadPositiveIntegerLiteralWithRadix(radix)
-        this.token.kind = SyntaxKind.IntegerLiteralToken
-        this.token.intValueIsHex = radix == 16
-        this.token.intValue = isNegative ? -intvalue : intvalue
-    }
-
-    private ReadCharacterLiteral()
-    {
-        this.Advance() // Skip opening quote
-
-        let ch = this.ReadCharWithEscapeSequence()
-
-        let closingQuote = this.Current()
-        if (closingQuote != '\'')
-            this.tree.diagnostics.ReportError(
-                this.GetLocation(),
-                `Expected closing quote \"'\" character after character literal but got '${closingQuote}`
-            )
-        else
-            this.Advance()
-
-        this.token.kind = SyntaxKind.CharacterLiteralToken
-        this.token.stringValue = ch
-    }
-
-    private ReadCharWithEscapeSequence(): string
-    {
-        let start = this.pos
-        let ch = this.Advance()
-        if (ch == '\\') {
-            let escape = this.Advance()
-            switch (escape) {
-                case 'b':
-                    this.token.intValue = '\b'.charCodeAt(0)
-                    return '\b' // backspace
-                case 'f':
-                    this.token.intValue = '\f'.charCodeAt(0)
-                    return '\f' // form feed
-                case 'n':
-                    this.token.intValue = '\n'.charCodeAt(0)
-                    return '\n' // line feed
-                case 'r':
-                    this.token.intValue = '\r'.charCodeAt(0)
-                    return '\r' // carriage return
-                case 't':
-                    this.token.intValue = '\t'.charCodeAt(0)
-                    return '\t' // horizontal tab
-                case 'v':
-                    this.token.intValue = '\v'.charCodeAt(0)
-                    return '\v' // vertival tab
-                case '\\':
-                    this.token.intValue = '\\'.charCodeAt(0)
-                    return '\\' // backslash
-                case '"':
-                    this.token.intValue = '\"'.charCodeAt(0)
-                    return '"'  // double quote
-                case '\'':
-                    this.token.intValue = '\''.charCodeAt(0)
-                    return '\'' // single quote
-                case '0':
-                    this.token.intValue = '\0'.charCodeAt(0)
-                    return '\0' // zero terminator
-                case 'x': {
-                    let intValue = this.ReadPositiveIntegerLiteralWithRadix(16)
-                    if (intValue > 255) {
-                        this.tree.diagnostics.ReportError(
-                            this.GetLocation(),
-                            "Hexadecimal character literal cannot be bigger than '\\xFF'"
-                        )
-                        intValue = 255
-                    }
-                    let end = this.pos
-                    this.token.intValue = intValue
-                    return this.source.content.substring(start, end)
-                }
-                default:
-                    this.tree.diagnostics.ReportError(
-                        this.GetLocation(),
-                        `Unknown escape sequence '\\${escape}'`
-                    )
-            }
-        }
-        return ch
-    }
-
-    private ReadPositiveIntegerLiteralWithRadix(radix: number): number
-    {
-        if ("0123456789ABCDEF".indexOf(this.Current().toUpperCase()) == -1) {
-            this.tree.diagnostics.ReportError(
-                this.GetLocation(),
-                `Unexpected character in integer literal '${this.Current()}'`,
-            )
-        }
-
-        let result = 0
-        let digit = 0
-        while (true) {
-            digit = "0123456789ABCDEF".indexOf(this.Current().toUpperCase())
-            if (digit == -1)
-                break
-            if (digit >= radix) {
+            if (!"0123456789ABCDEF".includes(this.Current().toUpperCase())) {
                 this.tree.diagnostics.ReportError(
                     this.GetLocation(),
-                    `Invalid digit in integer literal '${this.Current()}'`
+                    `Expected hexadecimal number after '0x' prefix but got '${this.Current()}`
                 )
+                this.token.kind = SyntaxKind.BadToken
+                this.token.numValueIsHex = false
+                this.token.numValueIsFloat = false
+                this.token.numValue = 0
+                return
             }
-            result = result * radix + digit
-            this.Advance()
+            while ("0123456789ABCDEF".includes(this.Current().toUpperCase())) {
+                this.Advance()
+            }
+        } else {
+            while (IsDigit(this.Current())) {
+                this.Advance()
+            }
+            if (this.Current() == "." && IsDigit(this.Lookahead())) {
+                this.Advance()
+                isFloat = true
+                while (IsDigit(this.Current())) {
+                    this.Advance()
+                }
+            }
         }
 
-        return result
+        let text = this.GetLocation().GetText()
+        this.token.kind = SyntaxKind.NumberLiteralToken
+        this.token.numValueIsHex = isHex
+        this.token.numValueIsFloat = isFloat
+        this.token.numValue = isFloat ? parseFloat(text) : parseInt(text)
     }
-
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // Helpers 
@@ -607,8 +530,8 @@ export class Scanner
         if (this.pos < this.source.content.length)
             this.pos += 1
 
-        this.debugAlreadyScanned = this.source.content.substring(0, this.pos)
-        this.debugToScan = this.source.content.substring(this.pos)
+        this.debugAlreadyScanned = this.source.content.substring(this.pos - 5, this.pos)
+        this.debugToScan = this.source.content.substring(this.pos, this.pos + 5)
 
         return result
     }
