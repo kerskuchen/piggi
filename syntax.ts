@@ -172,17 +172,17 @@ export enum SyntaxKind
     SwitchStatement = "SwitchStatement",
     CaseStatement = "CaseStatement",
     DefaultStatement = "DefaultStatement",
-    VariableDeclarationStatement = "VariableDeclarationStatement",
+    VariableDeclaration = "VariableDeclaration",
 
     // Module
     Module = "Module",
-    ImportDeclarationStatement = "ImportDeclarationStatement",
-    GlobalVariableDeclarationStatement = "GlobalVariableDeclarationStatement",
-    EnumDeclarationStatement = "EnumDeclarationStatement",
+    ImportDeclaration = "ImportDeclaration",
+    GlobalVariableDeclaration = "GlobalVariableDeclaration",
+    EnumDeclaration = "EnumDeclaration",
     EnumDefinitionStatement = "EnumDefinitionStatement",
-    StructDeclarationStatement = "StructDeclarationStatement",
+    StructDeclaration = "StructDeclaration",
     StructDefinitionStatement = "StructtDefinitionStatement",
-    FunctionDeclarationStatement = "FunctionDeclarationStatement",
+    FunctionDeclaration = "FunctionDeclaration",
     FunctionDefinitionStatement = "FunctionDefinitionStatement",
 }
 
@@ -1169,7 +1169,7 @@ export class CaseStatementSyntax extends StatementSyntax
     }
 }
 
-export class VariableDeclarationStatementSyntax extends StatementSyntax
+export class VariableDeclarationSyntax extends StatementSyntax
 {
     constructor(
         syntaxTree: SyntaxTree,
@@ -1181,14 +1181,14 @@ export class VariableDeclarationStatementSyntax extends StatementSyntax
         public initializer: ExpressionSyntax | null,
     )
     {
-        super(SyntaxKind.VariableDeclarationStatement, syntaxTree)
+        super(SyntaxKind.VariableDeclaration, syntaxTree)
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Module
 
-export class ImportDeclarationStatementSyntax extends ModuleMemberSyntax
+export class ImportDeclarationSyntax extends ModuleMemberSyntax
 {
     constructor(
         syntaxTree: SyntaxTree,
@@ -1196,19 +1196,19 @@ export class ImportDeclarationStatementSyntax extends ModuleMemberSyntax
         public modulenameIdent: SyntaxToken,
     )
     {
-        super(SyntaxKind.ImportDeclarationStatement, syntaxTree)
+        super(SyntaxKind.ImportDeclaration, syntaxTree)
     }
 }
 
-export class GlobalVariableDeclarationStatementSyntax extends ModuleMemberSyntax
+export class GlobalVariableDeclarationSyntax extends ModuleMemberSyntax
 {
     constructor(
         syntaxTree: SyntaxTree,
         public externKeyword: SyntaxToken | null,
-        public declaration: VariableDeclarationStatementSyntax,
+        public declaration: VariableDeclarationSyntax,
     )
     {
-        super(SyntaxKind.GlobalVariableDeclarationStatement, syntaxTree)
+        super(SyntaxKind.GlobalVariableDeclaration, syntaxTree)
     }
 }
 
@@ -1226,7 +1226,7 @@ export class EnumValueClauseSyntax extends SyntaxNode
     }
 }
 
-export class EnumDeclarationStatementSyntax extends ModuleMemberSyntax
+export class EnumDeclarationSyntax extends ModuleMemberSyntax
 {
     constructor(
         syntaxTree: SyntaxTree,
@@ -1235,7 +1235,7 @@ export class EnumDeclarationStatementSyntax extends ModuleMemberSyntax
         public identifier: SyntaxToken,
     )
     {
-        super(SyntaxKind.EnumDeclarationStatement, syntaxTree)
+        super(SyntaxKind.EnumDeclaration, syntaxTree)
     }
 }
 
@@ -1243,7 +1243,7 @@ export class EnumDefinitionStatementSyntax extends ModuleMemberSyntax
 {
     constructor(
         syntaxTree: SyntaxTree,
-        public enumDeclaration: EnumDeclarationStatementSyntax,
+        public enumDeclaration: EnumDeclarationSyntax,
         public leftBrace: SyntaxToken,
         public values: EnumValueClauseSyntax[],
         public rightBrace: SyntaxToken,
@@ -1253,7 +1253,7 @@ export class EnumDefinitionStatementSyntax extends ModuleMemberSyntax
     }
 }
 
-export class StructDeclarationStatementSyntax extends ModuleMemberSyntax
+export class StructDeclarationSyntax extends ModuleMemberSyntax
 {
     constructor(
         syntaxTree: SyntaxTree,
@@ -1262,7 +1262,7 @@ export class StructDeclarationStatementSyntax extends ModuleMemberSyntax
         public identifier: SyntaxToken,
     )
     {
-        super(SyntaxKind.StructDeclarationStatement, syntaxTree)
+        super(SyntaxKind.StructDeclaration, syntaxTree)
     }
 }
 
@@ -1270,7 +1270,7 @@ export class StructDefinitionStatementSyntax extends ModuleMemberSyntax
 {
     constructor(
         syntaxTree: SyntaxTree,
-        public structDeclaration: StructDeclarationStatementSyntax,
+        public structDeclaration: StructDeclarationSyntax,
         public leftBrace: SyntaxToken,
         public membersAndSeparators: SyntaxNode[],
         public rightBrace: SyntaxNode,
@@ -1280,7 +1280,7 @@ export class StructDefinitionStatementSyntax extends ModuleMemberSyntax
     }
 }
 
-export class FunctionDeclarationStatementSyntax extends ModuleMemberSyntax
+export class FunctionDeclarationSyntax extends ModuleMemberSyntax
 {
     constructor(
         syntaxTree: SyntaxTree,
@@ -1294,7 +1294,7 @@ export class FunctionDeclarationStatementSyntax extends ModuleMemberSyntax
         public returnType: TypeExpressionSyntax | null,
     )
     {
-        super(SyntaxKind.FunctionDeclarationStatement, syntaxTree)
+        super(SyntaxKind.FunctionDeclaration, syntaxTree)
     }
 }
 
@@ -1302,7 +1302,7 @@ export class FunctionDefinitionStatementSyntax extends ModuleMemberSyntax
 {
     constructor(
         syntaxTree: SyntaxTree,
-        public funcDecl: FunctionDeclarationStatementSyntax,
+        public funcDecl: FunctionDeclarationSyntax,
         public body: BlockStatementSyntax,
     )
     {

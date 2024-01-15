@@ -6,7 +6,7 @@
     "configurations": [
         {
             "request": "launch",
-            "name": "Launch Program",
+            "name": "compile",
             "type": "node",
             "program": "${workspaceFolder}/piggi.ts",
             "cwd": "${workspaceFolder}",
@@ -17,6 +17,21 @@
                 "--allow-all"
             ],
             "attachSimplePort": 9229
+        },
+        {
+            "request": "launch",
+            "name": "test",
+            "type": "node",
+            "program": "${workspaceFolder}/bin/test.js",
+            "cwd": "${workspaceFolder}",
+            "runtimeExecutable": "deno",
+            "runtimeArgs": [
+                "run",
+                "--inspect-wait",
+                "--allow-all"
+            ],
+            "attachSimplePort": 9229,
+            "preLaunchTask": "compile"
         }
     ]
 }

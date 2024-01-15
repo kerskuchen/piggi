@@ -2,9 +2,10 @@
 
 import { Binder } from "./binder.ts"
 import { Source } from "./common.ts"
+import { Emitter } from "./emitter.ts"
 import { Parser } from "./parser.ts"
 import { SymbolTable } from "./symbols.ts"
-import { ImportDeclarationStatementSyntax, SyntaxKind, SyntaxTree } from "./syntax.ts"
+import { ImportDeclarationSyntax, SyntaxKind, SyntaxTree } from "./syntax.ts"
 
 function LoadSource(moduleName: string): Source
 {
@@ -31,8 +32,8 @@ function CollectSyntaxTreesRecursive(result: SyntaxTree[], visited: string[], mo
     let tree = parser.Parse()
 
     for (let member of tree.root.members) {
-        if (member.kind == SyntaxKind.ImportDeclarationStatement) {
-            let importStatement = member as ImportDeclarationStatementSyntax
+        if (member.kind == SyntaxKind.ImportDeclaration) {
+            let importStatement = member as ImportDeclarationSyntax
             if (importStatement.modulenameIdent.GetText() == null) {
                 // We already reported a parsing error
                 continue
@@ -69,7 +70,13 @@ function Main()
 
     if (binder.diagnostics.hasErrors) {
         binder.diagnostics.Print()
+        return
     }
+
+    let emitter = new Emitter()
+    let output = emitter.EmitCompilationUnit(compilation)
+
+    Deno.writeTextFileSync("bin/" + rootModuleName + ".js", output)
 }
 
 Main()

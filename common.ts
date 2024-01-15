@@ -48,7 +48,7 @@ export class Source
         }
 
         let endPos = startPos
-        while (startPos < this.content.length) {
+        while (endPos < this.content.length) {
             if (this.content[endPos] == '\n') {
                 endPos += 1
                 break
@@ -133,6 +133,8 @@ export class Diagnostic
 
         // TODO: This does not work for multiline locations yet
         let line = source.GetLineLocation(startLineColumnIndex.line).GetText()
+        if (!line.endsWith('\n'))
+            line += '\n'
         let prefix = line.substring(0, startLineColumnIndex.column)
         let error = line.substring(startLineColumnIndex.column, endLineColumnIndex.column)
         let suffix = line.substring(endLineColumnIndex.column)

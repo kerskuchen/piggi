@@ -64,9 +64,9 @@ export enum BoundNodeKind
     // Expressions
     MissingExpression = "MissingExpression",
     NameExpression = "NameExpression",
-    FunccallExpression = "FunccallExpression",
-    Arrayindexing = "Arrayindexing",
-    Memberaccess = "Memberaccess",
+    FunctionCallExpression = "FunccallExpression",
+    ArrayIndexExpression = "Arrayindexing",
+    MemberAccessExpression = "Memberaccess",
     TypeCastExpression = "TypeCastExpression",
     ParenthesizedExpression = "ParenthesizedExpression",
     UnaryExpression = "UnaryExpression",
@@ -99,17 +99,12 @@ export enum BoundNodeKind
     CaseStatement = "CaseStatement",
     DefaultStatement = "DefaultStatement",
 
-    ImportDeclarationStatement = "ImportDeclarationStatement",
-    EnumDeclarationStatement = "EnumDeclarationStatement",
-    EnumDefinitionStatement = "EnumDefinitionStatement",
-    StructDeclarationStatement = "StructDeclarationStatement",
-    StructDefinitionStatement = "StructDefinitionStatement",
-    UnionDeclarationStatement = "UnionDeclarationStatement",
-    UnionDefinitionStatement = "UnionDefinitionStatement",
-    FunctionDeclarationStatement = "FunctionDeclarationStatement",
-    FunctionDefinitionStatement = "FunctionDefinitionStatement",
-    VariableDeclarationStatement = "VariableDeclarationStatement",
-    ArrayDeclarationStatement = "ArrayDeclarationStatement",
+    ImportDeclaration = "ImportDeclaration",
+    EnumDeclaration = "EnumDeclaration",
+    StructDeclaration = "StructDeclaration",
+    FunctionDeclaration = "FunctionDeclaration",
+    VariableDeclaration = "VariableDeclaration",
+    ArrayDeclaration = "ArrayDeclaration",
 
     // Contains all global function- and variable declarations
     CompilationUnit = "CompilationUnit",
@@ -145,9 +140,9 @@ export abstract class BoundNode
     {
         let result = ""
 
-        let tokenMarker = isLast ? "└──" : "├──"
+        let nodeMarker = isLast ? "└──" : "├──"
         result += indent
-        result += tokenMarker
+        result += nodeMarker
         result += this.kind
 
         result += "\n"
@@ -166,17 +161,6 @@ export abstract class BoundNode
     }
 }
 
-export class BoundCompilationUnit extends BoundNode
-{
-    constructor(
-        symbolTable: SymbolTable,
-        public globalDeclarations: BoundNode[]
-    ) { super(BoundNodeKind.CompilationUnit, null, symbolTable) }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Module Statements
-
 export abstract class BoundStatement extends BoundNode
 {
     private _dummyStmt = 0
@@ -185,6 +169,33 @@ export abstract class BoundStatement extends BoundNode
         syntax: SyntaxNode | null,
         symbolTable: SymbolTable,
     ) { super(kind, syntax, symbolTable) }
+}
+
+export abstract class BoundExpression extends BoundNode
+{
+    private _dummyExp = 0
+
+    // TODO: nullable symbol is not good. we should remove this and put it in nodes that actually need it
+    // then we need to think about how to make the callsites sane
+    public symbol: Symbol | null = null
+    constructor(
+        kind: BoundNodeKind,
+        syntax: SyntaxNode | null,
+        symbolTable: SymbolTable,
+        public type: Type,
+        public isRValue: boolean,
+    ) { super(kind, syntax, symbolTable) }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Compilation Unit
+
+export class BoundCompilationUnit extends BoundNode
+{
+    constructor(
+        symbolTable: SymbolTable,
+        public globalDeclarations: BoundStatement[]
+    ) { super(BoundNodeKind.CompilationUnit, null, symbolTable) }
 }
 
 // Created by the binder only when an error occurred
@@ -197,16 +208,16 @@ export class BoundMissingStatement extends BoundStatement
     ) { super(BoundNodeKind.MissingStatement, syntax, symbolTable) }
 }
 
-export class BoundImportDeclarationStatement extends BoundStatement
+export class BoundImportDeclaration extends BoundStatement
 {
     constructor(
         syntax: SyntaxNode,
         symbolTable: SymbolTable,
         public modulename: string
-    ) { super(BoundNodeKind.ImportDeclarationStatement, syntax, symbolTable) }
+    ) { super(BoundNodeKind.ImportDeclaration, syntax, symbolTable) }
 }
 
-export class BoundStructDeclarationStatement extends BoundStatement
+export class BoundStructDeclaration extends BoundStatement
 {
     constructor(
         syntax: SyntaxNode | null,
@@ -216,16 +227,14 @@ export class BoundStructDeclarationStatement extends BoundStatement
     )
     {
         super(
-            isForwardDeclaration
-                ? BoundNodeKind.StructDeclarationStatement
-                : BoundNodeKind.StructDefinitionStatement,
+            BoundNodeKind.StructDeclaration,
             syntax,
             symbolTable
         )
     }
 }
 
-export class BoundEnumDeclarationStatement extends BoundStatement
+export class BoundEnumDeclaration extends BoundStatement
 {
     constructor(
         syntax: SyntaxNode | null,
@@ -235,16 +244,14 @@ export class BoundEnumDeclarationStatement extends BoundStatement
     )
     {
         super(
-            isForwardDeclaration
-                ? BoundNodeKind.EnumDeclarationStatement
-                : BoundNodeKind.EnumDefinitionStatement,
+            BoundNodeKind.EnumDeclaration,
             syntax,
             symbolTable
         )
     }
 }
 
-export class BoundFunctionDeclarationStatement extends BoundStatement
+export class BoundFunctionDeclaration extends BoundStatement
 {
     public isForwardDeclaration: boolean
     constructor(
@@ -255,9 +262,7 @@ export class BoundFunctionDeclarationStatement extends BoundStatement
     )
     {
         super(
-            body == null
-                ? BoundNodeKind.FunctionDeclarationStatement
-                : BoundNodeKind.FunctionDefinitionStatement,
+            BoundNodeKind.FunctionDeclaration,
             syntax,
             symbolTable
         )
@@ -273,7 +278,7 @@ export class BoundExpressionStatement extends BoundStatement
     constructor(
         syntax: SyntaxNode | null,
         symbolTable: SymbolTable,
-        public expresion: BoundExpression,
+        public expression: BoundExpression,
     ) { super(BoundNodeKind.ExpressionStatement, syntax, symbolTable) }
 }
 
@@ -286,14 +291,14 @@ export class BoundBlockStatement extends BoundStatement
     ) { super(BoundNodeKind.BlockStatement, syntax, symbolTable) }
 }
 
-export class BoundVariableDeclarationStatement extends BoundStatement
+export class BoundVariableDeclaration extends BoundStatement
 {
     constructor(
         syntax: SyntaxNode | null,
         symbolTable: SymbolTable,
         public symbol: Symbol,
         public initializer: BoundExpression | null
-    ) { super(BoundNodeKind.VariableDeclarationStatement, syntax, symbolTable) }
+    ) { super(BoundNodeKind.VariableDeclaration, syntax, symbolTable) }
 }
 
 export class BoundIfStatement extends BoundStatement
@@ -395,20 +400,6 @@ export class BoundCaseStatement extends BoundStatement
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Expressions
 
-export abstract class BoundExpression extends BoundNode
-{
-    private _dummyExp = 0
-
-    public symbol: Symbol | null = null
-    constructor(
-        kind: BoundNodeKind,
-        syntax: SyntaxNode | null,
-        symbolTable: SymbolTable,
-        public type: Type,
-        public isRValue: boolean,
-    ) { super(kind, syntax, symbolTable) }
-}
-
 // Created by the binder only when an error occurred
 export class BoundMissingExpression extends BoundExpression
 {
@@ -463,11 +454,10 @@ export class BoundParenthesizedExpression extends BoundExpression
     constructor(
         syntax: SyntaxNode | null,
         symbolTable: SymbolTable,
-        type: Type,
         public inner: BoundExpression,
     )
     {
-        super(BoundNodeKind.NameExpression, syntax, symbolTable, type, inner.isRValue)
+        super(BoundNodeKind.ParenthesizedExpression, syntax, symbolTable, inner.type, inner.isRValue)
         if (!inner.isRValue)
             this.symbol = inner.symbol
     }
@@ -498,7 +488,7 @@ export class BoundBinaryExpression extends BoundExpression
         public right: BoundExpression,
     )
     {
-        super(BoundNodeKind.UnaryExpression, syntax, symbolTable, operator.resultType, operator.resultIsRValue)
+        super(BoundNodeKind.BinaryExpression, syntax, symbolTable, operator.resultType, operator.resultIsRValue)
         if (operator.leftMustBeLValue && !operator.resultIsRValue)
             this.symbol = left.symbol
     }
@@ -509,13 +499,12 @@ export class BoundTernaryConditionalExpression extends BoundExpression
     constructor(
         syntax: SyntaxNode | null,
         symbolTable: SymbolTable,
-        type: Type,
         public condition: BoundExpression,
         public thenExpression: BoundExpression,
         public elseExpression: BoundExpression,
     )
     {
-        super(BoundNodeKind.UnaryExpression, syntax, symbolTable, type, true)
+        super(BoundNodeKind.TernaryConditionalExpression, syntax, symbolTable, thenExpression.type, true)
     }
 }
 
@@ -524,12 +513,12 @@ export class BoundFunctionCallExpression extends BoundExpression
     constructor(
         syntax: SyntaxNode | null,
         symbolTable: SymbolTable,
-        func: Symbol,
+        funcSym: Symbol,
         public args: BoundExpression[],
     )
     {
-        super(BoundNodeKind.UnaryExpression, syntax, symbolTable, func.type, false)
-        this.symbol = func
+        super(BoundNodeKind.FunctionCallExpression, syntax, symbolTable, funcSym.type, false)
+        this.symbol = funcSym
     }
 }
 
@@ -538,12 +527,12 @@ export class BoundArrayIndexExpression extends BoundExpression
     constructor(
         syntax: SyntaxNode | null,
         symbolTable: SymbolTable,
-        type: Type,
+        elemType: Type,
         public array: BoundExpression,
         public index: BoundExpression,
     )
     {
-        super(BoundNodeKind.UnaryExpression, syntax, symbolTable, type, false)
+        super(BoundNodeKind.ArrayIndexExpression, syntax, symbolTable, elemType, false)
     }
 }
 
@@ -556,7 +545,7 @@ export class BoundMemberAccessExpression extends BoundExpression
         public memberSymbol: Symbol,
     )
     {
-        super(BoundNodeKind.Memberaccess, syntax, symbolTable, memberSymbol.type, false)
+        super(BoundNodeKind.MemberAccessExpression, syntax, symbolTable, memberSymbol.type, false)
     }
 }
 
@@ -575,6 +564,7 @@ export class BoundPrimitiveLiteral extends BoundExpression
         syntax: SyntaxNode | null,
         symbolTable: SymbolTable,
         type: Type,
+        public tokenText: string
     ) { super(kind, syntax, symbolTable, type, true) }
 }
 
@@ -595,5 +585,5 @@ export class BoundArrayLiteral extends BoundExpression
         symbolTable: SymbolTable,
         public elemType: Type,
         public values: BoundExpression[],
-    ) { super(BoundNodeKind.EnumValueLiteral, syntax, symbolTable, elemType, true) }
+    ) { super(BoundNodeKind.ArrayLiteral, syntax, symbolTable, elemType, true) }
 }

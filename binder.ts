@@ -1,12 +1,12 @@
 // deno-lint-ignore-file prefer-const
 
-import { BoundArrayIndexExpression, BoundArrayLiteral, BoundBinaryExpression, BoundBlockStatement, BoundBreakStatement, BoundCaseStatement, BoundCompilationUnit, BoundContinueStatement, BoundDoWhileStatement, BoundEnumValueLiteral, BoundExpression, BoundExpressionStatement, BoundForStatement, BoundFunctionCallExpression, BoundFunctionDeclarationStatement, BoundIfStatement, BoundImportDeclarationStatement, BoundMemberAccessExpression, BoundMissingExpression, BoundMissingStatement, BoundNameExpression, BoundNodeKind, BoundParenthesizedExpression, BoundPrimitiveLiteral, BoundReturnStatement, BoundStatement, BoundStructDeclarationStatement, BoundSwitchStatement, BoundTernaryConditionalExpression, BoundTypeCastExpression, BoundUnaryExpression, BoundVariableDeclarationStatement, BoundWhileStatement } from "./boundtree.ts"
+import { BoundArrayIndexExpression, BoundArrayLiteral, BoundBinaryExpression, BoundBlockStatement, BoundBreakStatement, BoundCaseStatement, BoundCompilationUnit, BoundContinueStatement, BoundDoWhileStatement, BoundEnumValueLiteral, BoundExpression, BoundExpressionStatement, BoundForStatement, BoundFunctionCallExpression, BoundFunctionDeclaration, BoundIfStatement, BoundImportDeclaration, BoundMemberAccessExpression, BoundMissingExpression, BoundMissingStatement, BoundNameExpression, BoundNodeKind, BoundParenthesizedExpression, BoundPrimitiveLiteral, BoundReturnStatement, BoundStatement, BoundStructDeclaration, BoundSwitchStatement, BoundTernaryConditionalExpression, BoundTypeCastExpression, BoundUnaryExpression, BoundVariableDeclaration, BoundWhileStatement } from "./boundtree.ts"
 import { DiagnosticBag, SourceLocation } from "./common.ts"
-import { ArrayIndexExpressionSyntax, ArrayLiteralSyntax, ArrayTypeExpressionSyntax, BaseTypeExpressionSyntax, BinaryExpressionSyntax, BlockStatementSyntax, BoolLiteralSyntax, BreakStatementSyntax, CaseStatementSyntax, ContinueStatementSyntax, DoWhileStatementSyntax, EnumDeclarationStatementSyntax, EnumDefinitionStatementSyntax, ExpressionStatementSyntax, ExpressionSyntax, ForStatementSyntax, FuncCallExpressionSyntax, FunctionDeclarationStatementSyntax, FunctionDefinitionStatementSyntax, GlobalVariableDeclarationStatementSyntax, IfStatementSyntax, ImportDeclarationStatementSyntax, MemberAccessExpressionSyntax, ModuleMemberSyntax, NameExpressionSyntax, NullLiteralSyntax, NullableTypeExpressionSyntax, NumberLiteralSyntax, ParenthesizedExpressionSyntax, ReturnStatementSyntax, StatementSyntax, StringLiteralSyntax, StructDeclarationStatementSyntax, StructDefinitionStatementSyntax, SwitchStatementSyntax, SyntaxTree, TernaryConditionalExpressionSyntax, TypeCastExpressionSyntax, TypeExpressionSyntax, UnaryExpressionSyntax, VariableDeclarationStatementSyntax, WhileStatementSyntax } from "./syntax.ts"
+import { ArrayIndexExpressionSyntax, ArrayLiteralSyntax, ArrayTypeExpressionSyntax, BaseTypeExpressionSyntax, BinaryExpressionSyntax, BlockStatementSyntax, BoolLiteralSyntax, BreakStatementSyntax, CaseStatementSyntax, ContinueStatementSyntax, DoWhileStatementSyntax, EnumDeclarationSyntax, EnumDefinitionStatementSyntax, ExpressionStatementSyntax, ExpressionSyntax, ForStatementSyntax, FuncCallExpressionSyntax, FunctionDeclarationSyntax, FunctionDefinitionStatementSyntax, GlobalVariableDeclarationSyntax, IfStatementSyntax, ImportDeclarationSyntax, MemberAccessExpressionSyntax, ModuleMemberSyntax, NameExpressionSyntax, NullLiteralSyntax, NullableTypeExpressionSyntax, NumberLiteralSyntax, ParenthesizedExpressionSyntax, ReturnStatementSyntax, StatementSyntax, StringLiteralSyntax, StructDeclarationSyntax, StructDefinitionStatementSyntax, SwitchStatementSyntax, SyntaxTree, TernaryConditionalExpressionSyntax, TypeCastExpressionSyntax, TypeExpressionSyntax, UnaryExpressionSyntax, VariableDeclarationSyntax, WhileStatementSyntax } from "./syntax.ts"
 import { SyntaxKind } from "./syntax.ts"
 import { ArrayType, BaseType, BaseTypeKind, NullableType, Type } from "./types.ts"
 import { Symbol, SymbolTable, SymbolScopeKind, SymbolKind } from "./symbols.ts"
-import { BoundEnumDeclarationStatement } from "./boundtree.ts"
+import { BoundEnumDeclaration } from "./boundtree.ts"
 import { BoundBinaryOperator, BoundUnaryOperator } from "./operators.ts"
 
 export class Binder
@@ -43,20 +43,20 @@ export class Binder
     private BindModuleStatement(syntax: ModuleMemberSyntax): BoundStatement
     {
         switch (syntax.kind) {
-            case SyntaxKind.ImportDeclarationStatement:
-                return this.BindImportDeclarationStatement(syntax as ImportDeclarationStatementSyntax)
-            case SyntaxKind.GlobalVariableDeclarationStatement:
-                return this.BindGlobalVariableDefinitionStatement(syntax as GlobalVariableDeclarationStatementSyntax)
-            case SyntaxKind.EnumDeclarationStatement:
-                return this.BindEnumDefinitionStatement(syntax as EnumDeclarationStatementSyntax)
+            case SyntaxKind.ImportDeclaration:
+                return this.BindImportDeclaration(syntax as ImportDeclarationSyntax)
+            case SyntaxKind.GlobalVariableDeclaration:
+                return this.BindGlobalVariableDefinitionStatement(syntax as GlobalVariableDeclarationSyntax)
+            case SyntaxKind.EnumDeclaration:
+                return this.BindEnumDefinitionStatement(syntax as EnumDeclarationSyntax)
             case SyntaxKind.EnumDefinitionStatement:
                 return this.BindEnumDefinitionStatement(syntax as EnumDefinitionStatementSyntax)
-            case SyntaxKind.StructDeclarationStatement:
-                return this.BindStructDefinitionStatement(syntax as StructDeclarationStatementSyntax)
+            case SyntaxKind.StructDeclaration:
+                return this.BindStructDefinitionStatement(syntax as StructDeclarationSyntax)
             case SyntaxKind.StructDefinitionStatement:
                 return this.BindStructDefinitionStatement(syntax as StructDefinitionStatementSyntax)
-            case SyntaxKind.FunctionDeclarationStatement:
-                return this.BindFunctionDefinitionStatement(syntax as FunctionDeclarationStatementSyntax)
+            case SyntaxKind.FunctionDeclaration:
+                return this.BindFunctionDefinitionStatement(syntax as FunctionDeclarationSyntax)
             case SyntaxKind.FunctionDefinitionStatement:
                 return this.BindFunctionDefinitionStatement(syntax as FunctionDefinitionStatementSyntax)
             default:
@@ -67,16 +67,16 @@ export class Binder
     ////////////////////////////////////////////////////////////////////////////////////////////////////
     // Module
 
-    private BindImportDeclarationStatement(syntax: ImportDeclarationStatementSyntax): BoundImportDeclarationStatement
+    private BindImportDeclaration(syntax: ImportDeclarationSyntax): BoundImportDeclaration
     {
         if (this.currentFunctionSymbol != null)
             throw new Error("Unexpected global variable declaration in function")
 
         let modulename = syntax.modulenameIdent.GetText()
-        return new BoundImportDeclarationStatement(syntax, this.symbolTable, modulename)
+        return new BoundImportDeclaration(syntax, this.symbolTable, modulename)
     }
 
-    private BindGlobalVariableDefinitionStatement(syntax: GlobalVariableDeclarationStatementSyntax): BoundVariableDeclarationStatement | BoundMissingStatement
+    private BindGlobalVariableDefinitionStatement(syntax: GlobalVariableDeclarationSyntax): BoundVariableDeclaration | BoundMissingStatement
     {
         if (this.currentFunctionSymbol != null)
             throw new Error("Unexpected global variable declaration in function")
@@ -86,14 +86,14 @@ export class Binder
         return this.BindVariableDefinitionStatement(syntax.declaration, symbolScopeKind)
     }
 
-    private BindStructDefinitionStatement(syntax: StructDeclarationStatementSyntax | StructDefinitionStatementSyntax): BoundStructDeclarationStatement | BoundMissingStatement
+    private BindStructDefinitionStatement(syntax: StructDeclarationSyntax | StructDefinitionStatementSyntax): BoundStructDeclaration | BoundMissingStatement
     {
         if (this.currentFunctionSymbol != null)
             throw new Error("Unexpected struct declaration in function")
 
         let declarationPart
-        if (syntax instanceof StructDeclarationStatementSyntax) {
-            declarationPart = syntax as StructDeclarationStatementSyntax
+        if (syntax instanceof StructDeclarationSyntax) {
+            declarationPart = syntax as StructDeclarationSyntax
         } else {
             declarationPart = (syntax as StructDefinitionStatementSyntax).structDeclaration
         }
@@ -116,7 +116,7 @@ export class Binder
             // Push struct member symboltable scope to parse variable declarations as members
             structSymbol.membersSymbolTable = this.PushNewSymbolTable()
             for (let index = 0; index < syntax.membersAndSeparators.length; index += 2) {
-                let memberDeclaration = syntax.membersAndSeparators[index] as VariableDeclarationStatementSyntax
+                let memberDeclaration = syntax.membersAndSeparators[index] as VariableDeclarationSyntax
                 let memberNode = this.BindVariableDefinitionStatement(memberDeclaration, SymbolScopeKind.Local)
                 if (memberNode instanceof BoundMissingStatement)
                     continue
@@ -139,17 +139,17 @@ export class Binder
             structSymbol.alreadyDefined = true
         }
 
-        return new BoundStructDeclarationStatement(syntax, this.symbolTable, structSymbol, isForwardDeclaration)
+        return new BoundStructDeclaration(syntax, this.symbolTable, structSymbol, isForwardDeclaration)
     }
 
-    private BindEnumDefinitionStatement(syntax: EnumDeclarationStatementSyntax | EnumDefinitionStatementSyntax): BoundEnumDeclarationStatement | BoundMissingStatement
+    private BindEnumDefinitionStatement(syntax: EnumDeclarationSyntax | EnumDefinitionStatementSyntax): BoundEnumDeclaration | BoundMissingStatement
     {
         if (this.currentFunctionSymbol != null)
             throw new Error("Unexpected enum declaration in function")
 
         let declarationPart
-        if (syntax instanceof EnumDeclarationStatementSyntax) {
-            declarationPart = syntax as EnumDeclarationStatementSyntax
+        if (syntax instanceof EnumDeclarationSyntax) {
+            declarationPart = syntax as EnumDeclarationSyntax
         } else {
             declarationPart = (syntax as EnumDefinitionStatementSyntax).enumDeclaration
         }
@@ -218,17 +218,17 @@ export class Binder
             enumSymbol.alreadyDefined = true
         }
 
-        return new BoundEnumDeclarationStatement(syntax, this.symbolTable, enumSymbol, isForwardDeclaration)
+        return new BoundEnumDeclaration(syntax, this.symbolTable, enumSymbol, isForwardDeclaration)
     }
 
-    private BindFunctionDefinitionStatement(syntax: FunctionDeclarationStatementSyntax | FunctionDefinitionStatementSyntax): BoundFunctionDeclarationStatement | BoundMissingStatement
+    private BindFunctionDefinitionStatement(syntax: FunctionDeclarationSyntax | FunctionDefinitionStatementSyntax): BoundFunctionDeclaration | BoundMissingStatement
     {
         if (this.currentFunctionSymbol != null)
             throw new Error("Unexpected function declaration in function")
 
         let declarationPart
-        if (syntax instanceof FunctionDeclarationStatementSyntax) {
-            declarationPart = syntax as FunctionDeclarationStatementSyntax
+        if (syntax instanceof FunctionDeclarationSyntax) {
+            declarationPart = syntax as FunctionDeclarationSyntax
         } else {
             declarationPart = (syntax as FunctionDefinitionStatementSyntax).funcDecl
         }
@@ -250,7 +250,7 @@ export class Binder
         let functionParamsSymbolTable = this.PushNewSymbolTable()
         for (let index = 0; index < declarationPart.paramsAndSeparators.length; index += 2) {
             let param = declarationPart.paramsAndSeparators[index]
-            if (!(param instanceof VariableDeclarationStatementSyntax))
+            if (!(param instanceof VariableDeclarationSyntax))
                 throw new Error(`Function parameter syntax has wrong type ${param.kind}`)
             let boundParam = this.BindVariableDefinitionStatement(param, SymbolScopeKind.Local)
             if (boundParam instanceof BoundMissingStatement)
@@ -313,7 +313,7 @@ export class Binder
             this.PopSymbolTable()
         }
 
-        return new BoundFunctionDeclarationStatement(syntax, this.symbolTable, functionSymbol, body)
+        return new BoundFunctionDeclaration(syntax, this.symbolTable, functionSymbol, body)
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -340,8 +340,8 @@ export class Binder
                 return this.BindContinueStatement(syntax as ContinueStatementSyntax)
             case SyntaxKind.SwitchStatement:
                 return this.BindSwitchStatement(syntax as SwitchStatementSyntax)
-            case SyntaxKind.VariableDeclarationStatement:
-                return this.BindVariableDefinitionStatement(syntax as VariableDeclarationStatementSyntax, SymbolScopeKind.Local)
+            case SyntaxKind.VariableDeclaration:
+                return this.BindVariableDefinitionStatement(syntax as VariableDeclarationSyntax, SymbolScopeKind.Local)
             case SyntaxKind.ExpressionStatement:
                 return this.BindExpressionStatement(syntax as ExpressionStatementSyntax)
             default:
@@ -368,7 +368,7 @@ export class Binder
         return this.FlattenBlockStatementIfNecessary(new BoundBlockStatement(syntax, this.symbolTable, boundStatements)) as BoundBlockStatement
     }
 
-    private BindVariableDefinitionStatement(syntax: VariableDeclarationStatementSyntax, symbolScopeKind: SymbolScopeKind): BoundVariableDeclarationStatement | BoundMissingStatement
+    private BindVariableDefinitionStatement(syntax: VariableDeclarationSyntax, symbolScopeKind: SymbolScopeKind): BoundVariableDeclaration | BoundMissingStatement
     {
         let identifier = syntax.identifier
         let varName = syntax.identifier.GetText()
@@ -398,7 +398,7 @@ export class Binder
             initializer = this.BindExpression(syntax.initializer)
             this.CanConvertTypeImplicitlyOrError(syntax.initializer.GetLocation(), initializer.type, varSymbol.type)
         }
-        return new BoundVariableDeclarationStatement(syntax, this.symbolTable, varSymbol, initializer)
+        return new BoundVariableDeclaration(syntax, this.symbolTable, varSymbol, initializer)
     }
 
     private BindIfStatement(syntax: IfStatementSyntax): BoundIfStatement
@@ -673,7 +673,7 @@ export class Binder
     private BindParenthesizedExpression(syntax: ParenthesizedExpressionSyntax): BoundParenthesizedExpression
     {
         let inner = this.BindExpression(syntax.inner)
-        return new BoundParenthesizedExpression(syntax, this.symbolTable, inner.type, inner)
+        return new BoundParenthesizedExpression(syntax, this.symbolTable, inner)
     }
 
     private BindTernaryConditionalExpression(syntax: TernaryConditionalExpressionSyntax): BoundExpression
@@ -689,7 +689,7 @@ export class Binder
             return new BoundMissingExpression(syntax, this.symbolTable)
         }
 
-        return new BoundTernaryConditionalExpression(syntax, this.symbolTable, thenExpression.type, condition, thenExpression, elseExpression)
+        return new BoundTernaryConditionalExpression(syntax, this.symbolTable, condition, thenExpression, elseExpression)
     }
 
     private BindBinaryExpression(syntax: BinaryExpressionSyntax): BoundExpression
@@ -889,19 +889,21 @@ export class Binder
 
     private BindNullLiteral(syntax: NullLiteralSyntax): BoundPrimitiveLiteral
     {
-        return new BoundPrimitiveLiteral(BoundNodeKind.NullLiteral, syntax, this.symbolTable, Type.Null)
+        return new BoundPrimitiveLiteral(BoundNodeKind.NullLiteral, syntax, this.symbolTable, Type.Null, "null")
     }
 
     private BindBoolLiteral(syntax: BoolLiteralSyntax): BoundPrimitiveLiteral
     {
-        let result = new BoundPrimitiveLiteral(BoundNodeKind.BoolLiteral, syntax, this.symbolTable, Type.Bool)
-        result.boolValue = syntax.boolLiteral.kind == SyntaxKind.FalseKeyword ? false : true
+        let value = syntax.boolLiteral.kind == SyntaxKind.FalseKeyword ? false : true
+        let result = new BoundPrimitiveLiteral(BoundNodeKind.BoolLiteral, syntax, this.symbolTable, Type.Bool, value ? "true" : "false")
+        result.boolValue = value
         return result
     }
 
     private BindNumberLiteral(syntax: NumberLiteralSyntax): BoundPrimitiveLiteral
     {
-        let result = new BoundPrimitiveLiteral(BoundNodeKind.NumberLiteral, syntax, this.symbolTable, Type.Number)
+        let tokenText = syntax.numberLiteral.text ?? syntax.numberLiteral.toString()
+        let result = new BoundPrimitiveLiteral(BoundNodeKind.NumberLiteral, syntax, this.symbolTable, Type.Number, tokenText)
         result.numValue = syntax.numberLiteral.numValue
         result.numValueIsHex = syntax.numberLiteral.numValueIsHex
         result.numValueIsFloat = syntax.numberLiteral.numValueIsFloat
@@ -910,7 +912,8 @@ export class Binder
 
     private BindStringLiteral(syntax: StringLiteralSyntax): BoundPrimitiveLiteral
     {
-        let result = new BoundPrimitiveLiteral(BoundNodeKind.StringLiteral, syntax, this.symbolTable, Type.String)
+        let tokenText = syntax.stringLiteral.text ?? syntax.stringLiteral.stringValue ?? "'<missing>'"
+        let result = new BoundPrimitiveLiteral(BoundNodeKind.StringLiteral, syntax, this.symbolTable, Type.String, tokenText)
         result.stringValue = syntax.stringLiteral.stringValue
         return result
     }
@@ -928,7 +931,7 @@ export class Binder
         if (values.length > 0)
             elemType = values[0].type
 
-        // Check that we don't have any duplicate case labels
+        // Check that value types somewhat match
         for (let outer = 0; outer < values.length; outer += 1) {
             let a = values[outer]
             for (let inner = outer + 1; inner < values.length; inner += 1) {

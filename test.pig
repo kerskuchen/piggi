@@ -2,7 +2,7 @@ import prelude
 
 fun TestBasics()
 {
-    let a: number = -1 + 2 * 3 - 4 / +5
+    let a: number = -1 + 2 * 3 - 4 / +2 + 2
     Assert(a == 5)
 
     let b: number = 123
@@ -13,7 +13,7 @@ fun TestBasics()
     Assert(c == a + b)
     Assert(c == 5 + 123)
     Assert(c == 128)
-    Assert(c == (123 + (-1 + 2 * 3 - 4 / +5)))
+    Assert(c == (123 + (-1 + 2 * 3 - 4 / +2 + 2)))
 
     let d: number = 0xfe + 1
     Assert(d == 255)
@@ -78,6 +78,10 @@ fun TestForLoops()
     let value: number = 0 
     Assert(value == 0)
     for index in 2..5 { 
+        value = index
+    }
+    Assert(value == 4)
+    for index in 2..=5 { 
         value = index
     }
     Assert(value == 5)
@@ -495,7 +499,7 @@ fun TestPrecedence()
     }
 }
 
-fun main() {
+fun Main() {
     TestBasics()
     TestComparisons()
     TestForLoops()
