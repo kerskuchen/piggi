@@ -1,8 +1,9 @@
 // deno-lint-ignore-file prefer-const
 
-import { BoundArrayIndexExpression, BoundArrayLiteral, BoundBinaryExpression, BoundBlockStatement, BoundBreakStatement, BoundCaseStatement, BoundCompilationUnit, BoundContinueStatement, BoundDoWhileStatement, BoundEnumDeclaration, BoundEnumValueLiteral, BoundExpression, BoundExpressionStatement, BoundForStatement, BoundFunctionCallExpression, BoundFunctionDeclaration, BoundIfStatement, BoundImportDeclaration, BoundMemberAccessExpression, BoundMissingExpression, BoundMissingStatement, BoundNameExpression, BoundNodeKind, BoundParenthesizedExpression, BoundPrimitiveLiteral, BoundReturnStatement, BoundStatement, BoundStructDeclaration, BoundSwitchStatement, BoundTernaryConditionalExpression, BoundTypeCastExpression, BoundUnaryExpression, BoundVariableDeclaration, BoundWhileStatement } from "./boundtree.ts"
+import { BoundArrayIndexExpression, BoundArrayLiteral, BoundBinaryExpression, BoundBinaryOperatorKindToString, BoundBlockStatement, BoundBreakStatement, BoundCaseStatement, BoundCompilationUnit, BoundContinueStatement, BoundDoWhileStatement, BoundEnumDeclaration, BoundEnumValueLiteral, BoundExpression, BoundExpressionStatement, BoundForStatement, BoundFunctionCallExpression, BoundFunctionDeclaration, BoundIfStatement, BoundImportDeclaration, BoundMemberAccessExpression, BoundMissingExpression, BoundMissingStatement, BoundNameExpression, BoundNodeKind, BoundParenthesizedExpression, BoundPrimitiveLiteral, BoundReturnStatement, BoundStatement, BoundStructDeclaration, BoundSwitchStatement, BoundTernaryConditionalExpression, BoundTypeCastExpression, BoundUnaryExpression, BoundUnaryOperatorKindToString, BoundVariableDeclaration, BoundWhileStatement } from "./boundtree.ts"
 import { SymbolScopeKind } from "./symbols.ts"
 import { SyntaxFacts } from "./syntax.ts"
+import { ArrayType, BaseType, BaseTypeKind, NullableType, Type } from "./types.ts"
 
 export class Emitter
 {
@@ -27,7 +28,10 @@ export class Emitter
         this.output = ""
         this.output += "// deno-lint-ignore-file prefer-const"
         this.EmitNewLine()
-        this.output += `function Assert(value) { if (!value) throw new Error("assert")}`
+        this.EmitNewLine()
+        this.output += `function Assert(value) { if (!value) throw new Error("assert") }`
+        this.EmitNewLine()
+        this.output += `function PrintValue(value) { console.log(value) }`
         this.EmitNewLine()
         this.EmitNewLine()
     }
@@ -89,15 +93,16 @@ export class Emitter
         this.indentationLevel += 1
         this.EmitNewLine()
 
-        this.output += `constructor (`
+        this.output += `constructor(`
         let members = Array.from(node.symbol.membersSymbolTable!.symbols.values())
         for (let [index, member] of members.entries()) {
             this.output += member.name
             if (index != members.length - 1)
                 this.output += ', '
         }
-        this.output += ") {"
+        this.output += ") "
 
+        this.output += "{"
         this.indentationLevel += 1
         this.EmitNewLine()
         for (let [index, member] of members.entries()) {
@@ -106,13 +111,32 @@ export class Emitter
                 this.indentationLevel -= 1
             this.EmitNewLine()
         }
+        this.output += `}` // constructor
+        this.EmitNewLine()
+        this.EmitNewLine()
 
-        this.output += `}`
-
+        this.output += `static Default() {`
+        this.indentationLevel += 1
+        this.EmitNewLine()
+        this.output += `return new ${node.symbol.name}(`
+        this.indentationLevel += 1
+        this.EmitNewLine()
+        for (let [index, member] of members.entries()) {
+            this.EmitDefaultValueForType(member.type)
+            this.output += ','
+            this.output += ` // ${member.name}`
+            if (index == members.length - 1)
+                this.indentationLevel -= 1
+            this.EmitNewLine()
+        }
+        this.output += `)`
+        this.indentationLevel -= 1
+        this.EmitNewLine()
+        this.output += `}` // static Default()
         this.indentationLevel -= 1
         this.EmitNewLine()
 
-        this.output += `}`
+        this.output += `}` // class
         this.EmitNewLine()
         this.EmitNewLine()
 
@@ -129,10 +153,18 @@ export class Emitter
         this.EmitNewLine()
 
         let enumValues = Array.from(node.symbol.membersSymbolTable!.symbols.values())
+        let firstValueName = null
         for (let [index, enumValue] of enumValues.entries()) {
+            if (firstValueName == null)
+                firstValueName = `${node.symbol.name}_${enumValue.name}`
             this.output += `const ${node.symbol.name}_${enumValue.name} = ${enumValue.enumValue}`
             if (index == enumValues.length - 1)
                 this.indentationLevel -= 1
+            this.EmitNewLine()
+        }
+        if (firstValueName != null) {
+            this.EmitIndentation(this.indentationLevel + 1)
+            this.output += `const ${node.symbol.name}__Default = ${firstValueName}`
             this.EmitNewLine()
         }
 
@@ -146,7 +178,7 @@ export class Emitter
         if (node.isForwardDeclaration)
             return
 
-        this.output += `function ${node.symbol.name} (`
+        this.output += `function ${node.symbol.name}(`
 
         let params = Array.from(node.symbol.membersSymbolTable!.symbols.values())
         for (let [index, param] of params.entries()) {
@@ -255,10 +287,12 @@ export class Emitter
     private EmitVariableDeclaration(node: BoundVariableDeclaration)
     {
         this.output += `let ${node.symbol.name}`
+
         if (node.initializer != null) {
             this.output += ` = `
             this.EmitExpression(node.initializer)
         }
+
         this.EmitNewLine()
     }
 
@@ -266,7 +300,7 @@ export class Emitter
     {
         this.output += "if ("
         this.EmitExpression(node.condition)
-        this.output += ")"
+        this.output += ") "
 
         this.EmitStatement(node.thenStatement)
         if (node.elseStatement != null) {
@@ -437,14 +471,14 @@ export class Emitter
 
     private EmitUnaryExpression(node: BoundUnaryExpression)
     {
-        this.output += `${SyntaxFacts.TokenKindToString(node.operator.tokenKind)}`
+        this.output += `${BoundUnaryOperatorKindToString(node.operator)} `
         this.EmitExpression(node.operand)
     }
 
     private EmitBinaryExpression(node: BoundBinaryExpression)
     {
         this.EmitExpression(node.left)
-        this.output += ` ${SyntaxFacts.TokenKindToString(node.operator.tokenKind)} `
+        this.output += ` ${BoundBinaryOperatorKindToString(node.operator)} `
         this.EmitExpression(node.right)
     }
 
@@ -459,7 +493,16 @@ export class Emitter
 
     private EmitFunctionCallExpression(node: BoundFunctionCallExpression)
     {
+        if (node.isConstructor && node.args.length > 0) {
+            this.output += "new "
+        }
+
         this.output += node.symbol!.name
+
+        if (node.isConstructor && node.args.length == 0) {
+            this.output += ".Default"
+        }
+
         this.output += '('
         for (let [index, arg] of node.args.entries()) {
             this.EmitExpression(arg)
@@ -516,11 +559,54 @@ export class Emitter
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // Helpers
 
+    EmitDefaultValueForType(type: Type)
+    {
+        if (type instanceof BaseType) {
+            switch (type.baseKind) {
+                case BaseTypeKind.Void:
+                    throw new Error("Unexpected void type")
+                case BaseTypeKind.Null:
+                    throw new Error("Unexpected null type")
+                case BaseTypeKind.Any:
+                    this.output += "null"
+                    break
+                case BaseTypeKind.Bool:
+                    this.output += "false"
+                    break
+                case BaseTypeKind.Number:
+                    this.output += "0"
+                    break
+                case BaseTypeKind.String:
+                    this.output += ""
+                    break
+                case BaseTypeKind.Struct:
+                    this.output += `${type.name}`
+                    break
+                case BaseTypeKind.Enum:
+                    this.output += `${type.name}__Default`
+                    break
+                default:
+                    throw new Error("Unreachable")
+            }
+
+        } else if (type instanceof NullableType) {
+            this.output += "null"
+        } else if (type instanceof ArrayType) {
+            this.output += "[]"
+        } else {
+            throw new Error("Unreachable")
+        }
+    }
+
+    private EmitIndentation(level: number)
+    {
+        for (let index = 0; index < level; index += 1) {
+            this.output += "    "
+        }
+    }
     private EmitNewLine()
     {
         this.output += "\n"
-        for (let index = 0; index < this.indentationLevel; index += 1) {
-            this.output += "    "
-        }
+        this.EmitIndentation(this.indentationLevel)
     }
 }

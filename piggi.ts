@@ -1,6 +1,7 @@
 // deno-lint-ignore-file prefer-const
 
 import { Binder } from "./binder.ts"
+import { LocalPersistTransformer } from "./boundtree_transformers.ts"
 import { Source } from "./common.ts"
 import { Emitter } from "./emitter.ts"
 import { Parser } from "./parser.ts"
@@ -72,6 +73,9 @@ function Main()
         binder.diagnostics.Print()
         return
     }
+
+    let localPersistTransformer = new LocalPersistTransformer()
+    compilation = localPersistTransformer.RewriteCompilationUnit(compilation)
 
     let emitter = new Emitter()
     let output = emitter.EmitCompilationUnit(compilation)

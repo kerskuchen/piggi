@@ -140,7 +140,7 @@ fun ReturnsFalse(): bool {
     return false
 }
 fun ReturnComplexResult(): ResultType {
-    let result: ResultType
+    let result: ResultType = ResultType()
     result.first = 1
     result.second = 2
     return result
@@ -252,23 +252,20 @@ fun TestOperators()
     Assert((1 & 1) == 1)
 }
 
-let scope_test: number = 1
 fun TestScopeShadowing()
 {
+    let scope_test: number = 1
     Assert(scope_test == 1)
-
-    let scope_test: number = 2
-    Assert(scope_test == 2)
     {
-        let scope_test: number = 3
-        Assert(scope_test == 3)
+        let scope_test: number = 2
+        Assert(scope_test == 2)
         if (true) {
-            let scope_test: number = 4
-            Assert(scope_test == 4)
+            let scope_test: number = 3
+            Assert(scope_test == 3)
         } 
-        Assert(scope_test == 3)
+        Assert(scope_test == 2)
     }
-    Assert(scope_test == 2)
+    Assert(scope_test == 1)
 }
 
 fun Params1(a: number)
@@ -325,24 +322,24 @@ struct SelfReferential {
 }
 fun TestStructs()
 {
-    let my: MyStruct
+    let my: MyStruct = MyStruct()
     my.a = 5
 
     let a: number = my.a + 5
     Assert(a == 10)
 
-    let mymy: MyOtherStruct
+    let mymy: MyOtherStruct = MyOtherStruct()
     mymy.other = my
     Assert(mymy.other.a == 5)
 
     let b: number = mymy.other.a + 5
     Assert(b == 10)
 
-    let one: SelfReferential
+    let one: SelfReferential = SelfReferential()
     one.value = [1, 1, 1]
-    let two: SelfReferential
+    let two: SelfReferential = SelfReferential()
     two.value = [2, 2, 2]
-    let tre: SelfReferential
+    let tre: SelfReferential = SelfReferential()
     tre.value = [3, 3, 3]
 
     one.previous = null
@@ -456,7 +453,7 @@ fun TestCasting()
     let b: number = MyEnum.Five as number
     Assert(b == 5)
 
-    let square: Square
+    let square: Square = Square()
     square.area = 25
     square.width = 5
     let shape: Shape? = null
@@ -471,15 +468,20 @@ fun LocalPersistFunc(): number
     letpersist s_counter: number = 0
     let result: number = s_counter
     s_counter += 1
+    {
+        letpersist s_counterAnother: number = 0
+        result += s_counterAnother
+        s_counterAnother += 1
+    }
     return result
 }
 
 fun TestLocalPersist()
 {
     Assert(LocalPersistFunc() == 0)
-    Assert(LocalPersistFunc() == 1)
     Assert(LocalPersistFunc() == 2)
-    Assert(LocalPersistFunc() == 3)
+    Assert(LocalPersistFunc() == 4)
+    Assert(LocalPersistFunc() == 6)
 }
 
 fun TestPrecedence()

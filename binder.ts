@@ -167,6 +167,7 @@ export class Binder
 
         let isForwardDeclaration = true
         if (syntax instanceof EnumDefinitionStatementSyntax) {
+            isForwardDeclaration = false
 
             // Push enum member symboltable scope to parse declarations as members
             enumSymbol.membersSymbolTable = this.PushNewSymbolTable()
@@ -717,7 +718,10 @@ export class Binder
             return new BoundMissingExpression(syntax, this.symbolTable)
         }
 
-        return new BoundBinaryExpression(syntax, this.symbolTable, operator, left, right)
+        let result = new BoundBinaryExpression(syntax, this.symbolTable, operator.operatorKind, left, right, operator.resultType, operator.resultIsRValue)
+        if (operator.leftMustBeLValue && !operator.resultIsRValue)
+            result.symbol = left.symbol
+        return result
     }
 
     private BindUnaryExpression(syntax: UnaryExpressionSyntax): BoundExpression
@@ -735,7 +739,11 @@ export class Binder
             )
             return new BoundMissingExpression(syntax, this.symbolTable)
         }
-        return new BoundUnaryExpression(syntax, this.symbolTable, operator, operand)
+
+        let result = new BoundUnaryExpression(syntax, this.symbolTable, operator.operatorKind, operand, operator.resultType, operator.resultIsRValue)
+        if (operator.operandMustBeLValue && !operator.resultIsRValue)
+            result.symbol = operand.symbol
+        return result
     }
 
 
@@ -804,22 +812,24 @@ export class Binder
         let left = this.BindExpression(syntax.func)
         let leftParen = syntax.leftParen
 
-        let funcSymbol = left.symbol
-        if (funcSymbol == null) {
+        let symbol = left.symbol
+        if (symbol == null) {
             this.diagnostics.ReportError(
                 syntax.func.GetLocation(),
                 `Expression '${syntax.func.GetLocation().GetText()}' is not a known symbol`,
             )
             return new BoundMissingExpression(syntax, this.symbolTable)
         }
-        if (funcSymbol.kind != SymbolKind.Function) {
-            // TODO: change this to a span that prints the whole left expression
+
+        if (symbol.kind != SymbolKind.Function && symbol.kind != SymbolKind.Struct) {
             this.diagnostics.ReportError(
                 syntax.func.GetLocation(),
-                `Symbol '${funcSymbol.name}' is not a callable function`,
+                `Symbol '${symbol.name}' is not a callable function or constructor`,
             )
             return new BoundMissingExpression(syntax, this.symbolTable)
         }
+
+        let isConstructor = symbol.kind == SymbolKind.Struct
 
         let argumentList = []
         for (let index = 0; index < syntax.argumentsWithSeparators.length; index += 2) {
@@ -828,16 +838,27 @@ export class Binder
             argumentList.push(boundArg)
         }
 
-        if (funcSymbol.membersSymbolTable == null)
+        if (symbol.membersSymbolTable == null)
             throw new Error("Missing membersSymbolTable")
 
-        let parameterList = Array.from(funcSymbol.membersSymbolTable.symbols.values())
-        if (argumentList.length != parameterList.length) {
-            this.diagnostics.ReportError(
-                leftParen.GetLocation(),
-                `Function '${funcSymbol.name}' expects ${parameterList.length} arguments but ${argumentList.length} arguments were provided`,
-            )
-            return new BoundMissingExpression(syntax, this.symbolTable)
+        let parameterList = Array.from(symbol.membersSymbolTable.symbols.values())
+        if (isConstructor) {
+            if (argumentList.length != parameterList.length && argumentList.length != 0) {
+                this.diagnostics.ReportError(
+                    leftParen.GetLocation(),
+                    `Constructor ${symbol.name}' expects ${parameterList.length} arguments but ${argumentList.length} arguments were provided`,
+                )
+                // just pretend we call constructor without arguments here 
+                argumentList.length = 0
+            }
+        } else {
+            if (argumentList.length != parameterList.length) {
+                this.diagnostics.ReportError(
+                    leftParen.GetLocation(),
+                    `Function ${symbol.name}' expects ${parameterList.length} arguments but ${argumentList.length} arguments were provided`,
+                )
+                return new BoundMissingExpression(syntax, this.symbolTable)
+            }
         }
 
         for (let index = 0; index < argumentList.length; index += 1) {
@@ -846,7 +867,7 @@ export class Binder
             this.CanConvertTypeImplicitlyOrError(argumentList[index].syntax!.GetLocation(), argumentType, parameterType)
         }
 
-        return new BoundFunctionCallExpression(syntax, this.symbolTable, funcSymbol, argumentList)
+        return new BoundFunctionCallExpression(syntax, this.symbolTable, symbol, isConstructor, argumentList)
     }
 
     private BindArrayIndexingExpression(syntax: ArrayIndexExpressionSyntax): BoundArrayIndexExpression

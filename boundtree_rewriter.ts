@@ -10,7 +10,7 @@ export abstract class BoundTreeRewriter
     // Compilation Unit
 
     // Should not be derived
-    protected RewriteCompilationUnit(node: BoundCompilationUnit): BoundCompilationUnit
+    public RewriteCompilationUnit(node: BoundCompilationUnit): BoundCompilationUnit
     {
         let newDeclarations: BoundStatement[] = []
         for (let declaration of node.globalDeclarations) {
@@ -334,7 +334,7 @@ export abstract class BoundTreeRewriter
         if (operand == node.operand)
             return node
 
-        return new BoundUnaryExpression(node.syntax, node.symbolTable, node.operator, operand)
+        return new BoundUnaryExpression(node.syntax, node.symbolTable, node.operator, operand, node.resultType, node.resultIsRValue)
     }
 
     protected RewriteBinaryExpression(node: BoundBinaryExpression): BoundExpression
@@ -344,7 +344,7 @@ export abstract class BoundTreeRewriter
         if (left == node.left && right == node.right)
             return node
 
-        return new BoundBinaryExpression(node.syntax, node.symbolTable, node.operator, left, right)
+        return new BoundBinaryExpression(node.syntax, node.symbolTable, node.operator, left, right, node.resultType, node.resultIsRValue)
     }
 
     protected RewriteTernaryConditionalExpression(node: BoundTernaryConditionalExpression): BoundExpression
@@ -380,7 +380,7 @@ export abstract class BoundTreeRewriter
         if (!changed)
             return node
 
-        return new BoundFunctionCallExpression(node.syntax, node.symbolTable, node.symbol!, newArgs)
+        return new BoundFunctionCallExpression(node.syntax, node.symbolTable, node.symbol!, node.isConstructor, newArgs)
     }
 
     protected RewriteTypeCastExpression(node: BoundTypeCastExpression): BoundExpression

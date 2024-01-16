@@ -1,6 +1,5 @@
 // deno-lint-ignore-file prefer-const
 
-import { BoundBinaryOperator, BoundUnaryOperator } from "./operators.ts"
 import { Symbol, SymbolTable } from "./symbols.ts"
 import { SyntaxNode } from "./syntax.ts"
 import { Type } from "./types.ts"
@@ -11,6 +10,24 @@ export enum BoundUnaryOperatorKind
     Negation = "Negation",
     LogicalNegation = "LogicalNegation",
     BitwiseNegation = "BitwiseNegation",
+}
+
+export function BoundUnaryOperatorKindToString(kind: BoundUnaryOperatorKind): string
+{
+    switch (kind) {
+        case BoundUnaryOperatorKind.Identity:
+            return "+"
+        case BoundUnaryOperatorKind.Negation:
+            return "-"
+        case BoundUnaryOperatorKind.LogicalNegation:
+            return "!"
+        case BoundUnaryOperatorKind.BitwiseNegation:
+            return "~"
+
+        default:
+            throw new Error(`Unexpected unary operator kind: ${kind}`)
+    }
+
 }
 
 export enum BoundBinaryOperatorKind
@@ -43,13 +60,6 @@ export enum BoundBinaryOperatorKind
     LogicalAnd = "LogicalAnd",
     LogicalOr = "LogicalOr",
 
-    // Pointer math
-    AddToPointer = "AddToPointer",
-    AddToPointerAssignment = "AddToPointerAssignment",
-    SubtractFromPointer = "SubtractFromPointer",
-    SubtractFromPointerAssignment = "SubtractFromPointerAssignment",
-    DistanceBetweenPointers = "DistanceBetweenPointers",
-
     // Comparisons
     Equals = "Equals",
     NotEquals = "NotEquals",
@@ -58,6 +68,78 @@ export enum BoundBinaryOperatorKind
     Greater = "Greater",
     GreaterEquals = "GreaterEquals",
 }
+
+export function BoundBinaryOperatorKindToString(kind: BoundBinaryOperatorKind): string
+{
+    switch (kind) {
+        case BoundBinaryOperatorKind.Assignment:
+            return "="
+        case BoundBinaryOperatorKind.Add:
+            return "+"
+        case BoundBinaryOperatorKind.AddAssignment:
+            return "+="
+        case BoundBinaryOperatorKind.Subtract:
+            return "-"
+        case BoundBinaryOperatorKind.SubtractAssignment:
+            return "-="
+        case BoundBinaryOperatorKind.Multiply:
+            return "*"
+        case BoundBinaryOperatorKind.MultiplyAssignment:
+            return "*="
+        case BoundBinaryOperatorKind.Divide:
+            return "/"
+        case BoundBinaryOperatorKind.DivideAssignment:
+            return "/="
+        case BoundBinaryOperatorKind.Remainder:
+            return "%"
+        case BoundBinaryOperatorKind.RemainderAssignment:
+            return "%="
+
+        case BoundBinaryOperatorKind.BitwiseXor:
+            return "^"
+        case BoundBinaryOperatorKind.BitwiseXorAssignment:
+            return "^="
+        case BoundBinaryOperatorKind.BitwiseAnd:
+            return "&"
+        case BoundBinaryOperatorKind.BitwiseAndAssignment:
+            return "&="
+        case BoundBinaryOperatorKind.BitwiseOr:
+            return "|"
+        case BoundBinaryOperatorKind.BitwiseOrAssignment:
+            return "|="
+        case BoundBinaryOperatorKind.BitshiftLeft:
+            return "<<"
+        case BoundBinaryOperatorKind.BitshiftLeftAssignment:
+            return "<<="
+        case BoundBinaryOperatorKind.BitshiftRight:
+            return ">>"
+        case BoundBinaryOperatorKind.BitshiftRightAssignment:
+            return ">>="
+
+        case BoundBinaryOperatorKind.LogicalAnd:
+            return "&&"
+        case BoundBinaryOperatorKind.LogicalOr:
+            return "||"
+
+        case BoundBinaryOperatorKind.Equals:
+            return "=="
+        case BoundBinaryOperatorKind.NotEquals:
+            return "!="
+        case BoundBinaryOperatorKind.Less:
+            return "<"
+        case BoundBinaryOperatorKind.LessEquals:
+            return "<="
+        case BoundBinaryOperatorKind.Greater:
+            return ">"
+        case BoundBinaryOperatorKind.GreaterEquals:
+            return ">="
+
+        default:
+            throw new Error(`Unexpected unary operator kind: ${kind}`)
+    }
+
+}
+
 
 export enum BoundNodeKind
 {
@@ -468,13 +550,13 @@ export class BoundUnaryExpression extends BoundExpression
     constructor(
         syntax: SyntaxNode | null,
         symbolTable: SymbolTable,
-        public operator: BoundUnaryOperator,
+        public operator: BoundUnaryOperatorKind,
         public operand: BoundExpression,
+        public resultType: Type,
+        public resultIsRValue: boolean
     )
     {
-        super(BoundNodeKind.UnaryExpression, syntax, symbolTable, operator.resultType, operator.resultIsRValue)
-        if (operator.operandMustBeLValue && !operator.resultIsRValue)
-            this.symbol = operand.symbol
+        super(BoundNodeKind.UnaryExpression, syntax, symbolTable, resultType, resultIsRValue)
     }
 }
 
@@ -483,14 +565,14 @@ export class BoundBinaryExpression extends BoundExpression
     constructor(
         syntax: SyntaxNode | null,
         symbolTable: SymbolTable,
-        public operator: BoundBinaryOperator,
+        public operator: BoundBinaryOperatorKind,
         public left: BoundExpression,
         public right: BoundExpression,
+        public resultType: Type,
+        public resultIsRValue: boolean
     )
     {
-        super(BoundNodeKind.BinaryExpression, syntax, symbolTable, operator.resultType, operator.resultIsRValue)
-        if (operator.leftMustBeLValue && !operator.resultIsRValue)
-            this.symbol = left.symbol
+        super(BoundNodeKind.BinaryExpression, syntax, symbolTable, resultType, resultIsRValue)
     }
 }
 
@@ -514,6 +596,7 @@ export class BoundFunctionCallExpression extends BoundExpression
         syntax: SyntaxNode | null,
         symbolTable: SymbolTable,
         funcSym: Symbol,
+        public isConstructor: boolean,
         public args: BoundExpression[],
     )
     {
