@@ -109,6 +109,7 @@ export enum SyntaxKind
     EnumKeyword = "EnumKeyword",
     ClassKeyword = "ClassKeyword",
     ImportKeyword = "ImportKeyword",
+    ImplKeyword = "ImplKeyword",
 
     // Control flow
     IfKeyword = "IfKeyword",
@@ -126,9 +127,9 @@ export enum SyntaxKind
     // Misc
     InKeyword = "InKeyword",
     AsKeyword = "AsKeyword",
-
-    // Storage location
+    ThisKeyword = "ThisKeyword",
     ExternKeyword = "ExternKeyword",
+    StaticKeyword = "StaticKeyword",
 
 
     // ---------------------------------------------------------------------------------------------
@@ -332,6 +333,8 @@ export class SyntaxFacts
                 return "as"
             case SyntaxKind.InKeyword:
                 return "in"
+            case SyntaxKind.ThisKeyword:
+                return "this"
 
             case SyntaxKind.LetKeyword:
                 return "let"
@@ -347,11 +350,15 @@ export class SyntaxFacts
                 return "enum"
             case SyntaxKind.ClassKeyword:
                 return "class"
+            case SyntaxKind.ImplKeyword:
+                return "impl"
 
             case SyntaxKind.ImportKeyword:
                 return "import"
             case SyntaxKind.ExternKeyword:
                 return "extern"
+            case SyntaxKind.StaticKeyword:
+                return "static"
 
             case SyntaxKind.IdentifierToken:
                 return "identifier"
@@ -405,6 +412,8 @@ export class SyntaxFacts
                 return SyntaxKind.AsKeyword
             case SyntaxFacts.TokenKindToString(SyntaxKind.InKeyword):
                 return SyntaxKind.InKeyword
+            case SyntaxFacts.TokenKindToString(SyntaxKind.ThisKeyword):
+                return SyntaxKind.ThisKeyword
 
             case SyntaxFacts.TokenKindToString(SyntaxKind.FunKeyword):
                 return SyntaxKind.FunKeyword
@@ -420,11 +429,15 @@ export class SyntaxFacts
                 return SyntaxKind.EnumKeyword
             case SyntaxFacts.TokenKindToString(SyntaxKind.ClassKeyword):
                 return SyntaxKind.ClassKeyword
+            case SyntaxFacts.TokenKindToString(SyntaxKind.ImplKeyword):
+                return SyntaxKind.ImplKeyword
 
             case SyntaxFacts.TokenKindToString(SyntaxKind.ImportKeyword):
                 return SyntaxKind.ImportKeyword
             case SyntaxFacts.TokenKindToString(SyntaxKind.ExternKeyword):
                 return SyntaxKind.ExternKeyword
+            case SyntaxFacts.TokenKindToString(SyntaxKind.StaticKeyword):
+                return SyntaxKind.StaticKeyword
         }
 
         return SyntaxKind.IdentifierToken

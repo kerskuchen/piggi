@@ -304,10 +304,33 @@ fun ForwardDeclaredFunction(a: number, b: number, c: number): number
     return a + b + c
 }
 
+enum MyEnum {
+    One = 1,
+    Three = 3,
+    Five = 5,
+}
+
+fun EnumTest()
+{
+    let enummi: MyEnum = MyEnum.Three
+    Assert(enummi == MyEnum.Three)
+    Assert(enummi != MyEnum.One)
+    Assert(enummi > MyEnum.One)
+    Assert(MyEnum.One < MyEnum.Three)
+    Assert(MyEnum.One < MyEnum.Five)
+    Assert(MyEnum.One < MyEnum.Five)
+
+    let arr: MyEnum[] = [ MyEnum.One, MyEnum.Three, MyEnum.Five ]
+    Assert(arr[0] == MyEnum.One)
+    Assert(arr[1] == MyEnum.Three)
+    Assert(arr[2] == MyEnum.Five)
+}
+
 struct MyStruct // Forward declaration
 struct MyOtherStruct {
     lala: number,
     other: MyStruct,
+    eee: MyEnum,
 }
 struct MyStruct {
     a: number,
@@ -315,6 +338,16 @@ struct MyStruct {
     c: number,
     d: number,
 }
+// impl MyStruct {
+//     GetSum() : number {
+//         return this.a + this.b + this.c + this.d
+//     }
+// 
+//     static FromSingle(single: number) {
+//         return MyStruct(single, single, single, single)
+//     }
+// 
+// }
 struct SelfReferential {
     value: number[],
     next: SelfReferential?,
@@ -378,27 +411,6 @@ fun TestStructs()
     Assert(one.next.next.previous.previous.value[0] + 4 == 5)
 }
 
-enum MyEnum {
-    One = 1,
-    Three = 3,
-    Five = 5,
-}
-
-fun EnumTest()
-{
-    let enummi: MyEnum = MyEnum.Three
-    Assert(enummi == MyEnum.Three)
-    Assert(enummi != MyEnum.One)
-    Assert(enummi > MyEnum.One)
-    Assert(MyEnum.One < MyEnum.Three)
-    Assert(MyEnum.One < MyEnum.Five)
-    Assert(MyEnum.One < MyEnum.Five)
-
-    let arr: MyEnum[] = [ MyEnum.One, MyEnum.Three, MyEnum.Five ]
-    Assert(arr[0] == MyEnum.One)
-    Assert(arr[1] == MyEnum.Three)
-    Assert(arr[2] == MyEnum.Five)
-}
 
 fun TestSwitchStatements()
 {
@@ -519,6 +531,7 @@ fun Main() {
     TestSwitchStatements()
     TestCasting()
     TestLocalPersist()
+    TestPrecedence()
 
     PrintValue("=====================================")
     PrintValue("ALL TESTS PASSED")

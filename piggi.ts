@@ -74,8 +74,8 @@ function Main()
         return
     }
 
-    let localPersistTransformer = new LocalPersistTransformer()
-    compilation = localPersistTransformer.RewriteCompilationUnit(compilation)
+    // let localPersistTransformer = new LocalPersistTransformer()
+    // compilation = localPersistTransformer.RewriteCompilationUnit(compilation)
 
     let emitter = new Emitter()
     let output = emitter.EmitCompilationUnit(compilation)

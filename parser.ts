@@ -139,7 +139,7 @@ export class Parser
 
         this.tree.diagnostics.ReportError(
             this.Current().GetLocation(),
-            `Expected global module definition got unexpected token '${this.Current().GetText()}' instead`
+            `Expected global module definition got unexpected token '${this.Current().kind}' - '${this.Current().GetText()}' instead`
         )
         return null
     }
@@ -260,6 +260,33 @@ export class Parser
 
         return new EnumValueClauseSyntax(this.tree, identifier, equals, integerLiteral, comma)
     }
+
+    private ParseImplDeclaration(externKeyword: SyntaxToken | null): ImplDeclarationSyntax 
+    {
+        let structKeyword = this.MatchAndAdvanceToken(SyntaxKind.StructKeyword)
+        let identifier = this.MatchAndAdvanceToken(SyntaxKind.IdentifierToken)
+        let declaration = new StructDeclarationSyntax(this.tree, externKeyword, structKeyword, identifier)
+        if (this.Current().kind != SyntaxKind.LeftBraceToken) {
+            return declaration
+        }
+
+        let leftBrace = this.MatchAndAdvanceToken(SyntaxKind.LeftBraceToken)
+        let membersAndSeparators = []
+        while (this.Current().kind != SyntaxKind.RightBraceToken && this.Current().kind != SyntaxKind.EndOfFileToken) {
+            let member = this.ParseVariableDeclaration(true, false)
+            membersAndSeparators.push(member)
+
+            if (this.Current().kind == SyntaxKind.CommaToken as SyntaxKind) {
+                let comma = this.AdvanceToken()
+                membersAndSeparators.push(comma)
+            } else {
+                break
+            }
+        }
+        let rightBrace = this.MatchAndAdvanceToken(SyntaxKind.RightBraceToken)
+        return new StructDefinitionStatementSyntax(this.tree, declaration, leftBrace, membersAndSeparators, rightBrace)
+    }
+
 
 
     ////////////////////////////////////////////////////////////////////////////////////////////////

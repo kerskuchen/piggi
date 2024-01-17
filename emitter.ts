@@ -1,15 +1,15 @@
 // deno-lint-ignore-file prefer-const
 
 import { BoundArrayIndexExpression, BoundArrayLiteral, BoundBinaryExpression, BoundBinaryOperatorKindToString, BoundBlockStatement, BoundBreakStatement, BoundCaseStatement, BoundCompilationUnit, BoundContinueStatement, BoundDoWhileStatement, BoundEnumDeclaration, BoundEnumValueLiteral, BoundExpression, BoundExpressionStatement, BoundForStatement, BoundFunctionCallExpression, BoundFunctionDeclaration, BoundIfStatement, BoundImportDeclaration, BoundMemberAccessExpression, BoundMissingExpression, BoundMissingStatement, BoundNameExpression, BoundNodeKind, BoundParenthesizedExpression, BoundPrimitiveLiteral, BoundReturnStatement, BoundStatement, BoundStructDeclaration, BoundSwitchStatement, BoundTernaryConditionalExpression, BoundTypeCastExpression, BoundUnaryExpression, BoundUnaryOperatorKindToString, BoundVariableDeclaration, BoundWhileStatement } from "./boundtree.ts"
-import { SymbolScopeKind } from "./symbols.ts"
-import { SyntaxFacts } from "./syntax.ts"
+import { Symbol, SymbolScopeKind } from "./symbols.ts"
 import { ArrayType, BaseType, BaseTypeKind, NullableType, Type } from "./types.ts"
 
 export class Emitter
 {
+    public output = ""
+    public indentationLevel = 0
+    public currentFunctionSymbol: Symbol | null = null
     constructor(
-        public output: string = "",
-        public indentationLevel = 0,
     ) { }
 
     EmitCompilationUnit(unit: BoundCompilationUnit): string
@@ -187,7 +187,9 @@ export class Emitter
                 this.output += ', '
         }
         this.output += ") "
+        this.currentFunctionSymbol = node.symbol
         this.EmitBlockStatement(node.body!)
+        this.currentFunctionSymbol = null
         this.EmitNewLine()
         this.EmitNewLine()
     }
@@ -286,11 +288,29 @@ export class Emitter
 
     private EmitVariableDeclaration(node: BoundVariableDeclaration)
     {
-        this.output += `let ${node.symbol.name}`
+        if (node.symbol.scopeKind == SymbolScopeKind.LocalPersist) {
+            if (this.currentFunctionSymbol == null)
+                throw new Error("Local persist variable must be contained in a function")
+            if (node.initializer == null)
+                throw new Error("Local persist variable must have initializer in emitter")
 
-        if (node.initializer != null) {
-            this.output += ` = `
+            this.output += `if (typeof ${this.currentFunctionSymbol.name}.${node.symbol.name} == 'undefined') {`
+            this.indentationLevel += 1
+            this.EmitNewLine()
+
+            this.output += `${this.currentFunctionSymbol.name}.${node.symbol.name} = `
             this.EmitExpression(node.initializer)
+
+            this.indentationLevel -= 1
+            this.EmitNewLine()
+            this.output += "}"
+        } else {
+            this.output += `let ${node.symbol.name}`
+
+            if (node.initializer != null) {
+                this.output += ` = `
+                this.EmitExpression(node.initializer)
+            }
         }
 
         this.EmitNewLine()
@@ -459,7 +479,17 @@ export class Emitter
 
     private EmitNameExpression(node: BoundNameExpression)
     {
-        this.output += node.symbol!.name
+        if (node.symbol == null)
+            throw new Error("Symbol is null in name expression in emitter")
+
+        if (node.symbol.scopeKind == SymbolScopeKind.LocalPersist) {
+            if (this.currentFunctionSymbol == null)
+                throw new Error("Local persist variable must be contained in a function in emitter")
+
+            this.output += `${this.currentFunctionSymbol.name}.${node.symbol.name}`
+        } else {
+            this.output += node.symbol.name
+        }
     }
 
     private EmitParenthesizedExpression(node: BoundParenthesizedExpression)

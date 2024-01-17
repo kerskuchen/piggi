@@ -1139,6 +1139,14 @@ export class Binder
                 )
                 return null
             }
+            // TODO: The following only searches up to the function scope but may miss sibling scopes
+            if (existing.scopeKind == SymbolScopeKind.LocalPersist) {
+                this.diagnostics.ReportError(
+                    diagnosticLocation,
+                    `A local persistent variable with the same name '${symName}' already exist in the current function`,
+                )
+                return null
+            }
         }
 
         return this.symbolTable.AddSymbol(symName, kind, scopeKind, type)
