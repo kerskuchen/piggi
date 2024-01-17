@@ -1,5 +1,30 @@
 import prelude
 
+fun Main() {
+    TestBasics()
+    TestComparisons()
+    TestForLoops()
+    TestWhileLoops()
+    TestIf()
+    TestFunctionCalls()
+    TestGlobals()
+    TestParenthesis()
+    TestArrays()
+    TestStrings()
+    TestOperators()
+    TestScopeShadowing()
+    TestParams()
+    TestStructs()
+    TestSwitchStatements()
+    TestCasting()
+    TestLocalPersist()
+    TestPrecedence()
+
+    PrintValue("=====================================")
+    PrintValue("ALL TESTS PASSED")
+    PrintValue("=====================================")
+}
+
 fun TestBasics()
 {
     let a = -1 + 2 * 3 - 4 / +2 + 2
@@ -292,8 +317,7 @@ fun TestParams()
     Params3(1, 2, 3)
 }
 
-fun ForwardDeclaredFunction(a: number, b: number, c: number): number
-fun TestForwardDeclaredFunction()
+fun TestFunctionOrdering()
 {
     let result: number = ForwardDeclaredFunction(1, 2, 3)
     Assert(result == 6)
@@ -325,7 +349,6 @@ fun EnumTest()
     Assert(arr[2] == MyEnum.Five)
 }
 
-struct MyStruct // Forward declaration
 struct MyOtherStruct {
     lala: number,
     other: MyStruct,
@@ -510,29 +533,4 @@ fun TestPrecedence()
     } else {
         Assert(false)
     }
-}
-
-fun Main() {
-    TestBasics()
-    TestComparisons()
-    TestForLoops()
-    TestWhileLoops()
-    TestIf()
-    TestFunctionCalls()
-    TestGlobals()
-    TestParenthesis()
-    TestArrays()
-    TestStrings()
-    TestOperators()
-    TestScopeShadowing()
-    TestParams()
-    TestStructs()
-    TestSwitchStatements()
-    TestCasting()
-    TestLocalPersist()
-    TestPrecedence()
-
-    PrintValue("=====================================")
-    PrintValue("ALL TESTS PASSED")
-    PrintValue("=====================================")
 }

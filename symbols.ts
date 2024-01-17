@@ -4,6 +4,7 @@ import { Type } from "./types.ts"
 
 export enum SymbolKind
 {
+    Invalid = "Invalid", // Only used if the binder encounters an error
     Function = "Function",
     Struct = "Struct",
     Enum = "Enum",
@@ -32,7 +33,6 @@ export class Symbol
 
     // For structs/unions/functions/enums
     public membersSymbolTable: SymbolTable | null = null// Holds function parameters, enum/union/struct members
-    public alreadyDefined = false // For functions/structs to indicate if they have been defined yet
     public enumValue = 0  // For enum values
 }
 

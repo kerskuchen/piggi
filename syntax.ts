@@ -180,11 +180,8 @@ export enum SyntaxKind
     ImportDeclaration = "ImportDeclaration",
     GlobalVariableDeclaration = "GlobalVariableDeclaration",
     EnumDeclaration = "EnumDeclaration",
-    EnumDefinitionStatement = "EnumDefinitionStatement",
     StructDeclaration = "StructDeclaration",
-    StructDefinitionStatement = "StructtDefinitionStatement",
     FunctionDeclaration = "FunctionDeclaration",
-    FunctionDefinitionStatement = "FunctionDefinitionStatement",
 }
 
 export class SyntaxFacts
@@ -1246,23 +1243,12 @@ export class EnumDeclarationSyntax extends ModuleMemberSyntax
         public externKeyword: SyntaxToken | null,
         public enumKeyword: SyntaxToken,
         public identifier: SyntaxToken,
-    )
-    {
-        super(SyntaxKind.EnumDeclaration, syntaxTree)
-    }
-}
-
-export class EnumDefinitionStatementSyntax extends ModuleMemberSyntax
-{
-    constructor(
-        syntaxTree: SyntaxTree,
-        public enumDeclaration: EnumDeclarationSyntax,
         public leftBrace: SyntaxToken,
         public values: EnumValueClauseSyntax[],
         public rightBrace: SyntaxToken,
     )
     {
-        super(SyntaxKind.EnumDefinitionStatement, syntaxTree)
+        super(SyntaxKind.EnumDeclaration, syntaxTree)
     }
 }
 
@@ -1273,23 +1259,12 @@ export class StructDeclarationSyntax extends ModuleMemberSyntax
         public externKeyword: SyntaxToken | null,
         public structKeyword: SyntaxToken,
         public identifier: SyntaxToken,
-    )
-    {
-        super(SyntaxKind.StructDeclaration, syntaxTree)
-    }
-}
-
-export class StructDefinitionStatementSyntax extends ModuleMemberSyntax
-{
-    constructor(
-        syntaxTree: SyntaxTree,
-        public structDeclaration: StructDeclarationSyntax,
         public leftBrace: SyntaxToken,
         public membersAndSeparators: SyntaxNode[],
         public rightBrace: SyntaxNode,
     )
     {
-        super(SyntaxKind.StructDefinitionStatement, syntaxTree)
+        super(SyntaxKind.StructDeclaration, syntaxTree)
     }
 }
 
@@ -1305,20 +1280,9 @@ export class FunctionDeclarationSyntax extends ModuleMemberSyntax
         public rightParen: SyntaxNode,
         public colon: SyntaxNode | null,
         public returnType: TypeExpressionSyntax | null,
+        public body: BlockStatementSyntax | null,
     )
     {
         super(SyntaxKind.FunctionDeclaration, syntaxTree)
-    }
-}
-
-export class FunctionDefinitionStatementSyntax extends ModuleMemberSyntax
-{
-    constructor(
-        syntaxTree: SyntaxTree,
-        public funcDecl: FunctionDeclarationSyntax,
-        public body: BlockStatementSyntax,
-    )
-    {
-        super(SyntaxKind.FunctionDefinitionStatement, syntaxTree)
     }
 }

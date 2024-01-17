@@ -86,7 +86,7 @@ export class Emitter
 
     private EmitStructDeclaration(node: BoundStructDeclaration)
     {
-        if (node.isForwardDeclaration)
+        if (node.symbol.scopeKind == SymbolScopeKind.Extern)
             return
 
         this.output += `class ${node.symbol.name} {`
@@ -145,7 +145,7 @@ export class Emitter
 
     private EmitEnumDeclaration(node: BoundEnumDeclaration)
     {
-        if (node.isForwardDeclaration)
+        if (node.symbol.scopeKind == SymbolScopeKind.Extern)
             return
 
         this.output += `// enum ${node.symbol.name} {`
@@ -175,8 +175,9 @@ export class Emitter
 
     private EmitFunctionDeclaration(node: BoundFunctionDeclaration)
     {
-        if (node.isForwardDeclaration)
+        if (node.symbol.scopeKind == SymbolScopeKind.Extern)
             return
+
 
         this.output += `function ${node.symbol.name}(`
 
@@ -312,8 +313,6 @@ export class Emitter
                 this.EmitExpression(node.initializer)
             }
         }
-
-        this.EmitNewLine()
     }
 
     private EmitIfStatement(node: BoundIfStatement)

@@ -2,7 +2,7 @@
 
 import { DiagnosticBag, Source, SourceLocation } from "./common.ts"
 import { Scanner } from "./scanner.ts"
-import { SyntaxKind, SyntaxToken, SyntaxTrivia, SyntaxTree, BinaryExpressionSyntax, BlockStatementSyntax, BreakStatementSyntax, ContinueStatementSyntax, DoWhileStatementSyntax, ExpressionStatementSyntax, ExpressionSyntax, ForStatementSyntax, IfStatementSyntax, ModuleMemberSyntax, ModuleSyntax, NameExpressionSyntax, ParenthesizedExpressionSyntax, ReturnStatementSyntax, StatementSyntax, TypeCastExpressionSyntax, UnaryExpressionSyntax, VariableDeclarationSyntax, WhileStatementSyntax, ImportDeclarationSyntax, GlobalVariableDeclarationSyntax, StructDeclarationSyntax, StructDefinitionStatementSyntax, FunctionDeclarationSyntax, FunctionDefinitionStatementSyntax, TypeExpressionSyntax, EnumDeclarationSyntax, EnumDefinitionStatementSyntax, EnumValueClauseSyntax, SwitchStatementSyntax, CaseStatementSyntax, TernaryConditionalExpressionSyntax, FuncCallExpressionSyntax, MemberAccessExpressionSyntax, ArrayIndexExpressionSyntax, ArrayLiteralSyntax, NumberLiteralSyntax, StringLiteralSyntax, BoolLiteralSyntax, NullLiteralSyntax, ArrayTypeExpressionSyntax, BaseTypeExpressionSyntax, NullableTypeExpressionSyntax } from "./syntax.ts"
+import { SyntaxKind, SyntaxToken, SyntaxTrivia, SyntaxTree, BinaryExpressionSyntax, BlockStatementSyntax, BreakStatementSyntax, ContinueStatementSyntax, DoWhileStatementSyntax, ExpressionStatementSyntax, ExpressionSyntax, ForStatementSyntax, IfStatementSyntax, ModuleMemberSyntax, ModuleSyntax, NameExpressionSyntax, ParenthesizedExpressionSyntax, ReturnStatementSyntax, StatementSyntax, TypeCastExpressionSyntax, UnaryExpressionSyntax, VariableDeclarationSyntax, WhileStatementSyntax, ImportDeclarationSyntax, GlobalVariableDeclarationSyntax, StructDeclarationSyntax, FunctionDeclarationSyntax, TypeExpressionSyntax, EnumDeclarationSyntax, EnumValueClauseSyntax, SwitchStatementSyntax, CaseStatementSyntax, TernaryConditionalExpressionSyntax, FuncCallExpressionSyntax, MemberAccessExpressionSyntax, ArrayIndexExpressionSyntax, ArrayLiteralSyntax, NumberLiteralSyntax, StringLiteralSyntax, BoolLiteralSyntax, NullLiteralSyntax, ArrayTypeExpressionSyntax, BaseTypeExpressionSyntax, NullableTypeExpressionSyntax } from "./syntax.ts"
 import { SyntaxFacts } from "./syntax.ts"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -131,11 +131,11 @@ export class Parser
         if (this.Current().kind == SyntaxKind.LetKeyword)
             return this.ParseGlobalVariableDeclaration(externKeyword)
         if (this.Current().kind == SyntaxKind.StructKeyword)
-            return this.ParseStructDefinition(externKeyword)
+            return this.ParseStructDeclaration(externKeyword)
         if (this.Current().kind == SyntaxKind.FunKeyword)
-            return this.ParseFunctionDefinition(externKeyword)
+            return this.ParseFunctionDeclaration(externKeyword)
         if (this.Current().kind == SyntaxKind.EnumKeyword)
-            return this.ParseEnumDefinition(externKeyword)
+            return this.ParseEnumDeclaration(externKeyword)
 
         this.tree.diagnostics.ReportError(
             this.Current().GetLocation(),
@@ -158,15 +158,10 @@ export class Parser
         return new GlobalVariableDeclarationSyntax(this.tree, externKeyword, statement)
     }
 
-    private ParseStructDefinition(externKeyword: SyntaxToken | null): StructDeclarationSyntax | StructDefinitionStatementSyntax
+    private ParseStructDeclaration(externKeyword: SyntaxToken | null): StructDeclarationSyntax 
     {
         let structKeyword = this.MatchAndAdvanceToken(SyntaxKind.StructKeyword)
         let identifier = this.MatchAndAdvanceToken(SyntaxKind.IdentifierToken)
-        let declaration = new StructDeclarationSyntax(this.tree, externKeyword, structKeyword, identifier)
-        if (this.Current().kind != SyntaxKind.LeftBraceToken) {
-            return declaration
-        }
-
         let leftBrace = this.MatchAndAdvanceToken(SyntaxKind.LeftBraceToken)
         let membersAndSeparators = []
         while (this.Current().kind != SyntaxKind.RightBraceToken && this.Current().kind != SyntaxKind.EndOfFileToken) {
@@ -181,10 +176,10 @@ export class Parser
             }
         }
         let rightBrace = this.MatchAndAdvanceToken(SyntaxKind.RightBraceToken)
-        return new StructDefinitionStatementSyntax(this.tree, declaration, leftBrace, membersAndSeparators, rightBrace)
+        return new StructDeclarationSyntax(this.tree, externKeyword, structKeyword, identifier, leftBrace, membersAndSeparators, rightBrace)
     }
 
-    private ParseFunctionDefinition(externKeyword: SyntaxToken | null): FunctionDeclarationSyntax | FunctionDefinitionStatementSyntax
+    private ParseFunctionDeclaration(externKeyword: SyntaxToken | null): FunctionDeclarationSyntax 
     {
         let funKeyword = this.MatchAndAdvanceToken(SyntaxKind.FunKeyword)
         let identifier = this.MatchAndAdvanceToken(SyntaxKind.IdentifierToken)
@@ -211,26 +206,20 @@ export class Parser
             type = this.ParseTypeExpression()
         }
 
-        let declaration = new FunctionDeclarationSyntax(this.tree, externKeyword, funKeyword, identifier, leftParen, paramsAndSeparators, rightParen, colon, type)
-        if (this.Current().kind != SyntaxKind.LeftBraceToken) {
-            return declaration
+        let body = null
+        if (externKeyword == null) {
+            this.functionLevel += 1
+            body = this.ParseBlockStatement(false)
+            this.functionLevel -= 1
         }
 
-        this.functionLevel += 1
-        let body = this.ParseBlockStatement(false)
-        this.functionLevel -= 1
-
-        return new FunctionDefinitionStatementSyntax(this.tree, declaration, body)
+        return new FunctionDeclarationSyntax(this.tree, externKeyword, funKeyword, identifier, leftParen, paramsAndSeparators, rightParen, colon, type, body)
     }
 
-    private ParseEnumDefinition(externKeyword: SyntaxToken | null): EnumDeclarationSyntax | EnumDefinitionStatementSyntax
+    private ParseEnumDeclaration(externKeyword: SyntaxToken | null): EnumDeclarationSyntax 
     {
         let enumKeyword = this.MatchAndAdvanceToken(SyntaxKind.EnumKeyword)
         let identifier = this.MatchAndAdvanceToken(SyntaxKind.IdentifierToken)
-        let declaration = new EnumDeclarationSyntax(this.tree, externKeyword, enumKeyword, identifier)
-        if (this.Current().kind != SyntaxKind.LeftBraceToken) {
-            return declaration
-        }
 
         let leftBrace = this.MatchAndAdvanceToken(SyntaxKind.LeftBraceToken)
         let values = []
@@ -239,7 +228,7 @@ export class Parser
             values.push(valueClause)
         }
         let rightBrace = this.MatchAndAdvanceToken(SyntaxKind.RightBraceToken)
-        return new EnumDefinitionStatementSyntax(this.tree, declaration, leftBrace, values, rightBrace)
+        return new EnumDeclarationSyntax(this.tree, externKeyword, enumKeyword, identifier, leftBrace, values, rightBrace)
     }
 
     private ParseEnumValueClause(): EnumValueClauseSyntax
@@ -284,7 +273,7 @@ export class Parser
     //         }
     //     }
     //     let rightBrace = this.MatchAndAdvanceToken(SyntaxKind.RightBraceToken)
-    //     return new StructDefinitionStatementSyntax(this.tree, declaration, leftBrace, membersAndSeparators, rightBrace)
+    //     return new StructDeclarationStatementSyntax(this.tree, declaration, leftBrace, membersAndSeparators, rightBrace)
     // }
 
 

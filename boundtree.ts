@@ -305,7 +305,6 @@ export class BoundStructDeclaration extends BoundStatement
         syntax: SyntaxNode | null,
         symbolTable: SymbolTable,
         public symbol: Symbol,
-        public isForwardDeclaration: boolean,
     )
     {
         super(
@@ -322,7 +321,6 @@ export class BoundEnumDeclaration extends BoundStatement
         syntax: SyntaxNode | null,
         symbolTable: SymbolTable,
         public symbol: Symbol,
-        public isForwardDeclaration: boolean,
     )
     {
         super(
@@ -335,7 +333,6 @@ export class BoundEnumDeclaration extends BoundStatement
 
 export class BoundFunctionDeclaration extends BoundStatement
 {
-    public isForwardDeclaration: boolean
     constructor(
         syntax: SyntaxNode | null,
         symbolTable: SymbolTable,
@@ -348,7 +345,6 @@ export class BoundFunctionDeclaration extends BoundStatement
             syntax,
             symbolTable
         )
-        this.isForwardDeclaration = body == null
     }
 }
 
