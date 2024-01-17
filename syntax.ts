@@ -1188,8 +1188,8 @@ export class VariableDeclarationSyntax extends StatementSyntax
         syntaxTree: SyntaxTree,
         public letKeyword: SyntaxToken | null,
         public identifier: SyntaxToken,
-        public colon: SyntaxToken,
-        public type: TypeExpressionSyntax,
+        public colon: SyntaxToken | null,
+        public type: TypeExpressionSyntax | null,
         public equals: SyntaxToken | null,
         public initializer: ExpressionSyntax | null,
     )

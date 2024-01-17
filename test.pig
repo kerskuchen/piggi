@@ -2,27 +2,27 @@ import prelude
 
 fun TestBasics()
 {
-    let a: number = -1 + 2 * 3 - 4 / +2 + 2
+    let a = -1 + 2 * 3 - 4 / +2 + 2
     Assert(a == 5)
 
-    let b: number = 123
+    let b = 123
     Assert(b == 123)
 
-    let c: number = a + b
+    let c = a + b
 
     Assert(c == a + b)
     Assert(c == 5 + 123)
     Assert(c == 128)
     Assert(c == (123 + (-1 + 2 * 3 - 4 / +2 + 2)))
 
-    let d: number = 0xfe + 1
+    let d = 0xfe + 1
     Assert(d == 255)
     Assert(d == 0xff)
 
     let ch: string = '\x41'
     Assert(ch == 'A')
 
-    let math: number = 1
+    let math = 1
     math += 1 + 2 + 2
     Assert(math == 6)
     math /= 1 + 1
@@ -34,7 +34,7 @@ fun TestBasics()
     math -= 2 - 1
     Assert(math == 1)
 
-    let ternary: number = 4 < 3 
+    let ternary = 4 < 3 
         ? math
         : 3 < 3 
             ? 1 + 2 + 3
@@ -63,7 +63,7 @@ fun TestComparisons()
 
 fun TestWhileLoops()
 {
-    let index: number = 0
+    let index = 0
     Assert(index == 0)
     while index < 10 {
         index = index + 1
@@ -75,7 +75,7 @@ fun TestWhileLoops()
 
 fun TestForLoops()
 {
-    let value: number = 0 
+    let value = 0 
     Assert(value == 0)
     for index in 2..5 { 
         value = index
@@ -89,8 +89,8 @@ fun TestForLoops()
 
 fun TestIf()
 {
-    let i: number = 1
-    let j: number = 2
+    let i = 1
+    let j = 2
     if (i < j) 
         Assert(true)
     else 
@@ -147,7 +147,7 @@ fun ReturnComplexResult(): ResultType {
 }
 fun TestFunctionCalls()
 {
-    let result: number = Foo()
+    let result = Foo()
     Assert(result == 100)
     Assert((Foo() + 100) == 200)
     EmptyFunc()
@@ -176,9 +176,9 @@ fun TestParenthesis()
 
 fun TestArrays()
 {
-    let a: number[] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-    let b: number[] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-    let c: number[] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    let a = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    let b = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    let c = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     let d: number
 
     b[5] = 123 
@@ -188,7 +188,6 @@ fun TestArrays()
     d = b[d + c[5] + 1]
     Assert(d == 123)
 
-    // let index: number
     let fill: number[] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     fill[5] = 500
     for index in 0..10 {
@@ -254,13 +253,13 @@ fun TestOperators()
 
 fun TestScopeShadowing()
 {
-    let scope_test: number = 1
+    let scope_test = 1
     Assert(scope_test == 1)
     {
-        let scope_test: number = 2
+        let scope_test = 2
         Assert(scope_test == 2)
         if (true) {
-            let scope_test: number = 3
+            let scope_test = 3
             Assert(scope_test == 3)
         } 
         Assert(scope_test == 2)
@@ -355,24 +354,24 @@ struct SelfReferential {
 }
 fun TestStructs()
 {
-    let my: MyStruct = MyStruct()
+    let my = MyStruct()
     my.a = 5
 
     let a: number = my.a + 5
     Assert(a == 10)
 
-    let mymy: MyOtherStruct = MyOtherStruct()
+    let mymy = MyOtherStruct()
     mymy.other = my
     Assert(mymy.other.a == 5)
 
-    let b: number = mymy.other.a + 5
+    let b = mymy.other.a + 5
     Assert(b == 10)
 
-    let one: SelfReferential = SelfReferential()
+    let one = SelfReferential()
     one.value = [1, 1, 1]
-    let two: SelfReferential = SelfReferential()
+    let two = SelfReferential()
     two.value = [2, 2, 2]
-    let tre: SelfReferential = SelfReferential()
+    let tre = SelfReferential()
     tre.value = [3, 3, 3]
 
     one.previous = null
@@ -414,7 +413,7 @@ fun TestStructs()
 
 fun TestSwitchStatements()
 {
-    let a: number = 5
+    let a = 5
     switch (a) {
         case 1: // Fallthrough
         case 3:

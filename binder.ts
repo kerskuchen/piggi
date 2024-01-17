@@ -384,7 +384,26 @@ export class Binder
             symbolScopeKind = SymbolScopeKind.LocalPersist
         }
 
-        let type = this.BindType(syntax.type)
+        if (syntax.type == null && syntax.initializer == null)
+            throw new Error(`type and initializer is null for variable decl of ${varName}`)
+
+        let type = null
+        let initializer = null
+        if (syntax.type != null)
+            type = this.BindType(syntax.type)
+        if (syntax.initializer != null)
+            initializer = this.BindExpression(syntax.initializer)
+        if (isLocalPersist && initializer == null) {
+            this.diagnostics.ReportError(
+                identifier.GetLocation(),
+                `local persist variable '${varName}' must have an initializer`,
+            )
+        }
+        if (type == null)
+            type = initializer!.type
+        if (initializer != null)
+            this.CanConvertTypeImplicitlyOrError(syntax.initializer!.GetLocation(), initializer!.type, type)
+
         let varSymbol = this.TryCreateSymbolOrError(identifier.GetLocation(), varName, SymbolKind.Variable, symbolScopeKind, type)
         if (varSymbol == null) {
             this.diagnostics.ReportError(
@@ -394,11 +413,6 @@ export class Binder
             return new BoundMissingStatement(syntax, this.symbolTable)
         }
 
-        let initializer = null
-        if (syntax.initializer != null) {
-            initializer = this.BindExpression(syntax.initializer)
-            this.CanConvertTypeImplicitlyOrError(syntax.initializer.GetLocation(), initializer.type, varSymbol.type)
-        }
         return new BoundVariableDeclaration(syntax, this.symbolTable, varSymbol, initializer)
     }
 

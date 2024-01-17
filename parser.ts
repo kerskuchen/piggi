@@ -154,7 +154,7 @@ export class Parser
 
     private ParseGlobalVariableDeclaration(externKeyword: SyntaxToken | null): GlobalVariableDeclarationSyntax
     {
-        let statement = this.ParseVariableDeclaration(false, true)
+        let statement = this.ParseVariableDeclaration(false, true, true)
         return new GlobalVariableDeclarationSyntax(this.tree, externKeyword, statement)
     }
 
@@ -170,7 +170,7 @@ export class Parser
         let leftBrace = this.MatchAndAdvanceToken(SyntaxKind.LeftBraceToken)
         let membersAndSeparators = []
         while (this.Current().kind != SyntaxKind.RightBraceToken && this.Current().kind != SyntaxKind.EndOfFileToken) {
-            let member = this.ParseVariableDeclaration(true, false)
+            let member = this.ParseVariableDeclaration(true, true, false)
             membersAndSeparators.push(member)
 
             if (this.Current().kind == SyntaxKind.CommaToken as SyntaxKind) {
@@ -192,7 +192,7 @@ export class Parser
         let leftParen = this.MatchAndAdvanceToken(SyntaxKind.LeftParenToken)
         let paramsAndSeparators = []
         while (this.Current().kind != SyntaxKind.RightParenToken && this.Current().kind != SyntaxKind.EndOfFileToken) {
-            let param = this.ParseVariableDeclaration(true, false)
+            let param = this.ParseVariableDeclaration(true, true, false)
             paramsAndSeparators.push(param)
 
             if (this.Current().kind == SyntaxKind.CommaToken) {
@@ -261,31 +261,31 @@ export class Parser
         return new EnumValueClauseSyntax(this.tree, identifier, equals, integerLiteral, comma)
     }
 
-    private ParseImplDeclaration(externKeyword: SyntaxToken | null): ImplDeclarationSyntax 
-    {
-        let structKeyword = this.MatchAndAdvanceToken(SyntaxKind.StructKeyword)
-        let identifier = this.MatchAndAdvanceToken(SyntaxKind.IdentifierToken)
-        let declaration = new StructDeclarationSyntax(this.tree, externKeyword, structKeyword, identifier)
-        if (this.Current().kind != SyntaxKind.LeftBraceToken) {
-            return declaration
-        }
+    // private ParseImplDeclaration(externKeyword: SyntaxToken | null): ImplDeclarationSyntax 
+    // {
+    //     let structKeyword = this.MatchAndAdvanceToken(SyntaxKind.StructKeyword)
+    //     let identifier = this.MatchAndAdvanceToken(SyntaxKind.IdentifierToken)
+    //     let declaration = new StructDeclarationSyntax(this.tree, externKeyword, structKeyword, identifier)
+    //     if (this.Current().kind != SyntaxKind.LeftBraceToken) {
+    //         return declaration
+    //     }
 
-        let leftBrace = this.MatchAndAdvanceToken(SyntaxKind.LeftBraceToken)
-        let membersAndSeparators = []
-        while (this.Current().kind != SyntaxKind.RightBraceToken && this.Current().kind != SyntaxKind.EndOfFileToken) {
-            let member = this.ParseVariableDeclaration(true, false)
-            membersAndSeparators.push(member)
+    //     let leftBrace = this.MatchAndAdvanceToken(SyntaxKind.LeftBraceToken)
+    //     let membersAndSeparators = []
+    //     while (this.Current().kind != SyntaxKind.RightBraceToken && this.Current().kind != SyntaxKind.EndOfFileToken) {
+    //         let member = this.ParseVariableDeclaration(true, false)
+    //         membersAndSeparators.push(member)
 
-            if (this.Current().kind == SyntaxKind.CommaToken as SyntaxKind) {
-                let comma = this.AdvanceToken()
-                membersAndSeparators.push(comma)
-            } else {
-                break
-            }
-        }
-        let rightBrace = this.MatchAndAdvanceToken(SyntaxKind.RightBraceToken)
-        return new StructDefinitionStatementSyntax(this.tree, declaration, leftBrace, membersAndSeparators, rightBrace)
-    }
+    //         if (this.Current().kind == SyntaxKind.CommaToken as SyntaxKind) {
+    //             let comma = this.AdvanceToken()
+    //             membersAndSeparators.push(comma)
+    //         } else {
+    //             break
+    //         }
+    //     }
+    //     let rightBrace = this.MatchAndAdvanceToken(SyntaxKind.RightBraceToken)
+    //     return new StructDefinitionStatementSyntax(this.tree, declaration, leftBrace, membersAndSeparators, rightBrace)
+    // }
 
 
 
@@ -318,7 +318,7 @@ export class Parser
                 return this.ParseSwitchStatement()
             case SyntaxKind.LetKeyword:
             case SyntaxKind.LetLocalPersistKeyword:
-                return this.ParseVariableDeclaration(false, true)
+                return this.ParseVariableDeclaration(false, false, true)
             default:
                 return this.ParseExpressionStatement()
         }
@@ -497,7 +497,7 @@ export class Parser
         }
     }
 
-    private ParseVariableDeclaration(skipLet: boolean, allowInitilizer: boolean): VariableDeclarationSyntax
+    private ParseVariableDeclaration(skipLet: boolean, mandatoryType: boolean, allowInitilizer: boolean): VariableDeclarationSyntax
     {
         let letKeyword: SyntaxToken | null = null
         if (!skipLet) {
@@ -508,17 +508,32 @@ export class Parser
         }
 
         let identifier = this.MatchAndAdvanceToken(SyntaxKind.IdentifierToken)
-        let colon = this.MatchAndAdvanceToken(SyntaxKind.ColonToken)
-        let type = this.ParseTypeExpression()
+        let colon = null
+        let type = null
+        let equals = null
+        let initializer = null
+        if (mandatoryType) {
+            colon = this.MatchAndAdvanceToken(SyntaxKind.ColonToken)
+            type = this.ParseTypeExpression()
+            if (allowInitilizer && this.Current().kind == SyntaxKind.EqualsToken) {
+                equals = this.MatchAndAdvanceToken(SyntaxKind.EqualsToken)
+                initializer = this.ParseExpression()
+            }
+        } else {
+            if (allowInitilizer && this.Current().kind == SyntaxKind.EqualsToken) {
+                equals = this.MatchAndAdvanceToken(SyntaxKind.EqualsToken)
+                initializer = this.ParseExpression()
+            } else {
+                colon = this.MatchAndAdvanceToken(SyntaxKind.ColonToken)
+                type = this.ParseTypeExpression()
+                if (allowInitilizer && this.Current().kind == SyntaxKind.EqualsToken) {
+                    equals = this.MatchAndAdvanceToken(SyntaxKind.EqualsToken)
+                    initializer = this.ParseExpression()
+                }
+            }
 
-        if (allowInitilizer && this.Current().kind == SyntaxKind.EqualsToken) {
-            let equals = this.MatchAndAdvanceToken(SyntaxKind.EqualsToken)
-            let initializer = this.ParseExpression()
-            return new VariableDeclarationSyntax(this.tree, letKeyword, identifier, colon, type, equals, initializer)
         }
-        else {
-            return new VariableDeclarationSyntax(this.tree, letKeyword, identifier, colon, type, null, null)
-        }
+        return new VariableDeclarationSyntax(this.tree, letKeyword, identifier, colon, type, equals, initializer)
     }
 
     private ParseExpressionStatement(): ExpressionStatementSyntax
