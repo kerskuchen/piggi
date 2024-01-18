@@ -57,6 +57,8 @@ function CollectSyntaxTrees(rootModuleName: string): SyntaxTree[]
 
 function Main()
 {
+    console.log("COMPLILATION STARTED")
+
     let rootModuleName = "test"
     let trees = CollectSyntaxTrees(rootModuleName)
     for (let tree of trees) {
@@ -81,6 +83,8 @@ function Main()
     let output = emitter.EmitCompilationUnit(compilation)
 
     Deno.writeTextFileSync("bin/" + rootModuleName + ".js", output)
+
+    console.log("COMPLILATION FINISHED")
 }
 
 Main()

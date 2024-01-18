@@ -18,22 +18,40 @@ export class Emitter
     EmitCompilationUnit(unit: BoundCompilationUnit): string
     {
         this.EmitPreamble()
+
         // First we emit all global vars without initializer at the beginning
+        this.EmitHeadline("Global variables")
         for (let declaration of unit.globalDeclarations) {
             if (declaration instanceof BoundVariableDeclaration) {
                 this.EmitModuleStatement(declaration)
                 this.globalVariableDeclarations.push(declaration)
             }
         }
-        // Then emit everything else
+        this.EmitNewLine()
+        this.EmitNewLine()
+
+        // Now emit everything else
+        this.EmitHeadline("Enums")
         for (let declaration of unit.globalDeclarations) {
-            if (!(declaration instanceof BoundVariableDeclaration)) {
+            if (declaration instanceof BoundEnumDeclaration) {
                 this.EmitModuleStatement(declaration)
             }
         }
+        this.EmitHeadline("Classes")
+        for (let declaration of unit.globalDeclarations) {
+            if (declaration instanceof BoundStructDeclaration) {
+                this.EmitModuleStatement(declaration)
+            }
+        }
+        this.EmitHeadline("Functions")
+        for (let declaration of unit.globalDeclarations) {
+            if (declaration instanceof BoundFunctionDeclaration) {
+                this.EmitModuleStatement(declaration)
+            }
+        }
+
         // After that we emit a global variable initialzer function which is called first thing before our Main() function
         this.EmitGlobalVariableInitializerFunction()
-
         this.EmitPostamble()
 
         return this.output
@@ -60,8 +78,11 @@ export class Emitter
     private EmitPreamble()
     {
         this.output = ""
+
+        this.EmitHeadline("Preamble")
         this.output += "// deno-lint-ignore-file prefer-const"
         this.EmitNewLine()
+
         this.EmitNewLine()
         this.output += `function Assert(value) { if (!value) throw new Error("assert") }`
         this.EmitNewLine()
@@ -72,6 +93,7 @@ export class Emitter
 
     private EmitPostamble()
     {
+        this.EmitHeadline("Postamble")
         this.output += "__GlobalVariableInitializer()"
         this.EmitNewLine()
         this.output += "Main()"
@@ -221,10 +243,14 @@ export class Emitter
         let params = Array.from(node.symbol.membersSymbolTable!.symbols.values())
         for (let [index, param] of params.entries()) {
             this.output += param.name
+            this.EmitTypeComment(param.type)
             if (index != params.length - 1)
                 this.output += ', '
         }
-        this.output += ") "
+        this.output += `) `
+        if (node.symbol.type != Type.Void)
+            this.EmitTypeComment(node.symbol.type)
+
         this.currentFunctionSymbol = node.symbol
         this.EmitBlockStatement(node.body!)
         this.currentFunctionSymbol = null
@@ -239,6 +265,10 @@ export class Emitter
 
         // NOTE: We don't emit the initializer here, this happens in the special initializer function
         this.output += `let ${node.symbol.name}`
+        this.output += ` /* = `
+        this.EmitExpression(node.initializer!)
+        this.output += ` */`
+
         this.EmitNewLine()
     }
 
@@ -345,6 +375,8 @@ export class Emitter
             if (node.initializer != null) {
                 this.output += ` = `
                 this.EmitExpression(node.initializer)
+            } else {
+                this.EmitTypeComment(node.symbol.type)
             }
         }
     }
@@ -660,6 +692,10 @@ export class Emitter
             throw new Error("Unreachable")
         }
     }
+    private EmitTypeComment(type: Type)
+    {
+        this.output += ` /*: ${type.PrettyPrint()}*/ `
+    }
 
     private EmitIndentation(level: number)
     {
@@ -671,5 +707,13 @@ export class Emitter
     {
         this.output += "\n"
         this.EmitIndentation(this.indentationLevel)
+    }
+
+    private EmitHeadline(name: string)
+    {
+        this.output += `////////////////////////////////////////////////////////////////////////////////////////////////////
+// ${name}`
+        this.EmitNewLine()
+        this.EmitNewLine()
     }
 }

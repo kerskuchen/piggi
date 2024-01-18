@@ -1,6 +1,9 @@
 import prelude
 
 fun Main() {
+    PrintValue("=====================================")
+    PrintValue("RUNNING TESTS")
+
     TestBasics()
     TestComparisons()
     TestForLoops()
@@ -24,7 +27,6 @@ fun Main() {
 
     PrintValue("=====================================")
     PrintValue("ALL TESTS PASSED")
-    PrintValue("=====================================")
 }
 
 fun TestBasics()
