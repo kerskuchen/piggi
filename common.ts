@@ -170,7 +170,7 @@ export class DiagnosticBag
 
         // TODO: remove this when not testing
         diagnostic.Print()
-        Deno.exit()
+        Deno.exit(1)
 
         this.diagnostics.push(diagnostic)
     }

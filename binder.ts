@@ -8,6 +8,7 @@ import { ArrayType, BaseType, BaseTypeKind, NullableType, Type } from "./types.t
 import { Symbol, SymbolTable, SymbolScopeKind, SymbolKind } from "./symbols.ts"
 import { BoundEnumDeclaration } from "./boundtree.ts"
 import { BoundBinaryOperator, BoundUnaryOperator } from "./operators.ts"
+import { BoundSymbolCollector } from "./boundtree_transformers.ts"
 
 export class Binder
 {
@@ -25,26 +26,147 @@ export class Binder
 
     BindCompilationUnit(trees: SyntaxTree[]): BoundCompilationUnit
     {
+        if (trees.length == 0)
+            throw new Error("No input passed to binder")
+
         for (let tree of trees) {
             this.diagnostics.Append(tree.diagnostics)
         }
 
-        // Search for all top level type- and function declarations and register their names in our 
-        // symbol table. This allows us to reference them later in any order when we actually bind
-        // our tree
+        // NOTE: We first 'forward-declare' all types/functions/globals without evaluating their corresponding
+        // members/bodies/initializers.
+        // We do this because otherwise the members/bodies/initializers could reference other struct types that are not declared yet and
+        // throw nonsense missing-type-errors (because we did not get to those types/function/globals declarations yet).
         this.RegisterGlobalSymbols(trees)
+        // NOTE: Our global scope is now fully declared. Now we actually bind our global declarations
+        let globalDeclarations = this.BindGlobalDeclarations(trees)
 
+        return new BoundCompilationUnit(this.symbolTable, globalDeclarations)
+    }
 
+    BindGlobalDeclarations(trees: SyntaxTree[]): BoundStatement[]
+    {
+        let functionBodies: Map<Symbol, BoundBlockStatement> = new Map()
 
         let globalDeclarations = []
         for (let tree of trees) {
             let module = tree.root
             for (let moduleStatement of module.members) {
-                let boundStatement = this.BindModuleStatement(moduleStatement)
-                globalDeclarations.push(boundStatement)
+                // NOTE: We do global variables separately later (see below)
+                if (!(moduleStatement instanceof GlobalVariableDeclarationSyntax)) {
+                    let boundStatement = this.BindModuleStatement(moduleStatement)
+                    globalDeclarations.push(boundStatement)
+                    if (boundStatement instanceof BoundFunctionDeclaration) {
+                        if (boundStatement.symbol == null)
+                            throw new Error("Function symbol is null")
+                        if (boundStatement.body != null)
+                            functionBodies.set(boundStatement.symbol, boundStatement.body)
+                    }
+                }
             }
         }
-        return new BoundCompilationUnit(this.symbolTable, globalDeclarations)
+
+        // Now finally bind global variable declarations statements and sort them according 
+        // to the dependencies of their initializers.
+        // NOTE: This needs to be done after the functions bodies are defined, because they may 
+        // reference global variables themselves. So the sorting of the global declaration 
+        // statements also depend on the function bodies.
+        let globalVariableDeclarations = new Map<string, BoundVariableDeclaration>()
+        for (let tree of trees) {
+            let module = tree.root
+            for (let moduleStatement of module.members) {
+                if (moduleStatement instanceof GlobalVariableDeclarationSyntax) {
+                    let boundDeclaration = this.BindModuleStatement(moduleStatement) as BoundVariableDeclaration
+                    let varName = boundDeclaration.symbol.name
+                    globalVariableDeclarations.set(varName, boundDeclaration)
+                }
+            }
+        }
+        let sortedGlobalVariableDeclarations = this.SortGlobalVariableDeclarations(globalVariableDeclarations, functionBodies)
+
+        return sortedGlobalVariableDeclarations.concat(globalDeclarations)
+    }
+
+    private SortGlobalVariableDeclarations(
+        variableDeclarations: Map<string, BoundVariableDeclaration>,
+        functionBodies: Map<Symbol, BoundBlockStatement>
+    ): BoundStatement[]
+    {
+        let dependencyMap = new Map<string, string[]>()
+        for (let [varName, declaration] of variableDeclarations.entries()) {
+            let collector = new BoundSymbolCollector(functionBodies)
+            if (declaration.initializer == null) {
+                // We already gave an error and so the sorting does not matter anymore anyway
+                return []
+            }
+            collector.RewriteExpression(declaration.initializer)
+            let dependencies = []
+            for (let dependencySymbol of collector.collectedVariableSymbols) {
+                dependencies.push(dependencySymbol.name)
+            }
+            dependencyMap.set(varName, dependencies)
+        }
+
+        // Continuously remove variables with no dependencies out of the dependency map and put them
+        // into the resolved list. Also remove the resolved variables from all dependencies of other
+        // variables. If we do this in a loop we eventually get one of the following two cases:
+        // 1) The dependency map is empty -> all variables could be resolved
+        // 2) The dependency map contains only elements that themselves have dependencies to other variables -> cannot resolve
+        let finished = false
+        let areDependenciesResolvable = false
+        let resolvedNames = new Set<string>()
+        while (!finished) {
+            // Mark dependency free variables as resolved
+            for (let [varName, dependencies] of dependencyMap) {
+                if (dependencies.length == 0) {
+                    resolvedNames.add(varName)
+                }
+            }
+            // Remove resolved variables from the map
+            for (let resolvedName of resolvedNames) {
+                dependencyMap.delete(resolvedName)
+            }
+            // Remove resolved variables from dependencies of other variables
+            for (let [varName, dependencies] of dependencyMap) {
+                let dependenciesWithRemovedResolved = dependencies.filter((dependency) => !resolvedNames.has(dependency))
+                dependencyMap.set(varName, dependenciesWithRemovedResolved)
+            }
+
+            // Check and repeat
+            areDependenciesResolvable = false
+            if (dependencyMap.size == 0) {
+                areDependenciesResolvable = true
+                finished = true
+            } else {
+                for (let dependencies of dependencyMap.values()) {
+                    if (dependencies.length == 0)
+                        areDependenciesResolvable = true
+                }
+                if (!areDependenciesResolvable)
+                    finished = true
+            }
+        }
+
+        if (!areDependenciesResolvable) {
+            for (let affectedVariable of dependencyMap.keys()) {
+                let associatedStatement = variableDeclarations.get(affectedVariable)!
+                this.diagnostics.ReportError(
+                    associatedStatement.syntax!.GetLocation(),
+                    `Unresolvable cyclic assignment in global variable detected '${affectedVariable}'.`
+                )
+
+            }
+
+            return []
+        }
+
+        // Resolved variables are already sorted correctly. We just need to return the assignment statements in the same order
+        let result: BoundVariableDeclaration[] = []
+        for (let resolved of resolvedNames) {
+            let associatedStatement = variableDeclarations.get(resolved)!
+            result.push(associatedStatement)
+        }
+        return result
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -72,6 +194,21 @@ export class Binder
                 if (moduleStatement instanceof FunctionDeclarationSyntax)
                     this.RegisterFunctionSymbol(moduleStatement)
             }
+        }
+        for (let tree of trees) {
+            let module = tree.root
+            for (let moduleStatement of module.members) {
+                if (moduleStatement instanceof GlobalVariableDeclarationSyntax)
+                    this.RegisterGlobalVariableSymbol(moduleStatement)
+            }
+        }
+
+        let mainFunction = this.symbolTable.GetSymbol("Main")
+        if (mainFunction == null) {
+            this.diagnostics.ReportError(
+                trees[trees.length - 1].root.endOfFileToken.GetLocation(),
+                "Could not find entry point function 'Main'"
+            )
         }
     }
 
@@ -125,8 +262,43 @@ export class Binder
             boundParam.symbol.kind = SymbolKind.Parameter
         }
         this.PopSymbolTable()
+
+        if (functionSymbol.name == "Main") {
+            if (functionSymbol.membersSymbolTable!.symbols.size !== 0 || functionSymbol.type !== Type.Void) {
+                this.diagnostics.ReportError(identifier.GetLocation(),
+                    `Entrypoint function 'Main' must not take arguments and not return anything.`
+                )
+            }
+        }
     }
 
+    private RegisterGlobalVariableSymbol(syntax: GlobalVariableDeclarationSyntax)
+    {
+        let isExternal = syntax.externKeyword != null
+        let symbolScopeKind = isExternal ? SymbolScopeKind.Extern : SymbolScopeKind.Global
+
+        let identifier = syntax.declaration.identifier
+        let varName = syntax.declaration.identifier.GetText()
+        let isLocalPersist = syntax.declaration.letKeyword != null && syntax.declaration.letKeyword.kind == SyntaxKind.LetLocalPersistKeyword
+        if (isLocalPersist) {
+            this.diagnostics.ReportError(
+                identifier.GetLocation(),
+                `Cannot mark global variable '${varName}' as local persistent`,
+            )
+        }
+
+        let type = Type.Any
+        if (syntax.declaration.type != null) {
+            type = this.BindType(syntax.declaration.type)
+        } else {
+            this.diagnostics.ReportError(
+                identifier.GetLocation(),
+                `Global variables must have an explicit type declaration`,
+            )
+        }
+
+        this.RegisterSymbol(identifier.GetLocation(), varName, SymbolKind.Variable, symbolScopeKind, type)
+    }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
     // Module
@@ -163,9 +335,24 @@ export class Binder
         if (this.currentFunctionSymbol != null)
             throw new Error("Unexpected global variable declaration in function")
 
-        let isExternal = syntax.externKeyword != null
-        let symbolScopeKind = isExternal ? SymbolScopeKind.Extern : SymbolScopeKind.Global
-        return this.BindVariableDeclarationStatement(syntax.declaration, symbolScopeKind)
+        let identifier = syntax.declaration.identifier
+        let varName = identifier.GetText()
+        let varSymbol = this.GetSymbolWithSpecificKind(identifier.GetLocation(), varName, SymbolKind.Variable)
+        if (varSymbol == null) {
+            return new BoundMissingStatement(syntax, this.symbolTable)
+        }
+
+        let initializer = null
+        if (syntax.declaration.initializer != null) {
+            initializer = this.BindExpression(syntax.declaration.initializer)
+            this.CanConvertTypeImplicitlyOrError(syntax.declaration.initializer.GetLocation(), initializer!.type, varSymbol.type)
+        } else {
+            this.diagnostics.ReportError(
+                identifier.GetLocation(),
+                `Global variables must have an initializer`,
+            )
+        }
+        return new BoundVariableDeclaration(syntax, this.symbolTable, varSymbol, initializer)
     }
 
     private BindStructDeclarationStatement(syntax: StructDeclarationSyntax): BoundStructDeclaration | BoundMissingStatement

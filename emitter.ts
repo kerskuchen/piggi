@@ -9,18 +9,52 @@ export class Emitter
     public output = ""
     public indentationLevel = 0
     public currentFunctionSymbol: Symbol | null = null
+
+    public globalVariableDeclarations: BoundVariableDeclaration[] = []
+
     constructor(
     ) { }
 
     EmitCompilationUnit(unit: BoundCompilationUnit): string
     {
         this.EmitPreamble()
+        // First we emit all global vars without initializer at the beginning
         for (let declaration of unit.globalDeclarations) {
-            this.EmitModuleStatement(declaration)
+            if (declaration instanceof BoundVariableDeclaration) {
+                this.EmitModuleStatement(declaration)
+                this.globalVariableDeclarations.push(declaration)
+            }
         }
+        // Then emit everything else
+        for (let declaration of unit.globalDeclarations) {
+            if (!(declaration instanceof BoundVariableDeclaration)) {
+                this.EmitModuleStatement(declaration)
+            }
+        }
+        // After that we emit a global variable initialzer function which is called first thing before our Main() function
+        this.EmitGlobalVariableInitializerFunction()
+
         this.EmitPostamble()
 
         return this.output
+    }
+
+    EmitGlobalVariableInitializerFunction()
+    {
+        this.output += `function __GlobalVariableInitializer() {`
+        this.indentationLevel += 1
+        this.EmitNewLine()
+
+        for (let [index, declaration] of this.globalVariableDeclarations.entries()) {
+            this.output += `${declaration.symbol.name} = `
+            this.EmitExpression(declaration.initializer!)
+            if (index == this.globalVariableDeclarations.length - 1)
+                this.indentationLevel -= 1
+            this.EmitNewLine()
+        }
+        this.output += `}` // constructor
+        this.EmitNewLine()
+        this.EmitNewLine()
     }
 
     private EmitPreamble()
@@ -38,7 +72,10 @@ export class Emitter
 
     private EmitPostamble()
     {
+        this.output += "__GlobalVariableInitializer()"
+        this.EmitNewLine()
         this.output += "Main()"
+        this.EmitNewLine()
     }
 
     private EmitModuleStatement(node: BoundStatement)
@@ -200,11 +237,8 @@ export class Emitter
         if (node.symbol.scopeKind == SymbolScopeKind.Extern)
             return
 
+        // NOTE: We don't emit the initializer here, this happens in the special initializer function
         this.output += `let ${node.symbol.name}`
-        if (node.initializer != null) {
-            this.output += ` = `
-            this.EmitExpression(node.initializer)
-        }
         this.EmitNewLine()
     }
 

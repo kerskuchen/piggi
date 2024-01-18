@@ -1,9 +1,12 @@
 // deno-lint-ignore-file prefer-const
 
-import { BoundCompilationUnit, BoundStatement, BoundBlockStatement, BoundVariableDeclaration, BoundIfStatement, BoundBinaryExpression, BoundNameExpression, BoundPrimitiveLiteral, BoundNodeKind, BoundBinaryOperatorKind, BoundExpressionStatement } from "./boundtree.ts"
+import { BoundCompilationUnit, BoundStatement, BoundBlockStatement, BoundVariableDeclaration, BoundIfStatement, BoundBinaryExpression, BoundNameExpression, BoundPrimitiveLiteral, BoundNodeKind, BoundBinaryOperatorKind, BoundExpressionStatement, BoundExpression, BoundForStatement, BoundFunctionCallExpression } from "./boundtree.ts"
 import { BoundTreeRewriter } from "./boundtree_rewriter.ts"
-import { SymbolKind, SymbolScopeKind } from "./symbols.ts"
+import { Symbol, SymbolKind, SymbolScopeKind } from "./symbols.ts"
 import { Type } from "./types.ts"
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// LocalPersistTransformer 
 
 export class LocalPersistTransformer extends BoundTreeRewriter
 {
@@ -60,5 +63,50 @@ export class LocalPersistTransformer extends BoundTreeRewriter
         node.initializer = null
 
         return ifStatement
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Bound Symbol Collector
+
+export class BoundSymbolCollector extends BoundTreeRewriter
+{
+    public collectedVariableSymbols = new Set<Symbol>()
+    public collectedFunctionSymbols = new Set<Symbol>()
+
+    constructor(public functionBodies: Map<Symbol, BoundBlockStatement>)
+    {
+        super()
+    }
+
+    public RewriteExpression(node: BoundExpression): BoundExpression
+    {
+        if (node.symbol != null) {
+            if (node.symbol.kind == SymbolKind.Variable)
+                this.collectedVariableSymbols.add(node.symbol)
+            if (node.symbol.kind == SymbolKind.Variable)
+                this.collectedFunctionSymbols.add(node.symbol)
+        }
+        return super.RewriteExpression(node)
+    }
+
+    protected RewriteFunctionCallExpression(node: BoundFunctionCallExpression): BoundExpression
+    {
+        if (node.symbol == null)
+            throw new Error("Symbol of function call expression is null")
+
+        if (this.collectedFunctionSymbols.has(node.symbol))
+            return super.RewriteFunctionCallExpression(node)
+
+        this.collectedFunctionSymbols.add(node.symbol)
+        this.RewriteStatement(this.functionBodies.get(node.symbol)!)
+
+        return super.RewriteFunctionCallExpression(node)
+    }
+
+    protected RewriteForStatement(node: BoundForStatement): BoundStatement
+    {
+        this.collectedVariableSymbols.add(node.iteratorSymbol)
+        return super.RewriteForStatement(node)
     }
 }

@@ -69,6 +69,27 @@ export enum BoundBinaryOperatorKind
     GreaterEquals = "GreaterEquals",
 }
 
+export function BoundBinaryOperatorIsAssignment(kind: BoundBinaryOperatorKind): boolean
+{
+    switch (kind) {
+        case BoundBinaryOperatorKind.Assignment:
+        case BoundBinaryOperatorKind.AddAssignment:
+        case BoundBinaryOperatorKind.SubtractAssignment:
+        case BoundBinaryOperatorKind.MultiplyAssignment:
+        case BoundBinaryOperatorKind.DivideAssignment:
+        case BoundBinaryOperatorKind.RemainderAssignment:
+        case BoundBinaryOperatorKind.BitwiseXorAssignment:
+        case BoundBinaryOperatorKind.BitwiseAndAssignment:
+        case BoundBinaryOperatorKind.BitwiseOrAssignment:
+        case BoundBinaryOperatorKind.BitshiftLeftAssignment:
+        case BoundBinaryOperatorKind.BitshiftRightAssignment:
+            return true
+        default:
+            return false
+    }
+
+}
+
 export function BoundBinaryOperatorKindToString(kind: BoundBinaryOperatorKind): string
 {
     switch (kind) {

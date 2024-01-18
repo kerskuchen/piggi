@@ -12,7 +12,9 @@ fun Main() {
     TestArrays()
     TestStrings()
     TestOperators()
+    TestFunctionOrdering()
     TestScopeShadowing()
+    TestEnums()
     TestParams()
     TestStructs()
     TestSwitchStatements()
@@ -185,12 +187,21 @@ fun TestFunctionCalls()
     Assert(dummy == false)
 }
 
-let glob_d: number = 100 + 20 + 3 
-let glob_e: string = "hello"
+fun TestGlobalFunctionB() : number{
+    return glob_b + 1
+}
+let glob_a: number = TestGlobalFunctionB()
+let glob_b: number = 100 + 20 + 3 // + glob_a
+let glob_c: string = "hello"
+let glob_d: string = glob_c
+let glob_e: string = "test"
 fun TestGlobals()
 {
-    Assert(glob_d == 123)
-    Assert(glob_e == "hello")
+    Assert(glob_a == glob_b + 1)
+    Assert(glob_b == 123)
+    Assert(glob_c == "hello")
+    Assert(glob_d == glob_c)
+    Assert(glob_e == "test")
 }
 
 fun TestParenthesis()
@@ -333,7 +344,7 @@ enum MyEnum {
     Five = 5,
 }
 
-fun EnumTest()
+fun TestEnums()
 {
     let enummi: MyEnum = MyEnum.Three
     Assert(enummi == MyEnum.Three)
