@@ -1,7 +1,7 @@
 // deno-lint-ignore-file prefer-const
 
 import { Symbol, SymbolTable } from "./symbols.ts"
-import { SyntaxNode } from "./syntax.ts"
+import { ImportDeclarationSyntax, SyntaxNode } from "./syntax.ts"
 import { Type } from "./types.ts"
 
 export enum BoundUnaryOperatorKind
@@ -167,9 +167,10 @@ export enum BoundNodeKind
     // Expressions
     MissingExpression = "MissingExpression",
     NameExpression = "NameExpression",
-    FunctionCallExpression = "FunccallExpression",
-    ArrayIndexExpression = "Arrayindexing",
-    MemberAccessExpression = "Memberaccess",
+    ThisExpression = "ThisExpression",
+    FunctionCallExpression = "FunctionCallExpression",
+    ArrayIndexExpression = "ArrayIndexExpression",
+    MemberAccessExpression = "MemberAccessExpression",
     TypeCastExpression = "TypeCastExpression",
     ParenthesizedExpression = "ParenthesizedExpression",
     UnaryExpression = "UnaryExpression",
@@ -183,13 +184,13 @@ export enum BoundNodeKind
     NumberLiteral = "NumberLiteral",
     BoolLiteral = "BoolLiteral",
     StringLiteral = "StringLiteral",
-    EnumValueLiteral = "EnumValueLiteral",
     ArrayLiteral = "ArrayLiteral",
 
     // Statements
     MissingStatement = "MissingStatement",
-    BlockStatement = "BlockStatement",
     ExpressionStatement = "ExpressionStatement",
+    BlockStatement = "BlockStatement",
+    VariableDeclarationStatement = "VariableDeclarationStatement",
 
     IfStatement = "IfStatement",
     DoWhileStatement = "DoWhileStatement",
@@ -201,13 +202,6 @@ export enum BoundNodeKind
     SwitchStatement = "SwitchStatement",
     CaseStatement = "CaseStatement",
     DefaultStatement = "DefaultStatement",
-
-    ImportDeclaration = "ImportDeclaration",
-    EnumDeclaration = "EnumDeclaration",
-    StructDeclaration = "StructDeclaration",
-    FunctionDeclaration = "FunctionDeclaration",
-    VariableDeclaration = "VariableDeclaration",
-    ArrayDeclaration = "ArrayDeclaration",
 
     // Contains all global function- and variable declarations
     CompilationUnit = "CompilationUnit",
@@ -264,6 +258,25 @@ export abstract class BoundNode
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Compilation Unit
+
+export class BoundCompilationUnit extends BoundNode
+{
+    constructor(
+        symbolTable: SymbolTable,
+        public importedModules: Map<string, ImportDeclarationSyntax>,
+        public functions: Map<string, Symbol>,
+        public enums: Map<string, Symbol>,
+        public structs: Map<string, Symbol>,
+        public globalVars: Map<string, Symbol>,
+        public resolvedSortedGlobalVariableInitializers: Symbol[],
+    ) { super(BoundNodeKind.CompilationUnit, null, symbolTable) }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Statements
+
 export abstract class BoundStatement extends BoundNode
 {
     private _dummyStmt = 0
@@ -272,33 +285,6 @@ export abstract class BoundStatement extends BoundNode
         syntax: SyntaxNode | null,
         symbolTable: SymbolTable,
     ) { super(kind, syntax, symbolTable) }
-}
-
-export abstract class BoundExpression extends BoundNode
-{
-    private _dummyExp = 0
-
-    // TODO: nullable symbol is not good. we should remove this and put it in nodes that actually need it
-    // then we need to think about how to make the callsites sane
-    public symbol: Symbol | null = null
-    constructor(
-        kind: BoundNodeKind,
-        syntax: SyntaxNode | null,
-        symbolTable: SymbolTable,
-        public type: Type,
-        public isRValue: boolean,
-    ) { super(kind, syntax, symbolTable) }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Compilation Unit
-
-export class BoundCompilationUnit extends BoundNode
-{
-    constructor(
-        symbolTable: SymbolTable,
-        public globalDeclarations: BoundStatement[]
-    ) { super(BoundNodeKind.CompilationUnit, null, symbolTable) }
 }
 
 // Created by the binder only when an error occurred
@@ -310,67 +296,6 @@ export class BoundMissingStatement extends BoundStatement
         symbolTable: SymbolTable,
     ) { super(BoundNodeKind.MissingStatement, syntax, symbolTable) }
 }
-
-export class BoundImportDeclaration extends BoundStatement
-{
-    constructor(
-        syntax: SyntaxNode,
-        symbolTable: SymbolTable,
-        public modulename: string
-    ) { super(BoundNodeKind.ImportDeclaration, syntax, symbolTable) }
-}
-
-export class BoundStructDeclaration extends BoundStatement
-{
-    constructor(
-        syntax: SyntaxNode | null,
-        symbolTable: SymbolTable,
-        public symbol: Symbol,
-    )
-    {
-        super(
-            BoundNodeKind.StructDeclaration,
-            syntax,
-            symbolTable
-        )
-    }
-}
-
-export class BoundEnumDeclaration extends BoundStatement
-{
-    constructor(
-        syntax: SyntaxNode | null,
-        symbolTable: SymbolTable,
-        public symbol: Symbol,
-    )
-    {
-        super(
-            BoundNodeKind.EnumDeclaration,
-            syntax,
-            symbolTable
-        )
-    }
-}
-
-export class BoundFunctionDeclaration extends BoundStatement
-{
-    constructor(
-        syntax: SyntaxNode | null,
-        symbolTable: SymbolTable,
-        public symbol: Symbol,
-        public body: BoundBlockStatement | null
-    )
-    {
-        super(
-            BoundNodeKind.FunctionDeclaration,
-            syntax,
-            symbolTable
-        )
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Statements
 
 export class BoundExpressionStatement extends BoundStatement
 {
@@ -390,14 +315,14 @@ export class BoundBlockStatement extends BoundStatement
     ) { super(BoundNodeKind.BlockStatement, syntax, symbolTable) }
 }
 
-export class BoundVariableDeclaration extends BoundStatement
+export class BoundVariableDeclarationStatement extends BoundStatement
 {
     constructor(
         syntax: SyntaxNode | null,
         symbolTable: SymbolTable,
         public symbol: Symbol,
         public initializer: BoundExpression | null
-    ) { super(BoundNodeKind.VariableDeclaration, syntax, symbolTable) }
+    ) { super(BoundNodeKind.VariableDeclarationStatement, syntax, symbolTable) }
 }
 
 export class BoundIfStatement extends BoundStatement
@@ -499,6 +424,22 @@ export class BoundCaseStatement extends BoundStatement
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Expressions
 
+export abstract class BoundExpression extends BoundNode
+{
+    private _dummyExp = 0
+
+    // TODO: nullable symbol is not good. we should remove this and put it in nodes that actually need it
+    // then we need to think about how to make the callsites sane
+    public symbol: Symbol | null = null
+    constructor(
+        kind: BoundNodeKind,
+        syntax: SyntaxNode | null,
+        symbolTable: SymbolTable,
+        public type: Type,
+        public isRValue: boolean,
+    ) { super(kind, syntax, symbolTable) }
+}
+
 // Created by the binder only when an error occurred
 export class BoundMissingExpression extends BoundExpression
 {
@@ -547,6 +488,20 @@ export class BoundNameExpression extends BoundExpression
         this.symbol = symbol
     }
 }
+
+export class BoundThisExpression extends BoundExpression
+{
+    constructor(
+        syntax: SyntaxNode | null,
+        symbolTable: SymbolTable,
+        containerSymbol: Symbol,
+    )
+    {
+        super(BoundNodeKind.ThisExpression, syntax, symbolTable, containerSymbol.type, false)
+        this.symbol = containerSymbol
+    }
+}
+
 
 export class BoundParenthesizedExpression extends BoundExpression
 {
@@ -612,6 +567,7 @@ export class BoundFunctionCallExpression extends BoundExpression
     constructor(
         syntax: SyntaxNode | null,
         symbolTable: SymbolTable,
+        public left: BoundExpression,
         funcSym: Symbol,
         public isConstructor: boolean,
         public args: BoundExpression[],
@@ -646,6 +602,7 @@ export class BoundMemberAccessExpression extends BoundExpression
     )
     {
         super(BoundNodeKind.MemberAccessExpression, syntax, symbolTable, memberSymbol.type, false)
+        this.symbol = memberSymbol
     }
 }
 
@@ -666,16 +623,6 @@ export class BoundPrimitiveLiteral extends BoundExpression
         type: Type,
         public tokenText: string
     ) { super(kind, syntax, symbolTable, type, true) }
-}
-
-export class BoundEnumValueLiteral extends BoundExpression
-{
-    constructor(
-        syntax: SyntaxNode | null,
-        symbolTable: SymbolTable,
-        public enumType: Type,
-        public enumValueSymbol: Symbol,
-    ) { super(BoundNodeKind.EnumValueLiteral, syntax, symbolTable, enumType, true) }
 }
 
 export class BoundArrayLiteral extends BoundExpression

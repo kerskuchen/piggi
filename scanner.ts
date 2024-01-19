@@ -158,8 +158,16 @@ export class Scanner
         this.Advance()
         this.Advance()
 
-        while (true) {
+        let nestingLevel = 1
+        while (nestingLevel > 0) {
             switch (this.Current()) {
+                case '/':
+                    this.Advance()
+                    if (this.Current() == '*') {
+                        this.Advance()
+                        nestingLevel += 1
+                    }
+                    break
                 case '\0':
                     {
                         this.tree.diagnostics.ReportError(
@@ -172,7 +180,7 @@ export class Scanner
                     this.Advance()
                     if (this.Current() == '/') {
                         this.Advance()
-                        return
+                        nestingLevel -= 1
                     }
                     break
                 default:

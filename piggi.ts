@@ -1,7 +1,6 @@
 // deno-lint-ignore-file prefer-const
 
 import { Binder } from "./binder.ts"
-import { LocalPersistTransformer } from "./boundtree_transformers.ts"
 import { Source } from "./common.ts"
 import { Emitter } from "./emitter.ts"
 import { Parser } from "./parser.ts"

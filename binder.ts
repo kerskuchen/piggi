@@ -1,14 +1,13 @@
 // deno-lint-ignore-file prefer-const
 
-import { BoundArrayIndexExpression, BoundArrayLiteral, BoundBinaryExpression, BoundBlockStatement, BoundBreakStatement, BoundCaseStatement, BoundCompilationUnit, BoundContinueStatement, BoundDoWhileStatement, BoundEnumValueLiteral, BoundExpression, BoundExpressionStatement, BoundForStatement, BoundFunctionCallExpression, BoundFunctionDeclaration, BoundIfStatement, BoundImportDeclaration, BoundMemberAccessExpression, BoundMissingExpression, BoundMissingStatement, BoundNameExpression, BoundNodeKind, BoundParenthesizedExpression, BoundPrimitiveLiteral, BoundReturnStatement, BoundStatement, BoundStructDeclaration, BoundSwitchStatement, BoundTernaryConditionalExpression, BoundTypeCastExpression, BoundUnaryExpression, BoundVariableDeclaration, BoundWhileStatement } from "./boundtree.ts"
+import { BoundArrayIndexExpression, BoundArrayLiteral, BoundBinaryExpression, BoundBlockStatement, BoundBreakStatement, BoundCaseStatement, BoundCompilationUnit, BoundContinueStatement, BoundDoWhileStatement, BoundExpression, BoundExpressionStatement, BoundForStatement, BoundFunctionCallExpression, BoundIfStatement, BoundMemberAccessExpression, BoundMissingExpression, BoundMissingStatement, BoundNameExpression, BoundNodeKind, BoundParenthesizedExpression, BoundPrimitiveLiteral, BoundReturnStatement, BoundStatement, BoundSwitchStatement, BoundTernaryConditionalExpression, BoundThisExpression, BoundTypeCastExpression, BoundUnaryExpression, BoundVariableDeclarationStatement, BoundWhileStatement } from "./boundtree.ts"
 import { DiagnosticBag, SourceLocation } from "./common.ts"
-import { ArrayIndexExpressionSyntax, ArrayLiteralSyntax, ArrayTypeExpressionSyntax, BaseTypeExpressionSyntax, BinaryExpressionSyntax, BlockStatementSyntax, BoolLiteralSyntax, BreakStatementSyntax, CaseStatementSyntax, ContinueStatementSyntax, DoWhileStatementSyntax, EnumDeclarationSyntax, ExpressionStatementSyntax, ExpressionSyntax, ForStatementSyntax, FuncCallExpressionSyntax, FunctionDeclarationSyntax, GlobalVariableDeclarationSyntax, IfStatementSyntax, ImportDeclarationSyntax, MemberAccessExpressionSyntax, ModuleMemberSyntax, NameExpressionSyntax, NullLiteralSyntax, NullableTypeExpressionSyntax, NumberLiteralSyntax, ParenthesizedExpressionSyntax, ReturnStatementSyntax, StatementSyntax, StringLiteralSyntax, StructDeclarationSyntax, SwitchStatementSyntax, SyntaxTree, TernaryConditionalExpressionSyntax, TypeCastExpressionSyntax, TypeExpressionSyntax, UnaryExpressionSyntax, VariableDeclarationSyntax, WhileStatementSyntax } from "./syntax.ts"
+import { ArrayIndexExpressionSyntax, ArrayLiteralSyntax, ArrayTypeExpressionSyntax, BaseTypeExpressionSyntax, BinaryExpressionSyntax, BlockStatementSyntax, BoolLiteralSyntax, BreakStatementSyntax, CaseStatementSyntax, ContinueStatementSyntax, DoWhileStatementSyntax, EnumDeclarationSyntax, ExpressionStatementSyntax, ExpressionSyntax, ForStatementSyntax, FuncCallExpressionSyntax, FunctionDeclarationSyntax, GlobalVariableDeclarationSyntax, IfStatementSyntax, ImplDeclarationSyntax, ImportDeclarationSyntax, MemberAccessExpressionSyntax, ModuleMemberSyntax, NameExpressionSyntax, NullLiteralSyntax, NullableTypeExpressionSyntax, NumberLiteralSyntax, ParenthesizedExpressionSyntax, ReturnStatementSyntax, StatementSyntax, StringLiteralSyntax, StructDeclarationSyntax, SwitchStatementSyntax, SyntaxFacts, SyntaxTree, TernaryConditionalExpressionSyntax, TypeCastExpressionSyntax, TypeExpressionSyntax, UnaryExpressionSyntax, VariableDeclarationSyntax, WhileStatementSyntax } from "./syntax.ts"
 import { SyntaxKind } from "./syntax.ts"
 import { ArrayType, BaseType, BaseTypeKind, NullableType, Type } from "./types.ts"
-import { Symbol, SymbolTable, SymbolScopeKind, SymbolKind } from "./symbols.ts"
-import { BoundEnumDeclaration } from "./boundtree.ts"
+import { Symbol, SymbolTable, SymbolKind } from "./symbols.ts"
 import { BoundBinaryOperator, BoundUnaryOperator } from "./operators.ts"
-import { BoundSymbolCollector } from "./boundtree_transformers.ts"
+import { GlobalVariableReferenceCollector } from "./boundtree_transformers.ts"
 
 export class Binder
 {
@@ -16,6 +15,13 @@ export class Binder
     loopLevel = 0
     switchCaseLevel = 0
     currentFunctionSymbol: Symbol | null = null
+    currentImplBlockSymbol: Symbol | null = null
+
+    importedModules: Map<string, ImportDeclarationSyntax> = new Map()
+    globalFuncs: Map<string, Symbol> = new Map()
+    enums: Map<string, Symbol> = new Map()
+    structs: Map<string, Symbol> = new Map()
+    globalVars: Map<string, Symbol> = new Map()
 
     constructor(
         public symbolTable: SymbolTable
@@ -39,134 +45,58 @@ export class Binder
         // throw nonsense missing-type-errors (because we did not get to those types/function/globals declarations yet).
         this.RegisterGlobalSymbols(trees)
         // NOTE: Our global scope is now fully declared. Now we actually bind our global declarations
-        let globalDeclarations = this.BindGlobalDeclarations(trees)
+        this.BindModuleDeclarations(trees)
 
-        return new BoundCompilationUnit(this.symbolTable, globalDeclarations)
-    }
-
-    BindGlobalDeclarations(trees: SyntaxTree[]): BoundStatement[]
-    {
-        let functionBodies: Map<Symbol, BoundBlockStatement> = new Map()
-
-        let globalDeclarations = []
-        for (let tree of trees) {
-            let module = tree.root
-            for (let moduleStatement of module.members) {
-                // NOTE: We do global variables separately later (see below)
-                if (!(moduleStatement instanceof GlobalVariableDeclarationSyntax)) {
-                    let boundStatement = this.BindModuleStatement(moduleStatement)
-                    globalDeclarations.push(boundStatement)
-                    if (boundStatement instanceof BoundFunctionDeclaration) {
-                        if (boundStatement.symbol == null)
-                            throw new Error("Function symbol is null")
-                        if (boundStatement.body != null)
-                            functionBodies.set(boundStatement.symbol, boundStatement.body)
-                    }
-                }
-            }
-        }
-
-        // Now finally bind global variable declarations statements and sort them according 
+        // Now we collect our global variable declarations statements and sort them according 
         // to the dependencies of their initializers.
         // NOTE: This needs to be done after the functions bodies are defined, because they may 
         // reference global variables themselves. So the sorting of the global declaration 
         // statements also depend on the function bodies.
-        let globalVariableDeclarations = new Map<string, BoundVariableDeclaration>()
+        let resolvedSortedGlobalVariableInitializers = this.ResolveAndSortGlobalVariableInitializers()
+
+        return new BoundCompilationUnit(this.symbolTable, this.importedModules, this.globalFuncs, this.enums, this.structs, this.globalVars, resolvedSortedGlobalVariableInitializers)
+    }
+
+    private BindModuleDeclarations(trees: SyntaxTree[])
+    {
+        // NOTE: We still need to bind our declarations in steps to i.e. avoid binding a function
+        // that references a struct field before the struct field itself is actually bound 
+        for (let tree of trees) {
+            let module = tree.root
+            for (let moduleStatement of module.members) {
+                if (moduleStatement instanceof EnumDeclarationSyntax)
+                    this.BindModuleStatement(moduleStatement)
+            }
+        }
+        for (let tree of trees) {
+            let module = tree.root
+            for (let moduleStatement of module.members) {
+                if (moduleStatement instanceof StructDeclarationSyntax)
+                    this.BindModuleStatement(moduleStatement)
+            }
+        }
+        for (let tree of trees) {
+            let module = tree.root
+            for (let moduleStatement of module.members) {
+                if (moduleStatement instanceof FunctionDeclarationSyntax)
+                    this.BindModuleStatement(moduleStatement)
+            }
+        }
+        for (let tree of trees) {
+            let module = tree.root
+            for (let moduleStatement of module.members) {
+                if (moduleStatement instanceof ImplDeclarationSyntax)
+                    this.BindModuleStatement(moduleStatement)
+            }
+        }
         for (let tree of trees) {
             let module = tree.root
             for (let moduleStatement of module.members) {
                 if (moduleStatement instanceof GlobalVariableDeclarationSyntax) {
-                    let boundDeclaration = this.BindModuleStatement(moduleStatement) as BoundVariableDeclaration
-                    let varName = boundDeclaration.symbol.name
-                    globalVariableDeclarations.set(varName, boundDeclaration)
+                    this.BindModuleStatement(moduleStatement)
                 }
             }
         }
-        let sortedGlobalVariableDeclarations = this.SortGlobalVariableDeclarations(globalVariableDeclarations, functionBodies)
-
-        return sortedGlobalVariableDeclarations.concat(globalDeclarations)
-    }
-
-    private SortGlobalVariableDeclarations(
-        variableDeclarations: Map<string, BoundVariableDeclaration>,
-        functionBodies: Map<Symbol, BoundBlockStatement>
-    ): BoundStatement[]
-    {
-        let dependencyMap = new Map<string, string[]>()
-        for (let [varName, declaration] of variableDeclarations.entries()) {
-            let collector = new BoundSymbolCollector(functionBodies)
-            if (declaration.initializer == null) {
-                // We already gave an error and so the sorting does not matter anymore anyway
-                return []
-            }
-            collector.RewriteExpression(declaration.initializer)
-            let dependencies = []
-            for (let dependencySymbol of collector.collectedVariableSymbols) {
-                dependencies.push(dependencySymbol.name)
-            }
-            dependencyMap.set(varName, dependencies)
-        }
-
-        // Continuously remove variables with no dependencies out of the dependency map and put them
-        // into the resolved list. Also remove the resolved variables from all dependencies of other
-        // variables. If we do this in a loop we eventually get one of the following two cases:
-        // 1) The dependency map is empty -> all variables could be resolved
-        // 2) The dependency map contains only elements that themselves have dependencies to other variables -> cannot resolve
-        let finished = false
-        let areDependenciesResolvable = false
-        let resolvedNames = new Set<string>()
-        while (!finished) {
-            // Mark dependency free variables as resolved
-            for (let [varName, dependencies] of dependencyMap) {
-                if (dependencies.length == 0) {
-                    resolvedNames.add(varName)
-                }
-            }
-            // Remove resolved variables from the map
-            for (let resolvedName of resolvedNames) {
-                dependencyMap.delete(resolvedName)
-            }
-            // Remove resolved variables from dependencies of other variables
-            for (let [varName, dependencies] of dependencyMap) {
-                let dependenciesWithRemovedResolved = dependencies.filter((dependency) => !resolvedNames.has(dependency))
-                dependencyMap.set(varName, dependenciesWithRemovedResolved)
-            }
-
-            // Check and repeat
-            areDependenciesResolvable = false
-            if (dependencyMap.size == 0) {
-                areDependenciesResolvable = true
-                finished = true
-            } else {
-                for (let dependencies of dependencyMap.values()) {
-                    if (dependencies.length == 0)
-                        areDependenciesResolvable = true
-                }
-                if (!areDependenciesResolvable)
-                    finished = true
-            }
-        }
-
-        if (!areDependenciesResolvable) {
-            for (let affectedVariable of dependencyMap.keys()) {
-                let associatedStatement = variableDeclarations.get(affectedVariable)!
-                this.diagnostics.ReportError(
-                    associatedStatement.syntax!.GetLocation(),
-                    `Unresolvable cyclic assignment in global variable detected '${affectedVariable}'.`
-                )
-
-            }
-
-            return []
-        }
-
-        // Resolved variables are already sorted correctly. We just need to return the assignment statements in the same order
-        let result: BoundVariableDeclaration[] = []
-        for (let resolved of resolvedNames) {
-            let associatedStatement = variableDeclarations.get(resolved)!
-            result.push(associatedStatement)
-        }
-        return result
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -202,6 +132,13 @@ export class Binder
                     this.RegisterGlobalVariableSymbol(moduleStatement)
             }
         }
+        for (let tree of trees) {
+            let module = tree.root
+            for (let moduleStatement of module.members) {
+                if (moduleStatement instanceof ImplDeclarationSyntax)
+                    this.RegisterImplSymbols(moduleStatement)
+            }
+        }
 
         let mainFunction = this.symbolTable.GetSymbol("Main")
         if (mainFunction == null) {
@@ -215,37 +152,61 @@ export class Binder
     private RegisterEnumSymbol(syntax: EnumDeclarationSyntax)
     {
         let isExternal = syntax.externKeyword != null
-        let symbolScopeKind = isExternal ? SymbolScopeKind.Extern : SymbolScopeKind.Global
-
         let identifier = syntax.identifier
         let enumName = identifier.GetText()
         let type = new BaseType(BaseTypeKind.Enum, enumName)
-        this.RegisterSymbol(identifier.GetLocation(), enumName, SymbolKind.Enum, symbolScopeKind, type)
+        let enumSymbol = this.RegisterSymbol(identifier.GetLocation(), enumName, SymbolKind.Enum, isExternal, type)
+        if (enumSymbol == null) {
+            // NOTE: We already registered a symbol under this name and output error diagnostics
+            return
+        }
+        enumSymbol.syntax = syntax
+        enumSymbol.membersSymbolTable = new SymbolTable(this.symbolTable)
+        this.enums.set(enumName, enumSymbol)
     }
 
     private RegisterStructSymbol(syntax: StructDeclarationSyntax)
     {
         let isExternal = syntax.externKeyword != null
-        let symbolScopeKind = isExternal ? SymbolScopeKind.Extern : SymbolScopeKind.Global
-
         let identifier = syntax.identifier
         let structName = identifier.GetText()
         let type = new BaseType(BaseTypeKind.Struct, structName)
-        this.RegisterSymbol(identifier.GetLocation(), structName, SymbolKind.Struct, symbolScopeKind, type)
+        let structSymbol = this.RegisterSymbol(identifier.GetLocation(), structName, SymbolKind.Struct, isExternal, type)
+        if (structSymbol == null) {
+            // NOTE: We already registered a symbol under this name and have already output diagnostics
+            return
+        }
+        structSymbol.syntax = syntax
+        structSymbol.membersSymbolTable = new SymbolTable(this.symbolTable)
+        this.structs.set(structName, structSymbol)
     }
 
     private RegisterFunctionSymbol(syntax: FunctionDeclarationSyntax)
     {
+        let container = this.currentImplBlockSymbol
         let isExternal = syntax.externKeyword != null
-        let symbolScopeKind = isExternal ? SymbolScopeKind.Extern : SymbolScopeKind.Global
-
         let identifier = syntax.identifier
         let functionName = identifier.GetText()
+        if (isExternal && container != null) {
+            this.diagnostics.ReportError(
+                identifier.GetLocation(),
+                `Members cannot be marked as external`
+            )
+        }
+
+        let symbolKind = SymbolKind.Function
+        if (container != null) {
+            if (syntax.funOrMetKeyword.kind == SyntaxKind.FunKeyword)
+                symbolKind = SymbolKind.MemberFunction
+            else
+                symbolKind = SymbolKind.MemberMethod
+        }
+
         let returnType = syntax.returnType == null
             ? Type.Void
             : this.BindType(syntax.returnType)
-        let functionSymbol = this.RegisterSymbol(identifier.GetLocation(), functionName, SymbolKind.Function, symbolScopeKind, returnType)
-        if (functionSymbol == null || functionSymbol.kind == SymbolKind.Invalid) {
+        let functionSymbol = this.RegisterSymbol(identifier.GetLocation(), functionName, symbolKind, isExternal, returnType)
+        if (functionSymbol == null) {
             // NOTE: We already registered a symbol under this name and have already output diagnostics
             return
         }
@@ -256,10 +217,9 @@ export class Binder
             let param = syntax.paramsAndSeparators[index]
             if (!(param instanceof VariableDeclarationSyntax))
                 throw new Error(`Function parameter syntax has wrong type ${param.kind}`)
-            let boundParam = this.BindVariableDeclarationStatement(param, SymbolScopeKind.Local)
+            let boundParam = this.BindVariableDeclarationStatement(param, SymbolKind.Parameter, false)
             if (boundParam instanceof BoundMissingStatement)
                 continue
-            boundParam.symbol.kind = SymbolKind.Parameter
         }
         this.PopSymbolTable()
 
@@ -270,20 +230,36 @@ export class Binder
                 )
             }
         }
+        functionSymbol.syntax = syntax
+        functionSymbol.parent = container
+        if (container == null)
+            this.globalFuncs.set(functionName, functionSymbol)
     }
 
     private RegisterGlobalVariableSymbol(syntax: GlobalVariableDeclarationSyntax)
     {
+        let container = this.currentImplBlockSymbol
         let isExternal = syntax.externKeyword != null
-        let symbolScopeKind = isExternal ? SymbolScopeKind.Extern : SymbolScopeKind.Global
-
         let identifier = syntax.declaration.identifier
         let varName = syntax.declaration.identifier.GetText()
+        if (isExternal && container != null) {
+            this.diagnostics.ReportError(
+                identifier.GetLocation(),
+                `Members cannot be marked as external`
+            )
+            isExternal = false
+        }
+
+        let symbolKind = SymbolKind.GlobalVariable
+        if (container != null) {
+            symbolKind = SymbolKind.MemberVariable
+        }
+
         let isLocalPersist = syntax.declaration.letKeyword != null && syntax.declaration.letKeyword.kind == SyntaxKind.LetLocalPersistKeyword
         if (isLocalPersist) {
             this.diagnostics.ReportError(
                 identifier.GetLocation(),
-                `Cannot mark global variable '${varName}' as local persistent`,
+                `Member or global variables cannot be marked as local persistent`,
             )
         }
 
@@ -297,49 +273,94 @@ export class Binder
             )
         }
 
-        this.RegisterSymbol(identifier.GetLocation(), varName, SymbolKind.Variable, symbolScopeKind, type)
+        let varSymbol = this.RegisterSymbol(identifier.GetLocation(), varName, symbolKind, isExternal, type)
+        if (varSymbol == null) {
+            // NOTE: We already registered a symbol under this name and have already output diagnostics
+            return
+        }
+        varSymbol.syntax = syntax
+        varSymbol.parent = container
+        if (container == null)
+            this.globalVars.set(varName, varSymbol)
+    }
+
+    RegisterImplSymbols(syntax: ImplDeclarationSyntax)
+    {
+        let identifier = syntax.implIdent
+        let containerName = identifier.GetText()
+        let containerSymbol = this.GetSymbolWithSpecificKind(identifier.GetLocation(), containerName, SymbolKind.Struct)
+        if (containerSymbol == null) {
+            // We already reported an error
+            return
+        }
+
+        this.currentImplBlockSymbol = containerSymbol
+        this.PushCustomSymbolTable(containerSymbol.membersSymbolTable!)
+        for (let member of syntax.members) {
+            if (member instanceof GlobalVariableDeclarationSyntax)
+                this.RegisterGlobalVariableSymbol(member)
+            else if (member instanceof FunctionDeclarationSyntax)
+                this.RegisterFunctionSymbol(member)
+            else
+                throw new Error(`Unexpected member in impl block ${member.kind}`)
+        }
+        this.PopSymbolTable()
+        this.currentImplBlockSymbol = null
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
     // Module
 
-    private BindModuleStatement(syntax: ModuleMemberSyntax): BoundStatement
+    private BindModuleStatement(syntax: ModuleMemberSyntax)
     {
         switch (syntax.kind) {
             case SyntaxKind.ImportDeclaration:
-                return this.BindImportDeclaration(syntax as ImportDeclarationSyntax)
+                this.BindImportDeclaration(syntax as ImportDeclarationSyntax)
+                break
             case SyntaxKind.GlobalVariableDeclaration:
-                return this.BindGlobalVariableDeclarationStatement(syntax as GlobalVariableDeclarationSyntax)
+                this.BindGlobalVariableDeclaration(syntax as GlobalVariableDeclarationSyntax)
+                break
             case SyntaxKind.EnumDeclaration:
-                return this.BindEnumDeclarationStatement(syntax as EnumDeclarationSyntax)
+                this.BindEnumDeclaration(syntax as EnumDeclarationSyntax)
+                break
             case SyntaxKind.StructDeclaration:
-                return this.BindStructDeclarationStatement(syntax as StructDeclarationSyntax)
+                this.BindStructDeclaration(syntax as StructDeclarationSyntax)
+                break
             case SyntaxKind.FunctionDeclaration:
-                return this.BindFunctionDeclarationStatement(syntax as FunctionDeclarationSyntax)
+                this.BindFunctionDeclaration(syntax as FunctionDeclarationSyntax)
+                break
+            case SyntaxKind.ImplDelcaration:
+                this.BindImplDeclaration(syntax as ImplDeclarationSyntax)
+                break
             default:
                 throw new Error(`Unexpected module statement ${syntax.kind} in binder`)
         }
     }
 
-    private BindImportDeclaration(syntax: ImportDeclarationSyntax): BoundImportDeclaration
+    private BindImportDeclaration(syntax: ImportDeclarationSyntax)
     {
         if (this.currentFunctionSymbol != null)
             throw new Error("Unexpected global variable declaration in function")
 
         let modulename = syntax.modulenameIdent.GetText()
-        return new BoundImportDeclaration(syntax, this.symbolTable, modulename)
+        this.importedModules.set(modulename, syntax)
     }
 
-    private BindGlobalVariableDeclarationStatement(syntax: GlobalVariableDeclarationSyntax): BoundVariableDeclaration | BoundMissingStatement
+    private BindGlobalVariableDeclaration(syntax: GlobalVariableDeclarationSyntax)
     {
         if (this.currentFunctionSymbol != null)
             throw new Error("Unexpected global variable declaration in function")
 
+        let symbolKind = SymbolKind.GlobalVariable
+        if (this.currentImplBlockSymbol != null) {
+            symbolKind = SymbolKind.MemberVariable
+        }
+
         let identifier = syntax.declaration.identifier
         let varName = identifier.GetText()
-        let varSymbol = this.GetSymbolWithSpecificKind(identifier.GetLocation(), varName, SymbolKind.Variable)
+        let varSymbol = this.GetSymbolWithSpecificKind(identifier.GetLocation(), varName, symbolKind)
         if (varSymbol == null) {
-            return new BoundMissingStatement(syntax, this.symbolTable)
+            return
         }
 
         let initializer = null
@@ -352,10 +373,12 @@ export class Binder
                 `Global variables must have an initializer`,
             )
         }
-        return new BoundVariableDeclaration(syntax, this.symbolTable, varSymbol, initializer)
+
+        varSymbol.parent = this.currentImplBlockSymbol
+        varSymbol.initializer = initializer
     }
 
-    private BindStructDeclarationStatement(syntax: StructDeclarationSyntax): BoundStructDeclaration | BoundMissingStatement
+    private BindStructDeclaration(syntax: StructDeclarationSyntax)
     {
         if (this.currentFunctionSymbol != null)
             throw new Error("Unexpected struct declaration in function")
@@ -364,17 +387,20 @@ export class Binder
         let structName = identifier.GetText()
         let structSymbol = this.GetSymbolWithSpecificKind(identifier.GetLocation(), structName, SymbolKind.Struct)
         if (structSymbol == null) {
-            return new BoundMissingStatement(syntax, this.symbolTable)
+            return
         }
 
+        if (structSymbol.membersSymbolTable == null)
+            throw new Error("Struct member symboltable is null")
+
         // Push struct member symboltable scope to parse variable declarations as members
-        structSymbol.membersSymbolTable = this.PushNewSymbolTable()
+        this.PushCustomSymbolTable(structSymbol.membersSymbolTable)
         for (let index = 0; index < syntax.membersAndSeparators.length; index += 2) {
             let memberDeclaration = syntax.membersAndSeparators[index] as VariableDeclarationSyntax
-            let memberNode = this.BindVariableDeclarationStatement(memberDeclaration, SymbolScopeKind.Local)
+            let memberNode = this.BindVariableDeclarationStatement(memberDeclaration, SymbolKind.MemberField, false)
             if (memberNode instanceof BoundMissingStatement)
                 continue
-            memberNode.symbol.kind = SymbolKind.Member
+            memberNode.symbol.parent = structSymbol
         }
         this.PopSymbolTable()
 
@@ -384,11 +410,9 @@ export class Binder
                 `Struct '${structName}' needs at least one member`,
             )
         }
-
-        return new BoundStructDeclaration(syntax, this.symbolTable, structSymbol)
     }
 
-    private BindEnumDeclarationStatement(syntax: EnumDeclarationSyntax): BoundEnumDeclaration | BoundMissingStatement
+    private BindEnumDeclaration(syntax: EnumDeclarationSyntax)
     {
         if (this.currentFunctionSymbol != null)
             throw new Error("Unexpected enum declaration in function")
@@ -397,15 +421,18 @@ export class Binder
         let enumName = identifier.GetText()
         let enumSymbol = this.GetSymbolWithSpecificKind(identifier.GetLocation(), enumName, SymbolKind.Enum)
         if (enumSymbol == null) {
-            return new BoundMissingStatement(syntax, this.symbolTable)
+            return
         }
 
+        if (enumSymbol.membersSymbolTable == null)
+            throw new Error("Enum member symboltable is null")
+
         // Push enum member symboltable scope to parse declarations as members
-        enumSymbol.membersSymbolTable = this.PushNewSymbolTable()
+        this.PushCustomSymbolTable(enumSymbol.membersSymbolTable)
         let valueCounter = 0
         for (let clause of syntax.values) {
             let valueName = clause.valueIdentifier.GetText()
-            let valueSymbol = this.TryDeclareVariableSymbolOrError(identifier.GetLocation(), valueName, SymbolKind.Enumvalue, SymbolScopeKind.Local, enumSymbol.type)
+            let valueSymbol = this.TryDeclareVariableSymbolOrError(identifier.GetLocation(), valueName, SymbolKind.EnumValue, false, enumSymbol.type)
             if (valueSymbol == null) {
                 continue
             }
@@ -428,8 +455,9 @@ export class Binder
                 }
                 valueCounter = valueToken.numValue
             }
-            valueSymbol.kind = SymbolKind.Enumvalue
+            valueSymbol.syntax = clause
             valueSymbol.enumValue = valueCounter
+            valueSymbol.parent = enumSymbol
             valueCounter += 1
         }
         this.PopSymbolTable()
@@ -440,25 +468,31 @@ export class Binder
                 `Enum '${enumName}' needs at least one member`,
             )
         }
-
-        return new BoundEnumDeclaration(syntax, this.symbolTable, enumSymbol)
     }
 
-    private BindFunctionDeclarationStatement(syntax: FunctionDeclarationSyntax): BoundFunctionDeclaration | BoundMissingStatement
+    private BindFunctionDeclaration(syntax: FunctionDeclarationSyntax)
     {
         if (this.currentFunctionSymbol != null)
             throw new Error("Unexpected function declaration in function")
 
+        let symbolKind = SymbolKind.Function
+        if (this.currentImplBlockSymbol != null) {
+            if (syntax.funOrMetKeyword.kind == SyntaxKind.FunKeyword)
+                symbolKind = SymbolKind.MemberFunction
+            else
+                symbolKind = SymbolKind.MemberMethod
+        }
+
         let identifier = syntax.identifier
         let functionName = identifier.GetText()
-        let functionSymbol = this.GetSymbolWithSpecificKind(identifier.GetLocation(), functionName, SymbolKind.Function)
+        let functionSymbol = this.GetSymbolWithSpecificKind(identifier.GetLocation(), functionName, symbolKind)
         if (functionSymbol == null) {
-            return new BoundMissingStatement(syntax, this.symbolTable)
+            return
         }
 
         let body = null
         if (syntax.body != null) {
-            if (functionSymbol.scopeKind == SymbolScopeKind.Extern) {
+            if (functionSymbol.isExternal) {
                 this.diagnostics.ReportError(
                     syntax.externKeyword!.GetLocation(),
                     `An external function with body is not allowed: '${functionName}'`,
@@ -474,7 +508,28 @@ export class Binder
             this.PopSymbolTable()
         }
 
-        return new BoundFunctionDeclaration(syntax, this.symbolTable, functionSymbol, body)
+        functionSymbol.functionBody = body
+        functionSymbol.parent = this.currentImplBlockSymbol
+    }
+
+    BindImplDeclaration(syntax: ImplDeclarationSyntax)
+    {
+        let identifier = syntax.implIdent
+        let structName = identifier.GetText()
+        let structSymbol = this.GetSymbolWithSpecificKind(identifier.GetLocation(), structName, SymbolKind.Struct)
+        if (structSymbol == null) {
+            return
+        }
+
+        this.currentImplBlockSymbol = structSymbol
+        this.PushCustomSymbolTable(structSymbol.membersSymbolTable!)
+        let declarations = []
+        for (let declaration of syntax.members) {
+            let boundDeclaration = this.BindModuleStatement(declaration)
+            declarations.push(boundDeclaration)
+        }
+        this.PopSymbolTable()
+        this.currentImplBlockSymbol = null
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -502,7 +557,7 @@ export class Binder
             case SyntaxKind.SwitchStatement:
                 return this.BindSwitchStatement(syntax as SwitchStatementSyntax)
             case SyntaxKind.VariableDeclaration:
-                return this.BindVariableDeclarationStatement(syntax as VariableDeclarationSyntax, SymbolScopeKind.Local)
+                return this.BindVariableDeclarationStatement(syntax as VariableDeclarationSyntax, SymbolKind.Variable, false)
             case SyntaxKind.ExpressionStatement:
                 return this.BindExpressionStatement(syntax as ExpressionStatementSyntax)
             default:
@@ -529,19 +584,26 @@ export class Binder
         return this.FlattenBlockStatementIfNecessary(new BoundBlockStatement(syntax, this.symbolTable, boundStatements)) as BoundBlockStatement
     }
 
-    private BindVariableDeclarationStatement(syntax: VariableDeclarationSyntax, symbolScopeKind: SymbolScopeKind): BoundVariableDeclaration | BoundMissingStatement
+    private BindVariableDeclarationStatement(syntax: VariableDeclarationSyntax, kind: SymbolKind, isExternal: boolean): BoundVariableDeclarationStatement | BoundMissingStatement
     {
         let identifier = syntax.identifier
         let varName = syntax.identifier.GetText()
         let isLocalPersist = syntax.letKeyword != null && syntax.letKeyword.kind == SyntaxKind.LetLocalPersistKeyword
+        if (isExternal && kind != SymbolKind.GlobalVariable) {
+            this.diagnostics.ReportError(
+                identifier.GetLocation(),
+                `Cannot mark non-global variable '${varName}' as external`,
+            )
+            isExternal = false
+        }
         if (isLocalPersist) {
-            if (symbolScopeKind != SymbolScopeKind.Local) {
+            if (kind != SymbolKind.Variable) {
                 this.diagnostics.ReportError(
                     identifier.GetLocation(),
                     `Cannot mark non-local variable '${varName}' as local persistent`,
                 )
             }
-            symbolScopeKind = SymbolScopeKind.LocalPersist
+            kind = SymbolKind.LocalPersistVariable
         }
 
         if (syntax.type == null && syntax.initializer == null)
@@ -564,7 +626,7 @@ export class Binder
         if (initializer != null)
             this.CanConvertTypeImplicitlyOrError(syntax.initializer!.GetLocation(), initializer!.type, type)
 
-        let varSymbol = this.TryDeclareVariableSymbolOrError(identifier.GetLocation(), varName, SymbolKind.Variable, symbolScopeKind, type)
+        let varSymbol = this.TryDeclareVariableSymbolOrError(identifier.GetLocation(), varName, kind, isExternal, type)
         if (varSymbol == null) {
             this.diagnostics.ReportError(
                 identifier.GetLocation(),
@@ -573,7 +635,7 @@ export class Binder
             return new BoundMissingStatement(syntax, this.symbolTable)
         }
 
-        return new BoundVariableDeclaration(syntax, this.symbolTable, varSymbol, initializer)
+        return new BoundVariableDeclarationStatement(syntax, this.symbolTable, varSymbol, initializer)
     }
 
     private BindIfStatement(syntax: IfStatementSyntax): BoundIfStatement
@@ -651,12 +713,12 @@ export class Binder
         this.PushNewSymbolTable()
 
         let iteratorName = syntax.iteratorIdent.GetText()
-        let iteratorSymbol = this.TryDeclareVariableSymbolOrError(syntax.iteratorIdent.GetLocation(), iteratorName, SymbolKind.Variable, SymbolScopeKind.Local, Type.Number)
+        let iteratorSymbol = this.TryDeclareVariableSymbolOrError(syntax.iteratorIdent.GetLocation(), iteratorName, SymbolKind.Variable, false, Type.Number)
         if (iteratorSymbol == null) {
             // NOTE: Although we created a new scope for our for-statement the varible declaration failed.
             // This means we tried to shadow a function parameter. We already output an error at this point
             // To not break everything too severely we add a dummy symbol and allow it to shadow our parameter
-            iteratorSymbol = this.symbolTable.AddSymbol(iteratorName, SymbolKind.Variable, SymbolScopeKind.Local, Type.Number)!
+            iteratorSymbol = this.symbolTable.AddSymbol(iteratorName, SymbolKind.Variable, false, Type.Number)!
         }
 
         this.loopLevel += 1
@@ -786,7 +848,7 @@ export class Binder
             caseExpression = this.BindExpression(syntax.caseExpression)
             if (caseExpression.kind != BoundNodeKind.NumberLiteral
                 && caseExpression.kind != BoundNodeKind.StringLiteral
-                && caseExpression.kind != BoundNodeKind.EnumValueLiteral) {
+                && caseExpression.kind != BoundNodeKind.MemberAccessExpression) {
                 this.diagnostics.ReportError(
                     syntax.caseExpression.GetLocation(),
                     `Expected primitive literal after 'case' label but got '${syntax.caseExpression.kind}'`,
@@ -923,41 +985,30 @@ export class Binder
 
     private BindMemberAccessExpression(syntax: MemberAccessExpressionSyntax): BoundExpression
     {
-        let container = this.BindExpression(syntax.container)
+        let containerExpression = this.BindExpression(syntax.container)
         let accessorToken = syntax.dot
 
         let containerType
-        if (container.type.IsNullable())
-            containerType = container.type.GetInnerType()
+        if (containerExpression.type.IsNullable())
+            containerType = containerExpression.type.GetInnerType()
         else
-            containerType = container.type
-
+            containerType = containerExpression.type
         if (!containerType.IsStruct() && !containerType.IsEnum()) {
             this.diagnostics.ReportError(
                 accessorToken.GetLocation(),
-                `Attempt to access member of non-container type expression '${container.syntax!.GetLocation().GetText()}'`,
+                `Attempt to access member of non-container type expression '${containerExpression.syntax!.GetLocation().GetText()}'`,
             )
             return new BoundMissingExpression(syntax, this.symbolTable)
         }
 
-        // TODO: this is most probably be wrong but let it guide us with its errors later.
-        // Basically we have two distinct concepts:
-        // 1) we access a VARIABLE of a certain TYPE like `myvar.member`
-        // 2) we access a TYPE directly like `MyEnum.FirstValue`
         let containerName = (containerType as BaseType).name
         let containerSymbol = this.symbolTable.GetSymbol(containerName)
-        if (containerSymbol == null)
-            throw new Error("Container symbol does not exist")
-        if (containerSymbol.kind != SymbolKind.Struct && containerSymbol.kind != SymbolKind.Enum)
-            throw new Error("Container symbol has unexpected kind")
-        if (!containerSymbol.type.IsStruct() && !containerSymbol.type.IsEnum())
-            throw new Error("Container symbol has unexpected type")
-        if (containerSymbol.membersSymbolTable == null)
-            throw new Error("Container symbol table is undefined")
+        if (containerSymbol == null || containerSymbol.membersSymbolTable == null)
+            throw new Error("Container is empty")
 
         let memberIdentifier = syntax.memberIdentifier
         let identifierText = memberIdentifier.GetText()
-        let memberSymbol = containerSymbol.membersSymbolTable.GetSymbolFromLocalScope(identifierText)
+        let memberSymbol = containerSymbol.membersSymbolTable!.GetSymbolFromLocalScope(identifierText)
         if (memberSymbol == null) {
             this.diagnostics.ReportError(
                 memberIdentifier.GetLocation(),
@@ -966,12 +1017,15 @@ export class Binder
             return new BoundMissingExpression(syntax, this.symbolTable)
         }
 
-        if (memberSymbol.kind == SymbolKind.Member) {
-            return new BoundMemberAccessExpression(syntax, this.symbolTable, container, memberSymbol)
-        } else if (memberSymbol.kind == SymbolKind.Enumvalue) {
-            return new BoundEnumValueLiteral(syntax, this.symbolTable, containerType, memberSymbol)
-        } else {
-            throw new Error(`Unexpected member symbol kind ${memberSymbol.kind}`)
+        switch (memberSymbol.kind) {
+            case SymbolKind.MemberField:
+            case SymbolKind.MemberFunction:
+            case SymbolKind.MemberMethod:
+            case SymbolKind.MemberVariable:
+            case SymbolKind.EnumValue:
+                return new BoundMemberAccessExpression(syntax, this.symbolTable, containerExpression, memberSymbol)
+            default:
+                throw new Error(`Unexpected member symbol kind ${memberSymbol.kind}`)
         }
     }
 
@@ -989,12 +1043,18 @@ export class Binder
             return new BoundMissingExpression(syntax, this.symbolTable)
         }
 
-        if (symbol.kind != SymbolKind.Function && symbol.kind != SymbolKind.Struct) {
-            this.diagnostics.ReportError(
-                syntax.func.GetLocation(),
-                `Symbol '${symbol.name}' is not a callable function or constructor`,
-            )
-            return new BoundMissingExpression(syntax, this.symbolTable)
+        switch (symbol.kind) {
+            case SymbolKind.Function:
+            case SymbolKind.Struct:
+            case SymbolKind.MemberFunction:
+            case SymbolKind.MemberMethod:
+                break
+            default:
+                this.diagnostics.ReportError(
+                    syntax.func.GetLocation(),
+                    `Symbol '${symbol.name}' is not a callable function, method or constructor`,
+                )
+                return new BoundMissingExpression(syntax, this.symbolTable)
         }
 
         let isConstructor = symbol.kind == SymbolKind.Struct
@@ -1009,8 +1069,9 @@ export class Binder
         if (symbol.membersSymbolTable == null)
             throw new Error("Missing membersSymbolTable")
 
-        let parameterList = Array.from(symbol.membersSymbolTable.symbols.values())
         if (isConstructor) {
+            let parameterList = Array.from(symbol.membersSymbolTable.symbols.values())
+                .filter((sym) => sym.kind == SymbolKind.MemberField)
             if (argumentList.length != parameterList.length && argumentList.length != 0) {
                 this.diagnostics.ReportError(
                     leftParen.GetLocation(),
@@ -1019,7 +1080,14 @@ export class Binder
                 // just pretend we call constructor without arguments here 
                 argumentList.length = 0
             }
+            for (let index = 0; index < argumentList.length; index += 1) {
+                let argumentType = argumentList[index].type
+                let parameterType = parameterList[index].type
+                this.CanConvertTypeImplicitlyOrError(argumentList[index].syntax!.GetLocation(), argumentType, parameterType)
+            }
         } else {
+            let parameterList = Array.from(symbol.membersSymbolTable.symbols.values())
+                .filter((sym) => sym.kind == SymbolKind.Parameter)
             if (argumentList.length != parameterList.length) {
                 this.diagnostics.ReportError(
                     leftParen.GetLocation(),
@@ -1027,15 +1095,14 @@ export class Binder
                 )
                 return new BoundMissingExpression(syntax, this.symbolTable)
             }
+            for (let index = 0; index < argumentList.length; index += 1) {
+                let argumentType = argumentList[index].type
+                let parameterType = parameterList[index].type
+                this.CanConvertTypeImplicitlyOrError(argumentList[index].syntax!.GetLocation(), argumentType, parameterType)
+            }
         }
 
-        for (let index = 0; index < argumentList.length; index += 1) {
-            let argumentType = argumentList[index].type
-            let parameterType = parameterList[index].type
-            this.CanConvertTypeImplicitlyOrError(argumentList[index].syntax!.GetLocation(), argumentType, parameterType)
-        }
-
-        return new BoundFunctionCallExpression(syntax, this.symbolTable, symbol, isConstructor, argumentList)
+        return new BoundFunctionCallExpression(syntax, this.symbolTable, left, symbol, isConstructor, argumentList)
     }
 
     private BindArrayIndexingExpression(syntax: ArrayIndexExpressionSyntax): BoundArrayIndexExpression
@@ -1061,6 +1128,21 @@ export class Binder
     private BindNameExpression(syntax: NameExpressionSyntax): BoundExpression
     {
         let identifier = syntax.identifier
+        if (identifier.kind == SyntaxKind.ThisKeyword) {
+            if (this.currentFunctionSymbol == null || this.currentFunctionSymbol.kind != SymbolKind.MemberMethod) {
+                this.diagnostics.ReportError(
+                    identifier.GetLocation(),
+                    `'this' keyword only allowed in a struct method`,
+                )
+                return new BoundMissingExpression(syntax, this.symbolTable)
+            }
+
+            if (this.currentFunctionSymbol.parent == null)
+                throw new Error("Parent of method symbol is null")
+            let container = this.currentFunctionSymbol.parent
+            return new BoundThisExpression(syntax, this.symbolTable, container)
+        }
+
         let identifierText = identifier.GetText()
         let symbol = this.symbolTable.GetSymbol(identifierText)
         if (symbol == null) {
@@ -1069,6 +1151,18 @@ export class Binder
                 `Undeclared identifier '${identifierText}'`,
             )
             return new BoundMissingExpression(syntax, this.symbolTable)
+        }
+        switch (symbol.kind) {
+            case SymbolKind.MemberFunction:
+            case SymbolKind.MemberField:
+            case SymbolKind.MemberMethod:
+            case SymbolKind.MemberVariable: {
+                this.diagnostics.ReportError(
+                    identifier.GetLocation(),
+                    `Undeclared identifier '${identifierText}'. Did you mean '${symbol.parent!.name}.${identifierText}'?`,
+                )
+                return new BoundMissingExpression(syntax, this.symbolTable)
+            }
         }
         return new BoundNameExpression(syntax, this.symbolTable, symbol.type, symbol)
     }
@@ -1285,22 +1379,34 @@ export class Binder
 
     }
 
-    private RegisterSymbol(diagnosticLocation: SourceLocation, symName: string, kind: SymbolKind, scope: SymbolScopeKind, type: Type): Symbol | null
+    private RegisterSymbol(
+        diagnosticLocation: SourceLocation,
+        symName: string,
+        kind: SymbolKind,
+        isExternal: boolean,
+        type: Type,
+    ): Symbol | null
     {
-        let existing = this.symbolTable.GetSymbol(symName)
+        let existing = this.symbolTable.GetSymbolFromLocalScope(symName)
         if (existing == null) {
-            return this.symbolTable.AddSymbol(symName, kind, scope, type)!
+            return this.symbolTable.AddSymbol(symName, kind, isExternal, type)!
         } else {
             this.diagnostics.ReportError(
                 diagnosticLocation,
                 `A symbol with the same name '${symName}' and kind '${existing.kind}' was already declared in the current scope`,
             )
-            existing.kind = SymbolKind.Invalid
+            this.symbolTable.symbols.delete(symName)
             return null
         }
     }
 
-    private TryDeclareVariableSymbolOrError(diagnosticLocation: SourceLocation, symName: string, kind: SymbolKind, scopeKind: SymbolScopeKind, type: Type): Symbol | null
+    private TryDeclareVariableSymbolOrError(
+        diagnosticLocation: SourceLocation,
+        symName: string,
+        kind: SymbolKind,
+        isExternal: boolean,
+        type: Type,
+    ): Symbol | null
     {
         let existingLocal = this.symbolTable.GetSymbolFromLocalScope(symName)
         if (existingLocal != null) {
@@ -1314,7 +1420,7 @@ export class Binder
 
         let existing = this.symbolTable.GetSymbol(symName)
         if (existing != null) {
-            // We don't allow shadowing parameter type symbols from our surrounding scope
+            // We don't allow shadowing parameter symbols from our surrounding scope
             if (existing.kind == SymbolKind.Parameter) {
                 this.diagnostics.ReportError(
                     diagnosticLocation,
@@ -1323,7 +1429,7 @@ export class Binder
                 return null
             }
             // TODO: The following only searches up to the function scope but may miss sibling scopes
-            if (existing.scopeKind == SymbolScopeKind.LocalPersist) {
+            if (existing.kind == SymbolKind.LocalPersistVariable) {
                 this.diagnostics.ReportError(
                     diagnosticLocation,
                     `A local persistent variable with the same name '${symName}' already exist in the current function`,
@@ -1332,7 +1438,7 @@ export class Binder
             }
         }
 
-        return this.symbolTable.AddSymbol(symName, kind, scopeKind, type)
+        return this.symbolTable.AddSymbol(symName, kind, isExternal, type)
     }
 
     private GetSymbolWithSpecificKind(diagnosticLocation: SourceLocation, symName: string, kind: SymbolKind): Symbol | null
@@ -1375,5 +1481,108 @@ export class Binder
             }
         }
         return false
+    }
+
+    private ResolveAndSortGlobalVariableInitializers(): Symbol[]
+    {
+        let functionBodies = this.CollectStaticFunctionBodies()
+        let globalVariables: Symbol[] = this.CollectGlobalVariables()
+
+        let dependencyMap = new Map<Symbol, Set<Symbol>>()
+        for (let varSym of globalVariables) {
+            if (varSym.initializer == null) {
+                // We already gave an error and so the sorting does not matter anymore anyway
+                return []
+            }
+            let collector = new GlobalVariableReferenceCollector(functionBodies)
+            let dependencies = collector.Collect(varSym.initializer)
+            dependencyMap.set(varSym, dependencies)
+        }
+
+        // Continuously remove variables with no dependencies out of the dependency map and put them
+        // into the resolved list. Also remove the resolved variables from all dependencies of other
+        // variables. If we do this in a loop we eventually get one of the following two cases:
+        // 1) The dependency map is empty -> all variables could be resolved
+        // 2) The dependency map contains only elements that themselves have dependencies to other variables -> cannot resolve
+        let finished = false
+        let areDependenciesResolvable = false
+        let resolvedSymbols: Symbol[] = []
+        while (!finished) {
+            // Mark dependency free variables as resolved
+            for (let [varSym, dependencies] of dependencyMap) {
+                if (dependencies.size == 0) {
+                    resolvedSymbols.push(varSym)
+                }
+            }
+            // Remove resolved variables from the map
+            for (let resolvedSymbol of resolvedSymbols) {
+                dependencyMap.delete(resolvedSymbol)
+            }
+            // Remove resolved variables from dependencies of other variables
+            for (let dependencies of dependencyMap.values()) {
+                for (let resolved of resolvedSymbols) {
+                    dependencies.delete(resolved)
+                }
+            }
+
+            // Check and repeat
+            areDependenciesResolvable = false
+            if (dependencyMap.size == 0) {
+                areDependenciesResolvable = true
+                finished = true
+            } else {
+                for (let dependencies of dependencyMap.values()) {
+                    if (dependencies.size == 0)
+                        areDependenciesResolvable = true
+                }
+                if (!areDependenciesResolvable)
+                    finished = true
+            }
+        }
+
+        if (!areDependenciesResolvable) {
+            for (let affectedVariable of dependencyMap.keys()) {
+                this.diagnostics.ReportError(
+                    affectedVariable.syntax!.GetLocation(),
+                    `Unresolvable cyclic assignment in global variable detected '${affectedVariable.name}'.`
+                )
+            }
+        }
+
+        // Resolved variables are already sorted correctly
+        return resolvedSymbols
+    }
+
+    private CollectStaticFunctionBodies()
+    {
+        let functionBodies = new Map<Symbol, BoundBlockStatement>()
+        for (let func of this.globalFuncs.values()) {
+            if (func.functionBody != null)
+                functionBodies.set(func, func.functionBody)
+        }
+        for (let struct of this.structs.values()) {
+            for (let member of struct.membersSymbolTable!.symbols.values()) {
+                if (member.kind == SymbolKind.MemberFunction && member.functionBody != null) {
+                    functionBodies.set(member, member.functionBody)
+                }
+            }
+        }
+        return functionBodies
+    }
+
+    private CollectGlobalVariables()
+    {
+        let result: Symbol[] = []
+        for (let globalVar of this.globalVars.values()) {
+            result.push(globalVar)
+        }
+        for (let struct of this.structs.values()) {
+            for (let member of struct.membersSymbolTable!.symbols.values()) {
+                if (member.kind == SymbolKind.MemberVariable) {
+                    result.push(member)
+                }
+            }
+        }
+        return result
     }
 }

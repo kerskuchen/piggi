@@ -20,6 +20,7 @@ fun Main() {
     TestEnums()
     TestParams()
     TestStructs()
+    TestStructImpl()
     TestSwitchStatements()
     TestCasting()
     TestLocalPersist()
@@ -190,7 +191,7 @@ fun TestFunctionCalls()
 }
 
 fun TestGlobalFunctionB() : number{
-    return glob_b + 1
+    return glob_b + 1 + Color.specialMembers[1].r
 }
 let glob_a: number = TestGlobalFunctionB()
 let glob_b: number = 100 + 20 + 3 // + glob_a
@@ -199,7 +200,7 @@ let glob_d: string = glob_c
 let glob_e: string = "test"
 fun TestGlobals()
 {
-    Assert(glob_a == glob_b + 1)
+    Assert(glob_a == glob_b + 1 + 255)
     Assert(glob_b == 123)
     Assert(glob_c == "hello")
     Assert(glob_d == glob_c)
@@ -361,28 +362,72 @@ fun TestEnums()
     Assert(arr[1] == MyEnum.Three)
     Assert(arr[2] == MyEnum.Five)
 }
-
 struct MyOtherStruct {
     lala: number,
-    other: MyStruct,
+    color: Color,
     eee: MyEnum,
 }
-struct MyStruct {
-    a: number,
+struct Color {
+    r: number,
+    g: number,
     b: number,
-    c: number,
-    d: number,
 }
-// impl MyStruct {
-//     GetSum() : number {
-//         return this.a + this.b + this.c + this.d
-//     }
-// 
-//     static FromSingle(single: number) {
-//         return MyStruct(single, single, single, single)
-//     }
-// 
-// }
+let black: number = 123
+fun GetSum(a : number, b : number): number 
+{
+    return a + b
+}
+impl Color {
+    let specialMembers: Color[] = [
+        Color.black,
+        Color.white,
+        Color.green,
+        Color(0, 255, 0), 
+    ]
+    let black: Color = Color()
+    let white: Color = Color.FromGrey(255)
+    let blue: Color = Color.specialMembers[3]
+    let green: Color = Color(0, 0, 255)
+    let yellow: Color = Color(0, Color.blue.b, Color.green.g)
+
+    met GetSum() : number {
+        return this.r + this.g + this.b
+    }
+
+    met GetMax() : number {
+        let max = 0
+        if (this.r > max)
+            max = this.r
+        if (this.g > max)
+            max = this.g
+        if (this.b > max)
+            max = this.b
+        return max
+    }
+
+    fun FromGrey(grey: number) : Color {
+        return Color(grey, grey, grey)
+    }
+}
+fun TestStructImpl()
+{
+    let blue1 = Color.blue
+    let blue2 = Color.specialMembers[3]
+    Assert(blue1.b == blue2.b)
+
+    let max = blue1.GetMax()
+    Assert(max == 255)
+
+    let sum = GetSum(1,1)
+    Assert(sum == 2)
+
+    let magenta = Color(Color.white.r, Color.black.g, Color.white.b)
+    Assert(magenta.r == 255)
+    Assert(magenta.g == 0)
+    Assert(magenta.b == 255)
+    Assert(magenta.GetSum() == 2 * 255)
+}
+
 struct SelfReferential {
     value: number[],
     next: SelfReferential?,
@@ -390,18 +435,23 @@ struct SelfReferential {
 }
 fun TestStructs()
 {
-    let my = MyStruct()
-    my.a = 5
+    let col = Color()
+    col.r = 255
+    Assert(col.r == 255)
+    Assert(col.g == 0)
+    Assert(col.b == 0)
 
-    let a: number = my.a + 5
-    Assert(a == 10)
+    let r: number = col.r + 5
+    Assert(r == 260)
 
     let mymy = MyOtherStruct()
-    mymy.other = my
-    Assert(mymy.other.a == 5)
+    mymy.color = col
+    Assert(mymy.color.r == 255)
+    Assert(mymy.color.g == 0)
+    Assert(mymy.color.b == 0)
 
-    let b = mymy.other.a + 5
-    Assert(b == 10)
+    let b = mymy.color.r + 5
+    Assert(b == 260)
 
     let one = SelfReferential()
     one.value = [1, 1, 1]
@@ -445,7 +495,6 @@ fun TestStructs()
     Assert(one.next.next.previous.previous.value[0] == 1)
     Assert(one.next.next.previous.previous.value[0] + 4 == 5)
 }
-
 
 fun TestSwitchStatements()
 {

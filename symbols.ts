@@ -1,25 +1,26 @@
 // deno-lint-ignore-file prefer-const
 
+import { BoundBlockStatement, BoundExpression } from "./boundtree.ts"
+import { SyntaxNode } from "./syntax.ts"
 import { Type } from "./types.ts"
 
 export enum SymbolKind
 {
-    Invalid = "Invalid", // Only used if the binder encounters an error
     Function = "Function",
     Struct = "Struct",
     Enum = "Enum",
     Variable = "Variable",
-    Parameter = "Parameter",  // Valid in functions only
-    Member = "Member",     // Valid in struct/union members only
-    Enumvalue = "Enumvalue",  // For enums only
-};
+    GlobalVariable = "GlobalVariable",
+    LocalPersistVariable = "LocalPersistVariable",
 
-export enum SymbolScopeKind
-{
-    Extern = "Extern",
-    Global = "Global",
-    Local = "Local",
-    LocalPersist = "LocalPersist",
+    Parameter = "Parameter", // Valid in functions only
+    EnumValue = "EnumValue", // For enums only
+
+    // Valid in impl blocks only
+    MemberField = "MemberField",
+    MemberFunction = "MemberFunction",
+    MemberMethod = "MemberMethod",
+    MemberVariable = "MemberVariable",
 };
 
 export class Symbol
@@ -27,22 +28,32 @@ export class Symbol
     constructor(
         public name: string,
         public kind: SymbolKind,
-        public scopeKind: SymbolScopeKind,
+        public isExternal: boolean,
         public type: Type,
+        public table: SymbolTable,
     ) { }
 
-    // For structs/unions/functions/enums
-    public membersSymbolTable: SymbolTable | null = null// Holds function parameters, enum/union/struct members
+    public syntax: SyntaxNode | null = null
+    public parent: Symbol | null = null // for members to determine their container/namespace symbols
+    public membersSymbolTable: SymbolTable | null = null // Holds function parameters, enum/union/struct fields/members
+    public functionBody: BoundBlockStatement | null = null // For functions
+    public initializer: BoundExpression | null = null // For variables
     public enumValue = 0  // For enum values
 }
 
 export class SymbolTable
 {
     public symbols: Map<string, Symbol> = new Map()
+    public childTables: SymbolTable[] = []
 
     constructor(
         public parent: SymbolTable | null
-    ) { }
+    )
+    {
+        if (parent != null) {
+            parent.childTables.push(this)
+        }
+    }
 
 
     GetSymbolFromLocalScope(name: string): Symbol | null
@@ -63,14 +74,19 @@ export class SymbolTable
         return null
     }
 
-    AddSymbol(name: string, kind: SymbolKind, scopeKind: SymbolScopeKind, type: Type): Symbol | null
+    AddSymbol(
+        name: string,
+        kind: SymbolKind,
+        isExtern: boolean,
+        type: Type,
+    ): Symbol | null
     {
         let existingLocal = this.GetSymbolFromLocalScope(name)
         if (existingLocal != null) {
             throw new Error("Cannot overwrite exiting symbol in the same scope")
         }
 
-        let newSymbol = new Symbol(name, kind, scopeKind, type)
+        let newSymbol = new Symbol(name, kind, isExtern, type, this)
         this.symbols.set(name, newSymbol)
         return newSymbol
     }

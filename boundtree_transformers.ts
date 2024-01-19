@@ -1,14 +1,14 @@
 // deno-lint-ignore-file prefer-const
 
-import { BoundCompilationUnit, BoundStatement, BoundBlockStatement, BoundVariableDeclaration, BoundIfStatement, BoundBinaryExpression, BoundNameExpression, BoundPrimitiveLiteral, BoundNodeKind, BoundBinaryOperatorKind, BoundExpressionStatement, BoundExpression, BoundForStatement, BoundFunctionCallExpression } from "./boundtree.ts"
-import { BoundTreeRewriter } from "./boundtree_rewriter.ts"
-import { Symbol, SymbolKind, SymbolScopeKind } from "./symbols.ts"
-import { Type } from "./types.ts"
+import { BoundBlockStatement, BoundExpression, BoundFunctionCallExpression } from "./boundtree.ts"
+import { BoundTreeTraverser } from "./boundtree_rewriter.ts"
+import { Symbol, SymbolKind } from "./symbols.ts"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // LocalPersistTransformer 
 
-export class LocalPersistTransformer extends BoundTreeRewriter
+/*
+export class LocalPersistTransformer extends BoundTreeTraverser
 {
     localpersistNodes: BoundVariableDeclaration[] = []
 
@@ -17,23 +17,23 @@ export class LocalPersistTransformer extends BoundTreeRewriter
         super()
     }
 
-    public RewriteCompilationUnit(node: BoundCompilationUnit): BoundCompilationUnit
+    public TraverseCompilationUnit(node: BoundCompilationUnit): BoundCompilationUnit
     {
         let newDeclarations: BoundStatement[] = []
         for (let declaration of node.globalDeclarations) {
             this.localpersistNodes = []
-            let newDeclaration = this.RewriteModuleStatement(declaration)
+            let newDeclaration = this.TraverseModuleStatement(declaration)
             if (this.localpersistNodes.length != 0)
                 newDeclarations = newDeclarations.concat(this.localpersistNodes)
             newDeclarations.push(newDeclaration)
         }
 
-        return new BoundCompilationUnit(node.symbolTable, newDeclarations)
+        return new BoundCompilationUnit(node.symbolTable, newDeclarations, node.sortedGlobalVariables)
     }
 
-    protected RewriteVariableDeclaration(node: BoundVariableDeclaration): BoundStatement
+    protected TraverseVariableDeclaration(node: BoundVariableDeclaration): BoundStatement
     {
-        if (node.symbol.scopeKind != SymbolScopeKind.LocalPersist)
+        if (node.symbol.kind != SymbolKind.LocalPersistVariable)
             return node
 
         if (node.initializer == null)
@@ -46,7 +46,7 @@ export class LocalPersistTransformer extends BoundTreeRewriter
         this.localpersistNodes.push(node)
         let trueLiteral = new BoundPrimitiveLiteral(BoundNodeKind.BoolLiteral, null, node.symbolTable, Type.Bool, "true")
         let falseLiteral = new BoundPrimitiveLiteral(BoundNodeKind.BoolLiteral, null, node.symbolTable, Type.Bool, "false")
-        let initFlagSymbol = node.symbolTable.AddSymbol(initFlagName, SymbolKind.Variable, SymbolScopeKind.Global, Type.Bool)!
+        let initFlagSymbol = node.symbolTable.AddSymbol(initFlagName, SymbolKind.GlobalVariable, false, Type.Bool, null)!
         let initFlagDecl = new BoundVariableDeclaration(null, node.symbolTable, initFlagSymbol, falseLiteral)
         this.localpersistNodes.push(initFlagDecl)
 
@@ -65,48 +65,49 @@ export class LocalPersistTransformer extends BoundTreeRewriter
         return ifStatement
     }
 }
+*/
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Bound Symbol Collector
+// Symbol Collector
 
-export class BoundSymbolCollector extends BoundTreeRewriter
+export class GlobalVariableReferenceCollector extends BoundTreeTraverser
 {
-    public collectedVariableSymbols = new Set<Symbol>()
-    public collectedFunctionSymbols = new Set<Symbol>()
+    collectedGlobalVariableReferences = new Set<Symbol>()
+    alreadyTraversedFunctions = new Set<Symbol>()
 
     constructor(public functionBodies: Map<Symbol, BoundBlockStatement>)
     {
         super()
     }
 
-    public RewriteExpression(node: BoundExpression): BoundExpression
+    public Collect(node: BoundExpression): Set<Symbol>
     {
-        if (node.symbol != null) {
-            if (node.symbol.kind == SymbolKind.Variable)
-                this.collectedVariableSymbols.add(node.symbol)
-            if (node.symbol.kind == SymbolKind.Variable)
-                this.collectedFunctionSymbols.add(node.symbol)
-        }
-        return super.RewriteExpression(node)
+        this.TraverseExpression(node)
+        return this.collectedGlobalVariableReferences
     }
 
-    protected RewriteFunctionCallExpression(node: BoundFunctionCallExpression): BoundExpression
+    protected TraverseExpression(node: BoundExpression): BoundExpression
+    {
+        if (node.symbol != null) {
+            if (node.symbol.kind == SymbolKind.GlobalVariable || node.symbol.kind == SymbolKind.MemberVariable)
+                this.collectedGlobalVariableReferences.add(node.symbol)
+        }
+        return super.TraverseExpression(node)
+    }
+
+    protected TraverseFunctionCallExpression(node: BoundFunctionCallExpression): BoundExpression
     {
         if (node.symbol == null)
             throw new Error("Symbol of function call expression is null")
 
-        if (this.collectedFunctionSymbols.has(node.symbol))
-            return super.RewriteFunctionCallExpression(node)
-
-        this.collectedFunctionSymbols.add(node.symbol)
-        this.RewriteStatement(this.functionBodies.get(node.symbol)!)
-
-        return super.RewriteFunctionCallExpression(node)
-    }
-
-    protected RewriteForStatement(node: BoundForStatement): BoundStatement
-    {
-        this.collectedVariableSymbols.add(node.iteratorSymbol)
-        return super.RewriteForStatement(node)
+        if (!this.alreadyTraversedFunctions.has(node.symbol)) {
+            this.alreadyTraversedFunctions.add(node.symbol)
+            // NOTE: Body can be undefined i.e. for exterals or constructors
+            let body = this.functionBodies.get(node.symbol)
+            if (body != undefined) {
+                this.TraverseStatement(body)
+            }
+        }
+        return super.TraverseFunctionCallExpression(node)
     }
 }

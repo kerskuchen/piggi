@@ -1,7 +1,7 @@
 // deno-lint-ignore-file prefer-const
 
-import { BoundArrayIndexExpression, BoundArrayLiteral, BoundBinaryExpression, BoundBinaryOperatorKindToString, BoundBlockStatement, BoundBreakStatement, BoundCaseStatement, BoundCompilationUnit, BoundContinueStatement, BoundDoWhileStatement, BoundEnumDeclaration, BoundEnumValueLiteral, BoundExpression, BoundExpressionStatement, BoundForStatement, BoundFunctionCallExpression, BoundFunctionDeclaration, BoundIfStatement, BoundImportDeclaration, BoundMemberAccessExpression, BoundMissingExpression, BoundMissingStatement, BoundNameExpression, BoundNodeKind, BoundParenthesizedExpression, BoundPrimitiveLiteral, BoundReturnStatement, BoundStatement, BoundStructDeclaration, BoundSwitchStatement, BoundTernaryConditionalExpression, BoundTypeCastExpression, BoundUnaryExpression, BoundUnaryOperatorKindToString, BoundVariableDeclaration, BoundWhileStatement } from "./boundtree.ts"
-import { Symbol, SymbolScopeKind } from "./symbols.ts"
+import { BoundArrayIndexExpression, BoundArrayLiteral, BoundBinaryExpression, BoundBinaryOperatorKindToString, BoundBlockStatement, BoundBreakStatement, BoundCaseStatement, BoundCompilationUnit, BoundContinueStatement, BoundDoWhileStatement, BoundExpression, BoundExpressionStatement, BoundForStatement, BoundFunctionCallExpression, BoundIfStatement, BoundMemberAccessExpression, BoundMissingExpression, BoundNameExpression, BoundNodeKind, BoundParenthesizedExpression, BoundPrimitiveLiteral, BoundReturnStatement, BoundStatement, BoundSwitchStatement, BoundTernaryConditionalExpression, BoundThisExpression, BoundTypeCastExpression, BoundUnaryExpression, BoundUnaryOperatorKindToString, BoundVariableDeclarationStatement, BoundWhileStatement } from "./boundtree.ts"
+import { Symbol, SymbolKind } from "./symbols.ts"
 import { ArrayType, BaseType, BaseTypeKind, NullableType, Type } from "./types.ts"
 
 export class Emitter
@@ -10,8 +10,6 @@ export class Emitter
     public indentationLevel = 0
     public currentFunctionSymbol: Symbol | null = null
 
-    public globalVariableDeclarations: BoundVariableDeclaration[] = []
-
     constructor(
     ) { }
 
@@ -19,54 +17,50 @@ export class Emitter
     {
         this.EmitPreamble()
 
-        // First we emit all global vars without initializer at the beginning
         this.EmitHeadline("Global variables")
-        for (let declaration of unit.globalDeclarations) {
-            if (declaration instanceof BoundVariableDeclaration) {
-                this.EmitModuleStatement(declaration)
-                this.globalVariableDeclarations.push(declaration)
-            }
+        this.output += `// NOTE: The following are initialized in the __GlobalVariableInitializer() function`
+        this.EmitNewLine()
+        for (let varSym of unit.globalVars.values()) {
+            this.EmitGlobalVariableDeclaration(varSym)
         }
         this.EmitNewLine()
-        this.EmitNewLine()
 
-        // Now emit everything else
         this.EmitHeadline("Enums")
-        for (let declaration of unit.globalDeclarations) {
-            if (declaration instanceof BoundEnumDeclaration) {
-                this.EmitModuleStatement(declaration)
-            }
-        }
-        this.EmitHeadline("Classes")
-        for (let declaration of unit.globalDeclarations) {
-            if (declaration instanceof BoundStructDeclaration) {
-                this.EmitModuleStatement(declaration)
-            }
-        }
-        this.EmitHeadline("Functions")
-        for (let declaration of unit.globalDeclarations) {
-            if (declaration instanceof BoundFunctionDeclaration) {
-                this.EmitModuleStatement(declaration)
-            }
+        for (let enumSym of unit.enums.values()) {
+            this.EmitEnumDeclaration(enumSym)
         }
 
-        // After that we emit a global variable initialzer function which is called first thing before our Main() function
-        this.EmitGlobalVariableInitializerFunction()
+        this.EmitHeadline("Classes")
+        for (let structSym of unit.structs.values()) {
+            this.EmitStructDeclaration(structSym)
+        }
+
+        this.EmitHeadline("Free Functions")
+        for (let funcSym of unit.functions.values()) {
+            this.EmitFunctionDeclaration(funcSym)
+        }
+
+        // We emit a global variable initialzer function which is called first thing before our Main() function
+        this.EmitGlobalVariableInitializerFunction(unit)
         this.EmitPostamble()
 
         return this.output
     }
 
-    EmitGlobalVariableInitializerFunction()
+    EmitGlobalVariableInitializerFunction(unit: BoundCompilationUnit)
     {
         this.output += `function __GlobalVariableInitializer() {`
         this.indentationLevel += 1
         this.EmitNewLine()
 
-        for (let [index, declaration] of this.globalVariableDeclarations.entries()) {
-            this.output += `${declaration.symbol.name} = `
-            this.EmitExpression(declaration.initializer!)
-            if (index == this.globalVariableDeclarations.length - 1)
+        for (let [index, varSymbol] of unit.resolvedSortedGlobalVariableInitializers.entries()) {
+            if (varSymbol.kind == SymbolKind.MemberVariable)
+                this.output += `${varSymbol.parent!.name}.${varSymbol.name} = `
+            else
+                this.output += `${varSymbol.name} = `
+
+            this.EmitExpression(varSymbol.initializer!)
+            if (index == unit.resolvedSortedGlobalVariableInitializers.length - 1)
                 this.indentationLevel -= 1
             this.EmitNewLine()
         }
@@ -100,63 +94,56 @@ export class Emitter
         this.EmitNewLine()
     }
 
-    private EmitModuleStatement(node: BoundStatement)
+    private EmitEnumDeclaration(symbol: Symbol)
     {
-        // TODO: add leading trivia here
-        // for this we need some kind of node.syntax.GetLeadingTrivia()
-
-        switch (node.kind) {
-            case BoundNodeKind.ImportDeclaration:
-                this.EmitImportDeclaration(node as BoundImportDeclaration)
-                break
-            case BoundNodeKind.VariableDeclaration:
-                this.EmitGlobalVariableDeclaration(node as BoundVariableDeclaration)
-                break
-            case BoundNodeKind.EnumDeclaration:
-                this.EmitEnumDeclaration(node as BoundEnumDeclaration)
-                break
-            case BoundNodeKind.StructDeclaration:
-                this.EmitStructDeclaration(node as BoundStructDeclaration)
-                break
-            case BoundNodeKind.FunctionDeclaration:
-                this.EmitFunctionDeclaration(node as BoundFunctionDeclaration)
-                break
-            default:
-                throw new Error(`Unexpected module declaration in rewriter: ${node.kind}`)
-        }
-
-        // TODO: add leading trivia here
-        // for this we need some kind of node.syntax.GetTrailingTrivia()
-    }
-
-    private EmitMissingStatement(node: BoundMissingStatement)
-    {
-        this.output += `/* missing statement '${node.syntax!.GetLocation().GetText()}' */`
-        this.EmitNewLine()
-        return node
-    }
-
-    private EmitImportDeclaration(node: BoundImportDeclaration)
-    {
-        // this.output += `/* import ${node.modulename} */`
-        // this.EmitNewLine()
-        return node
-    }
-
-    private EmitStructDeclaration(node: BoundStructDeclaration)
-    {
-        if (node.symbol.scopeKind == SymbolScopeKind.Extern)
+        if (symbol.isExternal)
             return
 
-        this.output += `class ${node.symbol.name} {`
+        this.output += `class ${symbol.name} {`
         this.indentationLevel += 1
         this.EmitNewLine()
 
+        let enumValues =
+            Array.from(symbol.membersSymbolTable!.symbols.values())
+                .filter((sym) => sym.kind == SymbolKind.EnumValue)
+        let firstValueName = null
+        for (let [index, enumValue] of enumValues.entries()) {
+            if (firstValueName == null)
+                firstValueName = `${enumValue.name}`
+            this.output += `static ${enumValue.name} = ${enumValue.enumValue}`
+            if (index == enumValues.length - 1)
+                this.indentationLevel -= 1
+            this.EmitNewLine()
+        }
+        if (firstValueName != null) {
+            this.EmitIndentation(this.indentationLevel + 1)
+            this.output += `static __Default = ${symbol.name}.${firstValueName}`
+            this.EmitNewLine()
+        }
+
+        this.output += `}`
+        this.EmitNewLine()
+        this.EmitNewLine()
+    }
+
+    private EmitStructDeclaration(symbol: Symbol)
+    {
+        if (symbol.isExternal)
+            return
+
+        this.output += `class ${symbol.name} {`
+        this.indentationLevel += 1
+        this.EmitNewLine()
+
+        // Main constructor
         this.output += `constructor(`
-        let members = Array.from(node.symbol.membersSymbolTable!.symbols.values())
-        for (let [index, member] of members.entries()) {
-            this.output += member.name
-            if (index != members.length - 1)
+        let fields = Array.from(symbol.membersSymbolTable!.symbols.values())
+            .filter((sym) => sym.kind == SymbolKind.MemberField)
+        for (let [index, field] of fields.entries()) {
+            if (field.kind != SymbolKind.MemberField)
+                continue
+            this.output += field.name
+            if (index != fields.length - 1)
                 this.output += ', '
         }
         this.output += ") "
@@ -164,27 +151,31 @@ export class Emitter
         this.output += "{"
         this.indentationLevel += 1
         this.EmitNewLine()
-        for (let [index, member] of members.entries()) {
-            this.output += `this.${member.name} = ${member.name}`
-            if (index == members.length - 1)
+        for (let [index, field] of fields.entries()) {
+            if (field.kind != SymbolKind.MemberField)
+                continue
+            this.output += `this.${field.name} = ${field.name}`
+            if (index == fields.length - 1)
                 this.indentationLevel -= 1
             this.EmitNewLine()
         }
         this.output += `}` // constructor
         this.EmitNewLine()
-        this.EmitNewLine()
 
+        // Empty constructor
         this.output += `static Default() {`
         this.indentationLevel += 1
         this.EmitNewLine()
-        this.output += `return new ${node.symbol.name}(`
+        this.output += `return new ${symbol.name}(`
         this.indentationLevel += 1
         this.EmitNewLine()
-        for (let [index, member] of members.entries()) {
-            this.EmitDefaultValueForType(member.type)
+        for (let [index, field] of fields.entries()) {
+            if (field.kind != SymbolKind.MemberField)
+                continue
+            this.EmitDefaultValueForType(field.type)
             this.output += ','
-            this.output += ` // ${member.name}`
-            if (index == members.length - 1)
+            this.output += ` // ${field.name}`
+            if (index == fields.length - 1)
                 this.indentationLevel -= 1
             this.EmitNewLine()
         }
@@ -192,55 +183,56 @@ export class Emitter
         this.indentationLevel -= 1
         this.EmitNewLine()
         this.output += `}` // static Default()
-        this.indentationLevel -= 1
         this.EmitNewLine()
 
+        // Associated static variables
+        let staticVars = Array.from(symbol.membersSymbolTable!.symbols.values())
+            .filter((sym) => sym.kind == SymbolKind.MemberVariable)
+        if (staticVars.length > 0) {
+            this.output += `// NOTE: The following are initialized in the __GlobalVariableInitializer() function`
+            this.EmitNewLine()
+            for (let staticVar of staticVars) {
+                this.EmitGlobalVariableDeclaration(staticVar)
+            }
+            this.EmitNewLine()
+        }
+
+        // Associated static functions
+        let staticFuncs = Array.from(symbol.membersSymbolTable!.symbols.values())
+            .filter((sym) => sym.kind == SymbolKind.MemberFunction)
+        for (let staticFunc of staticFuncs) {
+            this.EmitFunctionDeclaration(staticFunc)
+        }
+
+        // Associated member methods
+        let memberFuncs = Array.from(symbol.membersSymbolTable!.symbols.values())
+            .filter((sym) => sym.kind == SymbolKind.MemberMethod)
+        for (let memberFunc of memberFuncs) {
+            this.EmitFunctionDeclaration(memberFunc)
+        }
+
+        this.indentationLevel -= 1
+        this.EmitNewLine()
         this.output += `}` // class
         this.EmitNewLine()
         this.EmitNewLine()
 
-        return node
+        return symbol
     }
 
-    private EmitEnumDeclaration(node: BoundEnumDeclaration)
+    private EmitFunctionDeclaration(symbol: Symbol)
     {
-        if (node.symbol.scopeKind == SymbolScopeKind.Extern)
+        if (symbol.isExternal)
             return
 
-        this.output += `// enum ${node.symbol.name} {`
-        this.indentationLevel += 1
-        this.EmitNewLine()
+        if (symbol.kind == SymbolKind.MemberFunction)
+            this.output += `static `
+        else if (symbol.kind == SymbolKind.Function)
+            this.output += `function `
 
-        let enumValues = Array.from(node.symbol.membersSymbolTable!.symbols.values())
-        let firstValueName = null
-        for (let [index, enumValue] of enumValues.entries()) {
-            if (firstValueName == null)
-                firstValueName = `${node.symbol.name}_${enumValue.name}`
-            this.output += `const ${node.symbol.name}_${enumValue.name} = ${enumValue.enumValue}`
-            if (index == enumValues.length - 1)
-                this.indentationLevel -= 1
-            this.EmitNewLine()
-        }
-        if (firstValueName != null) {
-            this.EmitIndentation(this.indentationLevel + 1)
-            this.output += `const ${node.symbol.name}__Default = ${firstValueName}`
-            this.EmitNewLine()
-        }
+        this.output += `${symbol.name}(`
 
-        this.output += `// }`
-        this.EmitNewLine()
-        this.EmitNewLine()
-    }
-
-    private EmitFunctionDeclaration(node: BoundFunctionDeclaration)
-    {
-        if (node.symbol.scopeKind == SymbolScopeKind.Extern)
-            return
-
-
-        this.output += `function ${node.symbol.name}(`
-
-        let params = Array.from(node.symbol.membersSymbolTable!.symbols.values())
+        let params = Array.from(symbol.membersSymbolTable!.symbols.values())
         for (let [index, param] of params.entries()) {
             this.output += param.name
             this.EmitTypeComment(param.type)
@@ -248,25 +240,30 @@ export class Emitter
                 this.output += ', '
         }
         this.output += `) `
-        if (node.symbol.type != Type.Void)
-            this.EmitTypeComment(node.symbol.type)
+        if (symbol.type != Type.Void)
+            this.EmitTypeComment(symbol.type)
 
-        this.currentFunctionSymbol = node.symbol
-        this.EmitBlockStatement(node.body!)
+        this.currentFunctionSymbol = symbol
+        this.EmitBlockStatement(symbol.functionBody!)
         this.currentFunctionSymbol = null
         this.EmitNewLine()
         this.EmitNewLine()
     }
 
-    private EmitGlobalVariableDeclaration(node: BoundVariableDeclaration)
+    private EmitGlobalVariableDeclaration(symbol: Symbol)
     {
-        if (node.symbol.scopeKind == SymbolScopeKind.Extern)
+        if (symbol.isExternal)
             return
 
-        // NOTE: We don't emit the initializer here, this happens in the special initializer function
-        this.output += `let ${node.symbol.name}`
-        this.output += ` /* = `
-        this.EmitExpression(node.initializer!)
+        if (symbol.kind == SymbolKind.MemberVariable)
+            this.output += `static `
+        else
+            this.output += `let `
+
+        this.output += `${symbol.name}`
+        // NOTE: We don't emit the initializer here, this happens later in a special globalinitializer function
+        this.output += ` /*: ${symbol.type.PrettyPrint()} = `
+        this.EmitExpression(symbol.initializer!)
         this.output += ` */`
 
         this.EmitNewLine()
@@ -281,17 +278,14 @@ export class Emitter
         // for this we need some kind of node.syntax.GetLeadingTrivia()
 
         switch (node.kind) {
-            case BoundNodeKind.MissingStatement:
-                this.EmitMissingStatement(node as BoundMissingStatement)
-                break
             case BoundNodeKind.ExpressionStatement:
                 this.EmitExpressionStatement(node as BoundExpressionStatement)
                 break
             case BoundNodeKind.BlockStatement:
                 this.EmitBlockStatement(node as BoundBlockStatement)
                 break
-            case BoundNodeKind.VariableDeclaration:
-                this.EmitVariableDeclaration(node as BoundVariableDeclaration)
+            case BoundNodeKind.VariableDeclarationStatement:
+                this.EmitVariableDeclaration(node as BoundVariableDeclarationStatement)
                 break
             case BoundNodeKind.IfStatement:
                 this.EmitIfStatement(node as BoundIfStatement)
@@ -351,9 +345,9 @@ export class Emitter
         return node
     }
 
-    private EmitVariableDeclaration(node: BoundVariableDeclaration)
+    private EmitVariableDeclaration(node: BoundVariableDeclarationStatement)
     {
-        if (node.symbol.scopeKind == SymbolScopeKind.LocalPersist) {
+        if (node.symbol.kind == SymbolKind.LocalPersistVariable) {
             if (this.currentFunctionSymbol == null)
                 throw new Error("Local persist variable must be contained in a function")
             if (node.initializer == null)
@@ -502,6 +496,9 @@ export class Emitter
             case BoundNodeKind.NameExpression:
                 this.EmitNameExpression(node as BoundNameExpression)
                 break
+            case BoundNodeKind.ThisExpression:
+                this.EmitThisExpression(node as BoundThisExpression)
+                break
             case BoundNodeKind.UnaryExpression:
                 this.EmitUnaryExpression(node as BoundUnaryExpression)
                 break
@@ -526,9 +523,6 @@ export class Emitter
             case BoundNodeKind.StringLiteral:
                 this.EmitPrimitiveLiteral(node as BoundPrimitiveLiteral)
                 break
-            case BoundNodeKind.EnumValueLiteral:
-                this.EmitEnumValueLiteral(node as BoundEnumValueLiteral)
-                break
             case BoundNodeKind.ArrayLiteral:
                 this.EmitArrayLiteral(node as BoundArrayLiteral)
                 break
@@ -547,7 +541,7 @@ export class Emitter
         if (node.symbol == null)
             throw new Error("Symbol is null in name expression in emitter")
 
-        if (node.symbol.scopeKind == SymbolScopeKind.LocalPersist) {
+        if (node.symbol.kind == SymbolKind.LocalPersistVariable) {
             if (this.currentFunctionSymbol == null)
                 throw new Error("Local persist variable must be contained in a function in emitter")
 
@@ -556,6 +550,12 @@ export class Emitter
             this.output += node.symbol.name
         }
     }
+
+    private EmitThisExpression(_node: BoundThisExpression)
+    {
+        this.output += "this"
+    }
+
 
     private EmitParenthesizedExpression(node: BoundParenthesizedExpression)
     {
@@ -592,7 +592,7 @@ export class Emitter
             this.output += "new "
         }
 
-        this.output += node.symbol!.name
+        this.EmitExpression(node.left)
 
         if (node.isConstructor && node.args.length == 0) {
             this.output += ".Default"
@@ -602,7 +602,7 @@ export class Emitter
         for (let [index, arg] of node.args.entries()) {
             this.EmitExpression(arg)
             if (index != node.args.length - 1)
-                this.output += ','
+                this.output += ', '
         }
         this.output += ')'
     }
@@ -635,9 +635,9 @@ export class Emitter
         this.output += node.tokenText
     }
 
-    private EmitEnumValueLiteral(node: BoundEnumValueLiteral)
+    private EmitEnumValueLiteral(node: BoundMemberAccessExpression)
     {
-        this.output += `${node.enumType.PrettyPrint()}_${node.enumValueSymbol.name}`
+        this.output += `${node.container.type.PrettyPrint()}_${node.memberSymbol.name}`
     }
 
     private EmitArrayLiteral(node: BoundArrayLiteral)
@@ -678,7 +678,7 @@ export class Emitter
                     this.output += `${type.name}`
                     break
                 case BaseTypeKind.Enum:
-                    this.output += `${type.name}__Default`
+                    this.output += `${type.name}.__Default`
                     break
                 default:
                     throw new Error("Unreachable")

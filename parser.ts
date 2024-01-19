@@ -2,7 +2,7 @@
 
 import { DiagnosticBag, Source, SourceLocation } from "./common.ts"
 import { Scanner } from "./scanner.ts"
-import { SyntaxKind, SyntaxToken, SyntaxTrivia, SyntaxTree, BinaryExpressionSyntax, BlockStatementSyntax, BreakStatementSyntax, ContinueStatementSyntax, DoWhileStatementSyntax, ExpressionStatementSyntax, ExpressionSyntax, ForStatementSyntax, IfStatementSyntax, ModuleMemberSyntax, ModuleSyntax, NameExpressionSyntax, ParenthesizedExpressionSyntax, ReturnStatementSyntax, StatementSyntax, TypeCastExpressionSyntax, UnaryExpressionSyntax, VariableDeclarationSyntax, WhileStatementSyntax, ImportDeclarationSyntax, GlobalVariableDeclarationSyntax, StructDeclarationSyntax, FunctionDeclarationSyntax, TypeExpressionSyntax, EnumDeclarationSyntax, EnumValueClauseSyntax, SwitchStatementSyntax, CaseStatementSyntax, TernaryConditionalExpressionSyntax, FuncCallExpressionSyntax, MemberAccessExpressionSyntax, ArrayIndexExpressionSyntax, ArrayLiteralSyntax, NumberLiteralSyntax, StringLiteralSyntax, BoolLiteralSyntax, NullLiteralSyntax, ArrayTypeExpressionSyntax, BaseTypeExpressionSyntax, NullableTypeExpressionSyntax } from "./syntax.ts"
+import { SyntaxKind, SyntaxToken, SyntaxTrivia, SyntaxTree, BinaryExpressionSyntax, BlockStatementSyntax, BreakStatementSyntax, ContinueStatementSyntax, DoWhileStatementSyntax, ExpressionStatementSyntax, ExpressionSyntax, ForStatementSyntax, IfStatementSyntax, ModuleMemberSyntax, ModuleSyntax, NameExpressionSyntax, ParenthesizedExpressionSyntax, ReturnStatementSyntax, StatementSyntax, TypeCastExpressionSyntax, UnaryExpressionSyntax, VariableDeclarationSyntax, WhileStatementSyntax, ImportDeclarationSyntax, GlobalVariableDeclarationSyntax, StructDeclarationSyntax, FunctionDeclarationSyntax, TypeExpressionSyntax, EnumDeclarationSyntax, EnumValueClauseSyntax, SwitchStatementSyntax, CaseStatementSyntax, TernaryConditionalExpressionSyntax, FuncCallExpressionSyntax, MemberAccessExpressionSyntax, ArrayIndexExpressionSyntax, ArrayLiteralSyntax, NumberLiteralSyntax, StringLiteralSyntax, BoolLiteralSyntax, NullLiteralSyntax, ArrayTypeExpressionSyntax, BaseTypeExpressionSyntax, NullableTypeExpressionSyntax, ImplDeclarationSyntax } from "./syntax.ts"
 import { SyntaxFacts } from "./syntax.ts"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -133,14 +133,18 @@ export class Parser
         if (this.Current().kind == SyntaxKind.StructKeyword)
             return this.ParseStructDeclaration(externKeyword)
         if (this.Current().kind == SyntaxKind.FunKeyword)
-            return this.ParseFunctionDeclaration(externKeyword)
+            return this.ParseFunctionDeclaration(externKeyword, false)
         if (this.Current().kind == SyntaxKind.EnumKeyword)
             return this.ParseEnumDeclaration(externKeyword)
+        if (this.Current().kind == SyntaxKind.ImplKeyword)
+            return this.ParseImplDeclaration(externKeyword)
 
         this.tree.diagnostics.ReportError(
             this.Current().GetLocation(),
             `Expected global module definition got unexpected token '${this.Current().kind}' - '${this.Current().GetText()}' instead`
         )
+        // TODO: We need to do something smarter here because this will inifinite loop as soon as we
+        // disable exit on first error
         return null
     }
 
@@ -179,9 +183,13 @@ export class Parser
         return new StructDeclarationSyntax(this.tree, externKeyword, structKeyword, identifier, leftBrace, membersAndSeparators, rightBrace)
     }
 
-    private ParseFunctionDeclaration(externKeyword: SyntaxToken | null): FunctionDeclarationSyntax 
+    private ParseFunctionDeclaration(externKeyword: SyntaxToken | null, allowMethod: boolean): FunctionDeclarationSyntax 
     {
-        let funKeyword = this.MatchAndAdvanceToken(SyntaxKind.FunKeyword)
+        let keyword
+        if (this.Current().kind == SyntaxKind.MetKeyword && allowMethod)
+            keyword = this.MatchAndAdvanceToken(SyntaxKind.MetKeyword)
+        else
+            keyword = this.MatchAndAdvanceToken(SyntaxKind.FunKeyword)
         let identifier = this.MatchAndAdvanceToken(SyntaxKind.IdentifierToken)
 
         let leftParen = this.MatchAndAdvanceToken(SyntaxKind.LeftParenToken)
@@ -213,7 +221,7 @@ export class Parser
             this.functionLevel -= 1
         }
 
-        return new FunctionDeclarationSyntax(this.tree, externKeyword, funKeyword, identifier, leftParen, paramsAndSeparators, rightParen, colon, type, body)
+        return new FunctionDeclarationSyntax(this.tree, externKeyword, keyword, identifier, leftParen, paramsAndSeparators, rightParen, colon, type, body)
     }
 
     private ParseEnumDeclaration(externKeyword: SyntaxToken | null): EnumDeclarationSyntax 
@@ -250,31 +258,33 @@ export class Parser
         return new EnumValueClauseSyntax(this.tree, identifier, equals, integerLiteral, comma)
     }
 
-    // private ParseImplDeclaration(externKeyword: SyntaxToken | null): ImplDeclarationSyntax 
-    // {
-    //     let structKeyword = this.MatchAndAdvanceToken(SyntaxKind.StructKeyword)
-    //     let identifier = this.MatchAndAdvanceToken(SyntaxKind.IdentifierToken)
-    //     let declaration = new StructDeclarationSyntax(this.tree, externKeyword, structKeyword, identifier)
-    //     if (this.Current().kind != SyntaxKind.LeftBraceToken) {
-    //         return declaration
-    //     }
+    private ParseImplDeclaration(externKeyword: SyntaxToken | null): ImplDeclarationSyntax 
+    {
+        let implKeyword = this.MatchAndAdvanceToken(SyntaxKind.ImplKeyword)
+        let identifier = this.MatchAndAdvanceToken(SyntaxKind.IdentifierToken)
 
-    //     let leftBrace = this.MatchAndAdvanceToken(SyntaxKind.LeftBraceToken)
-    //     let membersAndSeparators = []
-    //     while (this.Current().kind != SyntaxKind.RightBraceToken && this.Current().kind != SyntaxKind.EndOfFileToken) {
-    //         let member = this.ParseVariableDeclaration(true, false)
-    //         membersAndSeparators.push(member)
-
-    //         if (this.Current().kind == SyntaxKind.CommaToken as SyntaxKind) {
-    //             let comma = this.AdvanceToken()
-    //             membersAndSeparators.push(comma)
-    //         } else {
-    //             break
-    //         }
-    //     }
-    //     let rightBrace = this.MatchAndAdvanceToken(SyntaxKind.RightBraceToken)
-    //     return new StructDeclarationStatementSyntax(this.tree, declaration, leftBrace, membersAndSeparators, rightBrace)
-    // }
+        let leftBrace = this.MatchAndAdvanceToken(SyntaxKind.LeftBraceToken)
+        let members: ModuleMemberSyntax[] = []
+        while (this.Current().kind != SyntaxKind.RightBraceToken && this.Current().kind != SyntaxKind.EndOfFileToken) {
+            let member: ModuleMemberSyntax
+            if (this.Current().kind == SyntaxKind.LetKeyword) {
+                member = this.ParseGlobalVariableDeclaration(null)
+            } else if (this.Current().kind == SyntaxKind.FunKeyword || this.Current().kind == SyntaxKind.MetKeyword) {
+                member = this.ParseFunctionDeclaration(null, true)
+            } else {
+                this.tree.diagnostics.ReportError(
+                    this.Current().GetLocation(),
+                    `Expected method or variable declaration in impl block of '${identifier.text}' but got unexpected token '${this.Current().kind}' - '${this.Current().GetText()}' instead`
+                )
+                // TODO: We need to do something smarter here because this will inifinite loop as soon as we
+                // disable exit on first error
+                continue
+            }
+            members.push(member)
+        }
+        let rightBrace = this.MatchAndAdvanceToken(SyntaxKind.RightBraceToken)
+        return new ImplDeclarationSyntax(this.tree, externKeyword, implKeyword, identifier, leftBrace, members, rightBrace)
+    }
 
 
 
@@ -718,7 +728,11 @@ export class Parser
 
     private ParseNameExpression(): NameExpressionSyntax
     {
-        let identifierToken = this.MatchAndAdvanceToken(SyntaxKind.IdentifierToken)
+        let identifierToken
+        if (this.Current().kind == SyntaxKind.ThisKeyword)
+            identifierToken = this.MatchAndAdvanceToken(SyntaxKind.ThisKeyword)
+        else
+            identifierToken = this.MatchAndAdvanceToken(SyntaxKind.IdentifierToken)
         return new NameExpressionSyntax(this.tree, identifierToken)
     }
 
