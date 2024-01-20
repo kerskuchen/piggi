@@ -60,15 +60,15 @@ function Main()
 
     let rootModuleName = "test"
     let trees = CollectSyntaxTrees(rootModuleName)
-    for (let tree of trees) {
-        Deno.writeTextFileSync("bin/" + tree.source.modulename + "_syntaxdump.txt", tree.root.DumpTree())
-    }
+    // for (let tree of trees) {
+    //     Deno.writeTextFileSync("bin/" + tree.source.modulename + "_syntaxdump.txt", tree.root.DumpTree())
+    // }
 
     let symbolTable = new SymbolTable(null)
     let binder = new Binder(symbolTable)
     let compilation = binder.BindCompilationUnit(trees)
 
-    Deno.writeTextFileSync("bin/" + rootModuleName + "_boundtreedump.txt", compilation.DumpTree())
+    // Deno.writeTextFileSync("bin/" + rootModuleName + "_boundtreedump.txt", compilation.DumpTree())
 
     if (binder.diagnostics.hasErrors) {
         binder.diagnostics.Print()
@@ -81,7 +81,7 @@ function Main()
     let emitter = new Emitter()
     let output = emitter.EmitCompilationUnit(compilation)
 
-    Deno.writeTextFileSync("bin/" + rootModuleName + ".js", output)
+    Deno.writeTextFileSync(rootModuleName + ".js", output)
 
     console.log("COMPLILATION FINISHED")
 }

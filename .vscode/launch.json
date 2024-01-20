@@ -22,7 +22,7 @@
             "request": "launch",
             "name": "test",
             "type": "node",
-            "program": "${workspaceFolder}/bin/test.js",
+            "program": "${workspaceFolder}/test.js",
             "cwd": "${workspaceFolder}",
             "runtimeExecutable": "deno",
             "runtimeArgs": [

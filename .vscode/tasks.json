@@ -18,7 +18,7 @@
 			"command": "run",
 			"args": [
 				"--allow-all",
-				"bin/test.js"
+				"test.js"
 			],
 			"problemMatcher": [
 				"$deno"

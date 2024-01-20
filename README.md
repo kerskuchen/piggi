@@ -1,17 +1,14 @@
 # piggi
 
-An attempt in writing a language with a ~~self hosting~~ compiler.
+An attempt in writing a small language that transpiles to Javascript.
 
-_Note that the self hosting part was removed for now with the C# rewrite because
-it is too tedious to iterate on a language and the compiler at the same time.
-Maybe later when everything has stabilized somewhat we can re-evaluate this._
-
-_The old previous self hosting compiler can be looked at on the
+_An old previous self hosting-ish c(++ish) compiler can be looked at on the
 `old-selfhostin-in-c` git branch._
 
 ## Status
 
-Nothing here yet.
+Can do some basic things now. Take a look at `test.pig` and its output `test.js`
+as reference for the languages and transpilers current capabilities.
 
 ## References
 
