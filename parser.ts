@@ -2,7 +2,7 @@
 
 import { DiagnosticBag, Source, SourceLocation } from "./common.ts"
 import { Scanner } from "./scanner.ts"
-import { SyntaxKind, SyntaxToken, SyntaxTrivia, SyntaxTree, BinaryExpressionSyntax, BlockStatementSyntax, BreakStatementSyntax, ContinueStatementSyntax, DoWhileStatementSyntax, ExpressionStatementSyntax, ExpressionSyntax, ForStatementSyntax, IfStatementSyntax, ModuleMemberSyntax, ModuleSyntax, NameExpressionSyntax, ParenthesizedExpressionSyntax, ReturnStatementSyntax, StatementSyntax, TypeCastExpressionSyntax, UnaryExpressionSyntax, VariableDeclarationSyntax, WhileStatementSyntax, ImportDeclarationSyntax, GlobalVariableDeclarationSyntax, StructDeclarationSyntax, FunctionDeclarationSyntax, TypeExpressionSyntax, EnumDeclarationSyntax, EnumValueClauseSyntax, SwitchStatementSyntax, CaseStatementSyntax, TernaryConditionalExpressionSyntax, FuncCallExpressionSyntax, MemberAccessExpressionSyntax, ArrayIndexExpressionSyntax, ArrayLiteralSyntax, NumberLiteralSyntax, StringLiteralSyntax, BoolLiteralSyntax, NullLiteralSyntax, ArrayTypeExpressionSyntax, BaseTypeExpressionSyntax, NullableTypeExpressionSyntax, ImplDeclarationSyntax } from "./syntax.ts"
+import { SyntaxKind, SyntaxToken, SyntaxTrivia, SyntaxTree, BinaryExpressionSyntax, BlockStatementSyntax, BreakStatementSyntax, ContinueStatementSyntax, DoWhileStatementSyntax, ExpressionStatementSyntax, ExpressionSyntax, ForStatementSyntax, IfStatementSyntax, ModuleMemberSyntax, ModuleSyntax, NameExpressionSyntax, ParenthesizedExpressionSyntax, ReturnStatementSyntax, StatementSyntax, TypeCastExpressionSyntax, UnaryExpressionSyntax, VariableDeclarationSyntax, WhileStatementSyntax, ImportDeclarationSyntax, GlobalVariableDeclarationSyntax, StructDeclarationSyntax, FunctionDeclarationSyntax, TypeExpressionSyntax, EnumDeclarationSyntax, EnumValueClauseSyntax, SwitchStatementSyntax, CaseStatementSyntax, TernaryConditionalExpressionSyntax, FuncCallExpressionSyntax, MemberAccessExpressionSyntax, ArrayIndexExpressionSyntax, ArrayLiteralSyntax, NumberLiteralSyntax, StringLiteralSyntax, BoolLiteralSyntax, NullLiteralSyntax, ArrayTypeExpressionSyntax, BaseTypeExpressionSyntax, NullableTypeExpressionSyntax, ImplDeclarationSyntax, TemplateClauseSyntax } from "./syntax.ts"
 import { SyntaxFacts } from "./syntax.ts"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -133,7 +133,7 @@ export class Parser
         if (this.Current().kind == SyntaxKind.StructKeyword)
             return this.ParseStructDeclaration(externKeyword)
         if (this.Current().kind == SyntaxKind.FunKeyword)
-            return this.ParseFunctionDeclaration(externKeyword, false)
+            return this.ParseFunctionDeclaration(externKeyword, false, true)
         if (this.Current().kind == SyntaxKind.EnumKeyword)
             return this.ParseEnumDeclaration(externKeyword)
         if (this.Current().kind == SyntaxKind.ImplKeyword)
@@ -183,7 +183,7 @@ export class Parser
         return new StructDeclarationSyntax(this.tree, externKeyword, structKeyword, identifier, leftBrace, membersAndSeparators, rightBrace)
     }
 
-    private ParseFunctionDeclaration(externKeyword: SyntaxToken | null, allowMethod: boolean): FunctionDeclarationSyntax 
+    private ParseFunctionDeclaration(externKeyword: SyntaxToken | null, allowMethod: boolean, allowTemplateClause: boolean): FunctionDeclarationSyntax 
     {
         let keyword
         if (this.Current().kind == SyntaxKind.MetKeyword && allowMethod)
@@ -191,6 +191,11 @@ export class Parser
         else
             keyword = this.MatchAndAdvanceToken(SyntaxKind.FunKeyword)
         let identifier = this.MatchAndAdvanceToken(SyntaxKind.IdentifierToken)
+
+        let templateClause = null
+        if (this.Current().kind == SyntaxKind.LessToken && allowTemplateClause) {
+            templateClause = this.ParseTemplateClause()
+        }
 
         let leftParen = this.MatchAndAdvanceToken(SyntaxKind.LeftParenToken)
         let paramsAndSeparators = []
@@ -221,7 +226,26 @@ export class Parser
             this.functionLevel -= 1
         }
 
-        return new FunctionDeclarationSyntax(this.tree, externKeyword, keyword, identifier, leftParen, paramsAndSeparators, rightParen, colon, type, body)
+        return new FunctionDeclarationSyntax(this.tree, externKeyword, keyword, identifier, templateClause, leftParen, paramsAndSeparators, rightParen, colon, type, body)
+    }
+
+    ParseTemplateClause(): TemplateClauseSyntax
+    {
+        let leftAngleBracket = this.MatchAndAdvanceToken(SyntaxKind.LessToken)
+        let templateIdentifierAndSeparators = []
+        while (this.Current().kind != SyntaxKind.GreaterToken && this.Current().kind != SyntaxKind.EndOfFileToken) {
+            let identifier = this.MatchAndAdvanceToken(SyntaxKind.IdentifierToken)
+            templateIdentifierAndSeparators.push(identifier)
+
+            if (this.Current().kind == SyntaxKind.CommaToken) {
+                let comma = this.MatchAndAdvanceToken(SyntaxKind.CommaToken)
+                templateIdentifierAndSeparators.push(comma)
+            } else {
+                break
+            }
+        }
+        let rightAngleBracket = this.MatchAndAdvanceToken(SyntaxKind.GreaterToken)
+        return new TemplateClauseSyntax(this.tree, leftAngleBracket, templateIdentifierAndSeparators, rightAngleBracket)
     }
 
     private ParseEnumDeclaration(externKeyword: SyntaxToken | null): EnumDeclarationSyntax 
@@ -270,7 +294,7 @@ export class Parser
             if (this.Current().kind == SyntaxKind.LetKeyword) {
                 member = this.ParseGlobalVariableDeclaration(null)
             } else if (this.Current().kind == SyntaxKind.FunKeyword || this.Current().kind == SyntaxKind.MetKeyword) {
-                member = this.ParseFunctionDeclaration(null, true)
+                member = this.ParseFunctionDeclaration(null, true, false)
             } else {
                 this.tree.diagnostics.ReportError(
                     this.Current().GetLocation(),

@@ -7,6 +7,7 @@ import { Type } from "./types.ts"
 export enum SymbolKind
 {
     Function = "Function",
+    TemplateFunction = "TemplateFunction",
     Struct = "Struct",
     Enum = "Enum",
     Variable = "Variable",
@@ -36,6 +37,7 @@ export class Symbol
     public syntax: SyntaxNode | null = null
     public parent: Symbol | null = null // for members to determine their container/namespace symbols
     public membersSymbolTable: SymbolTable | null = null // Holds function parameters, enum/union/struct fields/members
+    public templateIdentifierList: string[] | null = null // For template functions and structs
     public functionBody: BoundBlockStatement | null = null // For functions
     public initializer: BoundExpression | null = null // For variables
     public enumValue = 0  // For enum values

@@ -19,6 +19,7 @@ export class Binder
 
     importedModules: Map<string, ImportDeclarationSyntax> = new Map()
     globalFuncs: Map<string, Symbol> = new Map()
+    globalTemplateFuncs: Map<string, Symbol> = new Map()
     enums: Map<string, Symbol> = new Map()
     structs: Map<string, Symbol> = new Map()
     globalVars: Map<string, Symbol> = new Map()
@@ -183,6 +184,9 @@ export class Binder
 
     private RegisterFunctionSymbol(syntax: FunctionDeclarationSyntax)
     {
+        if (syntax.templateClause != null)
+            return this.RegisterTemplateFunctionSymbol(syntax)
+
         let container = this.currentImplBlockSymbol
         let isExternal = syntax.externKeyword != null
         let identifier = syntax.identifier
@@ -234,6 +238,37 @@ export class Binder
         functionSymbol.parent = container
         if (container == null)
             this.globalFuncs.set(functionName, functionSymbol)
+    }
+
+    RegisterTemplateFunctionSymbol(syntax: FunctionDeclarationSyntax)
+    {
+        let isExternal = syntax.externKeyword != null
+        let identifier = syntax.identifier
+        let functionName = identifier.GetText()
+        if (this.currentImplBlockSymbol != null) {
+            this.diagnostics.ReportError(
+                identifier.GetLocation(),
+                `Template functions cannot be part of an impl block`
+            )
+            return
+        }
+        if (functionName == "Main") {
+            this.diagnostics.ReportError(identifier.GetLocation(),
+                `Entrypoint function 'Main' cannot be a template function.`
+            )
+            return
+        }
+
+        let symbolKind = SymbolKind.TemplateFunction
+        let returnType = Type.Void
+        let functionSymbol = this.RegisterSymbol(identifier.GetLocation(), functionName, symbolKind, isExternal, returnType)
+        if (functionSymbol == null) {
+            // NOTE: We already registered a symbol under this name and have already output diagnostics
+            return
+        }
+
+        functionSymbol.syntax = syntax
+        this.globalTemplateFuncs.set(functionName, functionSymbol)
     }
 
     private RegisterGlobalVariableSymbol(syntax: GlobalVariableDeclarationSyntax)
@@ -485,6 +520,12 @@ export class Binder
 
         let identifier = syntax.identifier
         let functionName = identifier.GetText()
+        let templateFunctionSymbol = this.symbolTable.GetSymbol(functionName)
+        if (templateFunctionSymbol != null && templateFunctionSymbol.kind == SymbolKind.TemplateFunction) {
+            // Template functions are bound at callsites
+            return
+        }
+
         let functionSymbol = this.GetSymbolWithSpecificKind(identifier.GetLocation(), functionName, symbolKind)
         if (functionSymbol == null) {
             return

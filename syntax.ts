@@ -158,6 +158,7 @@ export enum SyntaxKind
 
     // Misc
     EnumMemberClauseSyntax = "EnumMemberClauseSyntax",
+    TemplateClauseSyntax = "TemplateClauseSyntax",
     FunctionParameterClauseSyntax = "FunctionParameterClauseSyntax",
 
     // Statements
@@ -855,6 +856,19 @@ export class EnumDeclarationSyntax extends ModuleMemberSyntax
     }
 }
 
+export class TemplateClauseSyntax extends SyntaxNode
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public leftAngleBracket: SyntaxToken,
+        public templateIdentifierAndSeparators: SyntaxToken[],
+        public rightAngleBracket: SyntaxToken,
+    )
+    {
+        super(SyntaxKind.TemplateClauseSyntax, syntaxTree)
+    }
+}
+
 export class StructDeclarationSyntax extends ModuleMemberSyntax
 {
     constructor(
@@ -878,6 +892,7 @@ export class FunctionDeclarationSyntax extends ModuleMemberSyntax
         public externKeyword: SyntaxToken | null,
         public funOrMetKeyword: SyntaxToken,
         public identifier: SyntaxToken,
+        public templateClause: TemplateClauseSyntax | null,
         public leftParen: SyntaxToken,
         public paramsAndSeparators: SyntaxNode[],
         public rightParen: SyntaxNode,

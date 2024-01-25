@@ -10,12 +10,12 @@ function PrintValue(value) { console.log(value) }
 // Global variables
 
 // NOTE: The following are initialized in the __GlobalVariableInitializer() function
+let black /*: number = 123 */
 let glob_a /*: number = TestGlobalFunctionB() */
 let glob_b /*: number = 100 + 20 + 3 */
 let glob_c /*: string = "hello" */
 let glob_d /*: string = glob_c */
 let glob_e /*: string = "test" */
-let black /*: number = 123 */
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Enums
@@ -29,20 +29,6 @@ class MyEnum {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Classes
-
-class ResultType {
-    constructor(first, second) {
-        this.first = first
-        this.second = second
-    }
-    static Default() {
-        return new ResultType(
-            0, // first
-            0, // second
-        )
-    }
-    
-}
 
 class MyOtherStruct {
     constructor(lala, color, eee) {
@@ -148,8 +134,142 @@ class Square {
     
 }
 
+class ResultType {
+    constructor(first, second) {
+        this.first = first
+        this.second = second
+    }
+    static Default() {
+        return new ResultType(
+            0, // first
+            0, // second
+        )
+    }
+    
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Free Functions
+
+function TestEnums() {
+    let enummi = MyEnum.Three
+    Assert(enummi == MyEnum.Three)
+    Assert(enummi != MyEnum.One)
+    Assert(enummi > MyEnum.One)
+    Assert(MyEnum.One < MyEnum.Three)
+    Assert(MyEnum.One < MyEnum.Five)
+    Assert(MyEnum.One < MyEnum.Five)
+    let arr = [MyEnum.One, MyEnum.Three, MyEnum.Five]
+    Assert(arr[0] == MyEnum.One)
+    Assert(arr[1] == MyEnum.Three)
+    Assert(arr[2] == MyEnum.Five)
+    let numnum = MyEnum.Five
+    switch ((numnum)) {
+        case MyEnum.One: {
+            Assert(false)
+            break
+        }
+        case MyEnum.Three: {
+            Assert(false)
+            break
+        }
+        case MyEnum.Five: {
+            Assert(true)
+            break
+        }
+        default: {
+            Assert(false)
+            break
+        }
+    }
+}
+
+function GetSum(a /*: number*/ , b /*: number*/ )  /*: number*/ {
+    return a + b
+}
+
+function TestStructImpl() {
+    let blue1 = Color.blue
+    let blue2 = Color.specialMembers[3]
+    Assert(blue1.b == blue2.b)
+    let max = blue1.GetMax()
+    Assert(max == 255)
+    let sum = GetSum(1, 1)
+    Assert(sum == 2)
+    let magenta = new Color(Color.white.r, Color.black.g, Color.white.b)
+    Assert(magenta.r == 255)
+    Assert(magenta.g == 0)
+    Assert(magenta.b == 255)
+    Assert(magenta.GetSum() == 2 * 255)
+}
+
+function TestStructs() {
+    let col = Color.Default()
+    col.r = 255
+    Assert(col.r == 255)
+    Assert(col.g == 0)
+    Assert(col.b == 0)
+    let r = col.r + 5
+    Assert(r == 260)
+    let mymy = MyOtherStruct.Default()
+    mymy.color = col
+    Assert(mymy.color.r == 255)
+    Assert(mymy.color.g == 0)
+    Assert(mymy.color.b == 0)
+    let b = mymy.color.r + 5
+    Assert(b == 260)
+    let one = SelfReferential.Default()
+    one.value = [1, 1, 1]
+    let two = SelfReferential.Default()
+    two.value = [2, 2, 2]
+    let tre = SelfReferential.Default()
+    tre.value = [3, 3, 3]
+    one.previous = null
+    one.next = two
+    two.previous = one
+    two.next = tre
+    tre.previous = two
+    tre.next = null
+    Assert(one.value[0] == 1)
+    Assert(one.value[1] == 1)
+    Assert(one.value[2] == 1)
+    Assert(two.value[0] == 2)
+    Assert(two.value[1] == 2)
+    Assert(two.value[2] == 2)
+    Assert(tre.value[0] == 3)
+    Assert(tre.value[1] == 3)
+    Assert(tre.value[2] == 3)
+    Assert(one.next.value[0] == 2)
+    Assert(two.next.value[0] == 3)
+    Assert(tre.next == null)
+    Assert(one.previous == null)
+    Assert(two.previous.value[0] == 1)
+    Assert(tre.previous.value[0] == 2)
+    Assert(one.next.next.value[0] == 3)
+    Assert(tre.previous.previous.value[0] == 1)
+    Assert(one.next.next.previous.previous.value[0] == 1)
+    Assert(one.next.next.previous.previous.value[0] + 4 == 5)
+}
+
+function TestCasting() {
+    let a = true
+    Assert(a == 1)
+    Assert(false == 0)
+    let b = MyEnum.Five
+    Assert(b == 5)
+    let square = Square.Default()
+    square.area = 25
+    square.width = 5
+    let shape = null
+    Assert(shape == null)
+}
+
+function TestTypes() {
+    TestEnums()
+    TestStructs()
+    TestStructImpl()
+    TestCasting()
+}
 
 function Main() {
     PrintValue("=====================================")
@@ -167,14 +287,11 @@ function Main() {
     TestOperators()
     TestFunctionOrdering()
     TestScopeShadowing()
-    TestEnums()
     TestParams()
-    TestStructs()
-    TestStructImpl()
     TestSwitchStatements()
-    TestCasting()
     TestLocalPersist()
     TestPrecedence()
+    TestTypes()
     PrintValue("=====================================")
     PrintValue("ALL TESTS PASSED")
 }
@@ -445,87 +562,6 @@ function ForwardDeclaredFunction(a /*: number*/ , b /*: number*/ , c /*: number*
     return a + b + c
 }
 
-function TestEnums() {
-    let enummi = MyEnum.Three
-    Assert(enummi == MyEnum.Three)
-    Assert(enummi != MyEnum.One)
-    Assert(enummi > MyEnum.One)
-    Assert(MyEnum.One < MyEnum.Three)
-    Assert(MyEnum.One < MyEnum.Five)
-    Assert(MyEnum.One < MyEnum.Five)
-    let arr = [MyEnum.One, MyEnum.Three, MyEnum.Five]
-    Assert(arr[0] == MyEnum.One)
-    Assert(arr[1] == MyEnum.Three)
-    Assert(arr[2] == MyEnum.Five)
-}
-
-function GetSum(a /*: number*/ , b /*: number*/ )  /*: number*/ {
-    return a + b
-}
-
-function TestStructImpl() {
-    let blue1 = Color.blue
-    let blue2 = Color.specialMembers[3]
-    Assert(blue1.b == blue2.b)
-    let max = blue1.GetMax()
-    Assert(max == 255)
-    let sum = GetSum(1, 1)
-    Assert(sum == 2)
-    let magenta = new Color(Color.white.r, Color.black.g, Color.white.b)
-    Assert(magenta.r == 255)
-    Assert(magenta.g == 0)
-    Assert(magenta.b == 255)
-    Assert(magenta.GetSum() == 2 * 255)
-}
-
-function TestStructs() {
-    let col = Color.Default()
-    col.r = 255
-    Assert(col.r == 255)
-    Assert(col.g == 0)
-    Assert(col.b == 0)
-    let r = col.r + 5
-    Assert(r == 260)
-    let mymy = MyOtherStruct.Default()
-    mymy.color = col
-    Assert(mymy.color.r == 255)
-    Assert(mymy.color.g == 0)
-    Assert(mymy.color.b == 0)
-    let b = mymy.color.r + 5
-    Assert(b == 260)
-    let one = SelfReferential.Default()
-    one.value = [1, 1, 1]
-    let two = SelfReferential.Default()
-    two.value = [2, 2, 2]
-    let tre = SelfReferential.Default()
-    tre.value = [3, 3, 3]
-    one.previous = null
-    one.next = two
-    two.previous = one
-    two.next = tre
-    tre.previous = two
-    tre.next = null
-    Assert(one.value[0] == 1)
-    Assert(one.value[1] == 1)
-    Assert(one.value[2] == 1)
-    Assert(two.value[0] == 2)
-    Assert(two.value[1] == 2)
-    Assert(two.value[2] == 2)
-    Assert(tre.value[0] == 3)
-    Assert(tre.value[1] == 3)
-    Assert(tre.value[2] == 3)
-    Assert(one.next.value[0] == 2)
-    Assert(two.next.value[0] == 3)
-    Assert(tre.next == null)
-    Assert(one.previous == null)
-    Assert(two.previous.value[0] == 1)
-    Assert(tre.previous.value[0] == 2)
-    Assert(one.next.next.value[0] == 3)
-    Assert(tre.previous.previous.value[0] == 1)
-    Assert(one.next.next.previous.previous.value[0] == 1)
-    Assert(one.next.next.previous.previous.value[0] + 4 == 5)
-}
-
 function TestSwitchStatements() {
     let a = 5
     switch ((a)) {
@@ -543,38 +579,6 @@ function TestSwitchStatements() {
             break
         }
     }
-    let numnum = MyEnum.Five
-    switch ((numnum)) {
-        case MyEnum.One: {
-            Assert(false)
-            break
-        }
-        case MyEnum.Three: {
-            Assert(false)
-            break
-        }
-        case MyEnum.Five: {
-            Assert(true)
-            break
-        }
-        default: {
-            Assert(false)
-            break
-        }
-    }
-}
-
-function TestCasting() {
-    let a = true
-    Assert(a == 1)
-    Assert(false == 0)
-    let b = MyEnum.Five
-    Assert(b == 5)
-    let square = Square.Default()
-    square.area = 25
-    square.width = 5
-    let shape = null
-    Assert(shape == null)
 }
 
 function LocalPersistFunc()  /*: number*/ {
@@ -617,10 +621,10 @@ function TestPrecedence() {
 }
 
 function __GlobalVariableInitializer() {
+    black = 123
     glob_b = 100 + 20 + 3
     glob_c = "hello"
     glob_e = "test"
-    black = 123
     Color.black = Color.Default()
     Color.white = Color.FromGrey(255)
     Color.green = new Color(0, 0, 255)
