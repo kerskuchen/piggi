@@ -184,7 +184,7 @@ export class Binder
 
     private RegisterFunctionSymbol(syntax: FunctionDeclarationSyntax)
     {
-        if (syntax.templateClause != null)
+        if (syntax.templateParamsClause != null)
             return this.RegisterTemplateFunctionSymbol(syntax)
 
         let container = this.currentImplBlockSymbol
@@ -1089,6 +1089,7 @@ export class Binder
             case SymbolKind.Struct:
             case SymbolKind.MemberFunction:
             case SymbolKind.MemberMethod:
+            case SymbolKind.TemplateFunction:
                 break
             default:
                 this.diagnostics.ReportError(
@@ -1105,6 +1106,10 @@ export class Binder
             let arg = syntax.argumentsWithSeparators[index]
             let boundArg = this.BindExpression(arg as ExpressionSyntax)
             argumentList.push(boundArg)
+        }
+
+        if (symbol.kind == SymbolKind.TemplateFunction) {
+            // let symbol = this.GetOrBindTemplateFunction()
         }
 
         if (symbol.membersSymbolTable == null)

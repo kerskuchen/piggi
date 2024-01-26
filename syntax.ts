@@ -70,6 +70,7 @@ export enum SyntaxKind
     /////// Punctuation
     QuestionmarkToken = "QuestionmarkToken",
     ColonToken = "ColonToken",
+    ColonColonToken = "ColonColonToken",
     ArrowToken = "ArrowToken",
     DotToken = "DotToken",
     DotDotToken = "DotDotToken",
@@ -158,7 +159,8 @@ export enum SyntaxKind
 
     // Misc
     EnumMemberClauseSyntax = "EnumMemberClauseSyntax",
-    TemplateClauseSyntax = "TemplateClauseSyntax",
+    TemplateTypeParamsClauseSyntax = "TemplateTypeParamsClauseSyntax",
+    TemplateTypeArgumentsClauseSyntax = "TemplateTypeArgumentsClauseSyntax",
     FunctionParameterClauseSyntax = "FunctionParameterClauseSyntax",
 
     // Statements
@@ -264,6 +266,8 @@ export class SyntaxFacts
                 return "?"
             case SyntaxKind.ColonToken:
                 return ":"
+            case SyntaxKind.ColonColonToken:
+                return "::"
             case SyntaxKind.ArrowToken:
                 return "->"
             case SyntaxKind.DotToken:
@@ -856,16 +860,29 @@ export class EnumDeclarationSyntax extends ModuleMemberSyntax
     }
 }
 
-export class TemplateClauseSyntax extends SyntaxNode
+export class TemplateTypeArgumentsClauseSyntax extends SyntaxNode
 {
     constructor(
         syntaxTree: SyntaxTree,
         public leftAngleBracket: SyntaxToken,
-        public templateIdentifierAndSeparators: SyntaxToken[],
+        public templateTypeArgumentsAndSeparators: SyntaxNode[],
         public rightAngleBracket: SyntaxToken,
     )
     {
-        super(SyntaxKind.TemplateClauseSyntax, syntaxTree)
+        super(SyntaxKind.TemplateTypeArgumentsClauseSyntax, syntaxTree)
+    }
+}
+
+export class TemplateTypeParamsClauseSyntax extends SyntaxNode
+{
+    constructor(
+        syntaxTree: SyntaxTree,
+        public leftAngleBracket: SyntaxToken,
+        public templateTypeIdentifiersAndSeparators: SyntaxToken[],
+        public rightAngleBracket: SyntaxToken,
+    )
+    {
+        super(SyntaxKind.TemplateTypeParamsClauseSyntax, syntaxTree)
     }
 }
 
@@ -892,7 +909,7 @@ export class FunctionDeclarationSyntax extends ModuleMemberSyntax
         public externKeyword: SyntaxToken | null,
         public funOrMetKeyword: SyntaxToken,
         public identifier: SyntaxToken,
-        public templateClause: TemplateClauseSyntax | null,
+        public templateParamsClause: TemplateTypeParamsClauseSyntax | null,
         public leftParen: SyntaxToken,
         public paramsAndSeparators: SyntaxNode[],
         public rightParen: SyntaxNode,
@@ -1147,6 +1164,7 @@ export class FuncCallExpressionSyntax extends ExpressionSyntax
     constructor(
         syntaxTree: SyntaxTree,
         public func: ExpressionSyntax,
+        public templateArgumentsClause: TemplateTypeArgumentsClauseSyntax | null,
         public leftParen: SyntaxToken,
         public argumentsWithSeparators: SyntaxNode[],
         public rightParen: SyntaxToken,

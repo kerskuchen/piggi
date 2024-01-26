@@ -2,7 +2,7 @@
 
 import { DiagnosticBag, Source, SourceLocation } from "./common.ts"
 import { Scanner } from "./scanner.ts"
-import { SyntaxKind, SyntaxToken, SyntaxTrivia, SyntaxTree, BinaryExpressionSyntax, BlockStatementSyntax, BreakStatementSyntax, ContinueStatementSyntax, DoWhileStatementSyntax, ExpressionStatementSyntax, ExpressionSyntax, ForStatementSyntax, IfStatementSyntax, ModuleMemberSyntax, ModuleSyntax, NameExpressionSyntax, ParenthesizedExpressionSyntax, ReturnStatementSyntax, StatementSyntax, TypeCastExpressionSyntax, UnaryExpressionSyntax, VariableDeclarationSyntax, WhileStatementSyntax, ImportDeclarationSyntax, GlobalVariableDeclarationSyntax, StructDeclarationSyntax, FunctionDeclarationSyntax, TypeExpressionSyntax, EnumDeclarationSyntax, EnumValueClauseSyntax, SwitchStatementSyntax, CaseStatementSyntax, TernaryConditionalExpressionSyntax, FuncCallExpressionSyntax, MemberAccessExpressionSyntax, ArrayIndexExpressionSyntax, ArrayLiteralSyntax, NumberLiteralSyntax, StringLiteralSyntax, BoolLiteralSyntax, NullLiteralSyntax, ArrayTypeExpressionSyntax, BaseTypeExpressionSyntax, NullableTypeExpressionSyntax, ImplDeclarationSyntax, TemplateClauseSyntax } from "./syntax.ts"
+import { SyntaxKind, SyntaxToken, SyntaxTrivia, SyntaxTree, BinaryExpressionSyntax, BlockStatementSyntax, BreakStatementSyntax, ContinueStatementSyntax, DoWhileStatementSyntax, ExpressionStatementSyntax, ExpressionSyntax, ForStatementSyntax, IfStatementSyntax, ModuleMemberSyntax, ModuleSyntax, NameExpressionSyntax, ParenthesizedExpressionSyntax, ReturnStatementSyntax, StatementSyntax, TypeCastExpressionSyntax, UnaryExpressionSyntax, VariableDeclarationSyntax, WhileStatementSyntax, ImportDeclarationSyntax, GlobalVariableDeclarationSyntax, StructDeclarationSyntax, FunctionDeclarationSyntax, TypeExpressionSyntax, EnumDeclarationSyntax, EnumValueClauseSyntax, SwitchStatementSyntax, CaseStatementSyntax, TernaryConditionalExpressionSyntax, FuncCallExpressionSyntax, MemberAccessExpressionSyntax, ArrayIndexExpressionSyntax, ArrayLiteralSyntax, NumberLiteralSyntax, StringLiteralSyntax, BoolLiteralSyntax, NullLiteralSyntax, ArrayTypeExpressionSyntax, BaseTypeExpressionSyntax, NullableTypeExpressionSyntax, ImplDeclarationSyntax, TemplateTypeParamsClauseSyntax, TemplateTypeArgumentsClauseSyntax } from "./syntax.ts"
 import { SyntaxFacts } from "./syntax.ts"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -10,7 +10,6 @@ import { SyntaxFacts } from "./syntax.ts"
 
 export class Parser
 {
-    diagnostics: DiagnosticBag = new DiagnosticBag()
     tokens: SyntaxToken[] = []
     position = 0
     tree: SyntaxTree
@@ -18,6 +17,8 @@ export class Parser
     loopLevel = 0
     switchCaseLevel = 0
     functionLevel = 0
+
+    splitGreaterGreaterTokenPositions = new Map<number, SyntaxToken>
 
     debugToParse: SyntaxToken[] = []
     debugAlreadyParsed: SyntaxToken[] = []
@@ -194,7 +195,7 @@ export class Parser
 
         let templateClause = null
         if (this.Current().kind == SyntaxKind.LessToken && allowTemplateClause) {
-            templateClause = this.ParseTemplateClause()
+            templateClause = this.ParseTemplateTypeParamsClause()
         }
 
         let leftParen = this.MatchAndAdvanceToken(SyntaxKind.LeftParenToken)
@@ -229,7 +230,7 @@ export class Parser
         return new FunctionDeclarationSyntax(this.tree, externKeyword, keyword, identifier, templateClause, leftParen, paramsAndSeparators, rightParen, colon, type, body)
     }
 
-    ParseTemplateClause(): TemplateClauseSyntax
+    ParseTemplateTypeParamsClause(): TemplateTypeParamsClauseSyntax
     {
         let leftAngleBracket = this.MatchAndAdvanceToken(SyntaxKind.LessToken)
         let templateIdentifierAndSeparators = []
@@ -245,7 +246,7 @@ export class Parser
             }
         }
         let rightAngleBracket = this.MatchAndAdvanceToken(SyntaxKind.GreaterToken)
-        return new TemplateClauseSyntax(this.tree, leftAngleBracket, templateIdentifierAndSeparators, rightAngleBracket)
+        return new TemplateTypeParamsClauseSyntax(this.tree, leftAngleBracket, templateIdentifierAndSeparators, rightAngleBracket)
     }
 
     private ParseEnumDeclaration(externKeyword: SyntaxToken | null): EnumDeclarationSyntax 
@@ -648,13 +649,20 @@ export class Parser
         let foundPostfix = false
         do {
             foundPostfix = false
+            if (this.Current().kind == SyntaxKind.LessToken) {
+                let templateTypeArguments = this.TryParseTemplateTypeArgumentsClause()
+                if (templateTypeArguments != null) {
+                    foundPostfix = true
+                    left = this.ParseFunctionCallExpression(left, templateTypeArguments)
+                }
+            }
             if (this.Current().kind == SyntaxKind.AsKeyword) {
                 foundPostfix = true
                 left = this.ParseTypeCastExpression(left)
             }
             if (this.Current().kind == SyntaxKind.LeftParenToken) {
                 foundPostfix = true
-                left = this.ParseFunctionCallExpression(left)
+                left = this.ParseFunctionCallExpression(left, null)
             }
             if (this.Current().kind == SyntaxKind.DotToken) {
                 foundPostfix = true
@@ -678,12 +686,75 @@ export class Parser
         return new TypeCastExpressionSyntax(this.tree, expression, asKeyword, targetType)
     }
 
+    TryParseTemplateTypeArgumentsClause(): TemplateTypeArgumentsClauseSyntax | null
+    {
+        let startPos = this.position
+        let startErrorCount = this.tree.diagnostics.diagnostics.length
+        let startExitOnError = this.tree.diagnostics.debugExitOnError
+        this.tree.diagnostics.debugExitOnError = false
 
-    private ParseFunctionCallExpression(left: ExpressionSyntax)
+        let leftAngleBracket = this.MatchAndAdvanceToken(SyntaxKind.LessToken)
+        let typesAndSeparators = []
+        while (this.Current().kind != SyntaxKind.GreaterToken && this.Current().kind != SyntaxKind.EndOfFileToken) {
+            let type = this.ParseTypeExpression()
+            typesAndSeparators.push(type)
+
+            if (this.Current().kind == SyntaxKind.CommaToken) {
+                let comma = this.MatchAndAdvanceToken(SyntaxKind.CommaToken)
+                typesAndSeparators.push(comma)
+            } else {
+                break
+            }
+        }
+
+        if (this.Current().kind == SyntaxKind.GreaterGreaterToken)
+            this.SplitGreaterGreaterToken(this.position)
+        let rightAngleBracket = this.MatchAndAdvanceToken(SyntaxKind.GreaterToken)
+
+        // If we could not parse something we pretend as if we never parsed anything and did not produce errors
+        this.tree.diagnostics.debugExitOnError = startExitOnError
+        if (startErrorCount != this.tree.diagnostics.diagnostics.length) {
+            this.ResetPosition(startPos)
+            this.tree.diagnostics.diagnostics.length = startErrorCount
+            let splitPositions = Array.from(this.splitGreaterGreaterTokenPositions.keys()).filter((splitPosition) => splitPosition >= this.position)
+            for (let pos of splitPositions) {
+                this.MergeGreaterGreaterTokenFromPosition(pos)
+            }
+            return null
+        }
+
+        return new TemplateTypeArgumentsClauseSyntax(this.tree, leftAngleBracket, typesAndSeparators, rightAngleBracket)
+    }
+
+    SplitGreaterGreaterToken(position: number)
+    {
+        let ggToken = this.tokens[position]
+        if (ggToken == undefined || ggToken.kind != SyntaxKind.GreaterGreaterToken)
+            throw new Error(`Expected greater greater token at ${position}`)
+
+        let leftLocation = SourceLocation.FromStartLength(ggToken.location.source, ggToken.location.start, 1)
+        let rightLocation = SourceLocation.FromStartLength(ggToken.location.source, ggToken.location.start + 1, 1)
+        let left = new SyntaxToken(SyntaxKind.GreaterToken, ggToken.tree, leftLocation, ">", ggToken.leadingTrivia, [])
+        let right = new SyntaxToken(SyntaxKind.GreaterToken, ggToken.tree, rightLocation, ">", [], ggToken.trailingTrivia)
+
+        this.tokens.splice(position, 1, left, right)
+        this.splitGreaterGreaterTokenPositions.set(position, ggToken)
+    }
+
+    MergeGreaterGreaterTokenFromPosition(position: number)
+    {
+        let ggToken = this.splitGreaterGreaterTokenPositions.get(position)
+        if (ggToken == undefined)
+            throw new Error(`Unknown position to merge greater greater token ${position}`)
+
+        this.tokens.splice(position, 2, ggToken)
+        this.splitGreaterGreaterTokenPositions.delete(position)
+    }
+
+    private ParseFunctionCallExpression(left: ExpressionSyntax, templateTypeArguments: TemplateTypeArgumentsClauseSyntax | null): FuncCallExpressionSyntax
     {
         let func = left
         let leftParen = this.MatchAndAdvanceToken(SyntaxKind.LeftParenToken)
-
         let argumentsWithSeparators = []
         while (this.Current().kind != SyntaxKind.RightParenToken) {
             let argument = this.ParseExpression()
@@ -697,7 +768,7 @@ export class Parser
             }
         }
         let rightParen = this.MatchAndAdvanceToken(SyntaxKind.RightParenToken)
-        return new FuncCallExpressionSyntax(this.tree, func, leftParen, argumentsWithSeparators, rightParen)
+        return new FuncCallExpressionSyntax(this.tree, func, templateTypeArguments, leftParen, argumentsWithSeparators, rightParen)
     }
 
     private ParseMemberAccess(left: ExpressionSyntax): ExpressionSyntax
@@ -870,12 +941,20 @@ export class Parser
         return token
     }
 
+    private ResetPosition(position: number)
+    {
+        this.position = position
+        this.debugToParse = this.tokens.slice(0, this.position)
+        this.debugAlreadyParsed = this.tokens.slice(this.position)
+    }
+
+
     private MatchAndAdvanceToken(kind: SyntaxKind): SyntaxToken
     {
         if (this.Current().kind == kind)
             return this.AdvanceToken()
 
-        this.diagnostics.ReportError(
+        this.tree.diagnostics.ReportError(
             this.Current().GetLocation(),
             `Expected token '${kind}' but got token '${this.Current().kind}'`
         )

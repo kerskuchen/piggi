@@ -1,9 +1,12 @@
 import prelude
+import test_playground
 import test_types
 
 fun Main() {
     PrintValue("=====================================")
     PrintValue("RUNNING TESTS")
+
+    TestPlayground()
 
     TestBasics()
     TestComparisons()

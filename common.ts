@@ -149,6 +149,7 @@ export class Diagnostic
 
 export class DiagnosticBag
 {
+    debugExitOnError = true
     diagnostics: Diagnostic[] = []
 
     get hasErrors() { return this.diagnostics.length != 0 }
@@ -168,9 +169,10 @@ export class DiagnosticBag
     {
         let diagnostic = new Diagnostic(location, message)
 
-        // TODO: remove this when not testing
-        diagnostic.Print()
-        Deno.exit(1)
+        if (this.debugExitOnError) {
+            diagnostic.Print()
+            Deno.exit(1)
+        }
 
         this.diagnostics.push(diagnostic)
     }
