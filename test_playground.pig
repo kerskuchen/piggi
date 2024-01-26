@@ -24,21 +24,29 @@ fun TestTemplateFunctions() {
     // Assert(num == 0)
     let num2 = EchoValue<number>(123)
     Assert(num2 == 123)
+    // let num3 = EchoValue(321)
+    // Assert(num3 == 321)
 
     // let str = ReturnDefaultForType::<string>()
     // Assert(str == "")
     let str2 = EchoValue<string>("hello")
     Assert(str2 == "hello")
+    // let str3 = EchoValue("olleh")
+    // Assert(str3 == "olleh")
 
     // let bul = ReturnDefaultForType::<bool>()
     // Assert(bul == false)
     let bul2 = EchoValue<bool>(true)
     Assert(bul2 == true)
+    // let bul3 = EchoValue(false)
+    // Assert(bul3 == false)
 
-    // / let nil = ReturnDefaultForType<any>()
-    // / Assert(nil == null)
+    // let nil = ReturnDefaultForType<any>()
+    // Assert(nil == null)
     let nil2 = EchoValue<any>(null)
     Assert(nil2 == null)
+    // let nil3 = EchoValue(null)
+    // Assert(nil3 == null)
 }
 
 /*

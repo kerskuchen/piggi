@@ -2,7 +2,7 @@
 
 import { BoundArrayIndexExpression, BoundArrayLiteral, BoundBinaryExpression, BoundBlockStatement, BoundBreakStatement, BoundCaseStatement, BoundCompilationUnit, BoundContinueStatement, BoundDoWhileStatement, BoundExpression, BoundExpressionStatement, BoundForStatement, BoundFunctionCallExpression, BoundIfStatement, BoundMemberAccessExpression, BoundMissingExpression, BoundMissingStatement, BoundNameExpression, BoundNodeKind, BoundParenthesizedExpression, BoundPrimitiveLiteral, BoundReturnStatement, BoundStatement, BoundSwitchStatement, BoundTernaryConditionalExpression, BoundThisExpression, BoundTypeCastExpression, BoundUnaryExpression, BoundVariableDeclarationStatement, BoundWhileStatement } from "./boundtree.ts"
 import { DiagnosticBag, SourceLocation } from "./common.ts"
-import { ArrayIndexExpressionSyntax, ArrayLiteralSyntax, ArrayTypeExpressionSyntax, BaseTypeExpressionSyntax, BinaryExpressionSyntax, BlockStatementSyntax, BoolLiteralSyntax, BreakStatementSyntax, CaseStatementSyntax, ContinueStatementSyntax, DoWhileStatementSyntax, EnumDeclarationSyntax, ExpressionStatementSyntax, ExpressionSyntax, ForStatementSyntax, FuncCallExpressionSyntax, FunctionDeclarationSyntax, GlobalVariableDeclarationSyntax, IfStatementSyntax, ImplDeclarationSyntax, ImportDeclarationSyntax, MemberAccessExpressionSyntax, ModuleMemberSyntax, NameExpressionSyntax, NullLiteralSyntax, NullableTypeExpressionSyntax, NumberLiteralSyntax, ParenthesizedExpressionSyntax, ReturnStatementSyntax, StatementSyntax, StringLiteralSyntax, StructDeclarationSyntax, SwitchStatementSyntax, SyntaxFacts, SyntaxTree, TernaryConditionalExpressionSyntax, TypeCastExpressionSyntax, TypeExpressionSyntax, UnaryExpressionSyntax, VariableDeclarationSyntax, WhileStatementSyntax } from "./syntax.ts"
+import { ArrayIndexExpressionSyntax, ArrayLiteralSyntax, ArrayTypeExpressionSyntax, BaseTypeExpressionSyntax, BinaryExpressionSyntax, BlockStatementSyntax, BoolLiteralSyntax, BreakStatementSyntax, CaseStatementSyntax, ContinueStatementSyntax, DoWhileStatementSyntax, EnumDeclarationSyntax, ExpressionStatementSyntax, ExpressionSyntax, ForStatementSyntax, FuncCallExpressionSyntax, FunctionDeclarationSyntax, GlobalVariableDeclarationSyntax, IfStatementSyntax, ImplDeclarationSyntax, ImportDeclarationSyntax, MemberAccessExpressionSyntax, ModuleMemberSyntax, NameExpressionSyntax, NullLiteralSyntax, NullableTypeExpressionSyntax, NumberLiteralSyntax, ParenthesizedExpressionSyntax, ReturnStatementSyntax, StatementSyntax, StringLiteralSyntax, StructDeclarationSyntax, SwitchStatementSyntax, SyntaxFacts, SyntaxTree, TemplateTypeArgumentsClauseSyntax, TernaryConditionalExpressionSyntax, TypeCastExpressionSyntax, TypeExpressionSyntax, UnaryExpressionSyntax, VariableDeclarationSyntax, WhileStatementSyntax } from "./syntax.ts"
 import { SyntaxKind } from "./syntax.ts"
 import { ArrayType, BaseType, BaseTypeKind, NullableType, Type } from "./types.ts"
 import { Symbol, SymbolTable, SymbolKind } from "./symbols.ts"
@@ -12,10 +12,12 @@ import { GlobalVariableReferenceCollector } from "./boundtree_transformers.ts"
 export class Binder
 {
     diagnostics = new DiagnosticBag()
+
     loopLevel = 0
     switchCaseLevel = 0
     currentFunctionSymbol: Symbol | null = null
     currentImplBlockSymbol: Symbol | null = null
+    templateTypeMapping: Map<string, Type> | null = null
 
     importedModules: Map<string, ImportDeclarationSyntax> = new Map()
     globalFuncs: Map<string, Symbol> = new Map()
@@ -267,7 +269,18 @@ export class Binder
             return
         }
 
+        if (syntax.templateParamsClause == null)
+            throw new Error("templateParamsClause is null")
+
+        let templateTypeParamNames = []
+        for (let index = 0; index < syntax.templateParamsClause.templateTypeIdentifiersAndSeparators.length; index += 2) {
+            let identifier = syntax.templateParamsClause.templateTypeIdentifiersAndSeparators[index]
+            let name = identifier.text!
+            templateTypeParamNames.push(name)
+        }
+
         functionSymbol.syntax = syntax
+        functionSymbol.templateTypeParamNames = templateTypeParamNames
         this.globalTemplateFuncs.set(functionName, functionSymbol)
     }
 
@@ -1099,6 +1112,13 @@ export class Binder
                 return new BoundMissingExpression(syntax, this.symbolTable)
         }
 
+        if (symbol.kind == SymbolKind.TemplateFunction) {
+            symbol = this.GetOrBindTemplateFunction(symbol, syntax, syntax.templateArgumentsClause)
+            if (symbol == null)
+                return new BoundMissingExpression(syntax, this.symbolTable)
+        }
+
+
         let isConstructor = symbol.kind == SymbolKind.Struct
 
         let argumentList = []
@@ -1106,10 +1126,6 @@ export class Binder
             let arg = syntax.argumentsWithSeparators[index]
             let boundArg = this.BindExpression(arg as ExpressionSyntax)
             argumentList.push(boundArg)
-        }
-
-        if (symbol.kind == SymbolKind.TemplateFunction) {
-            // let symbol = this.GetOrBindTemplateFunction()
         }
 
         if (symbol.membersSymbolTable == null)
@@ -1149,6 +1165,65 @@ export class Binder
         }
 
         return new BoundFunctionCallExpression(syntax, this.symbolTable, left, symbol, isConstructor, argumentList)
+    }
+
+    GetOrBindTemplateFunction(
+        templateFunctionSymbol: Symbol,
+        functionCallSyntax: FuncCallExpressionSyntax,
+        templateArgumentsClause: TemplateTypeArgumentsClauseSyntax | null
+    ): Symbol | null
+    {
+        if (templateArgumentsClause == null) {
+            this.diagnostics.ReportError(
+                functionCallSyntax.GetLocation(),
+                `Template function calls without template arguments are currently not supported`,
+            )
+            return null
+        }
+
+        let templateArgumentTypes = []
+        for (let index = 0; index < templateArgumentsClause.templateTypeArgumentsAndSeparators.length; index += 2) {
+            let typeExpr = templateArgumentsClause.templateTypeArgumentsAndSeparators[index] as TypeExpressionSyntax
+            let boundType = this.BindType(typeExpr)
+            templateArgumentTypes.push(boundType)
+        }
+
+        if (templateFunctionSymbol.templateTypeParamNames == null)
+            throw new Error("Template function parameters list is null")
+
+        if (templateArgumentTypes.length != templateFunctionSymbol.templateTypeParamNames.length) {
+            this.diagnostics.ReportError(
+                templateArgumentsClause.GetLocation(),
+                `Template function argument count ${templateArgumentTypes.length} does not match template parameter count ${templateFunctionSymbol.templateTypeParamNames.length} of template function ${templateFunctionSymbol.name}`,
+            )
+            return null
+        }
+
+        let functionName = this.CreateTemplateFunctionName(templateFunctionSymbol.name, templateArgumentTypes)
+        let existingFunction = this.globalFuncs.get(functionName)
+        if (existingFunction != undefined)
+            return existingFunction
+
+        // Ok we don't have a function yet so we create a new one from scratch
+
+        let templateTypeMapping = new Map<string, Type>()
+        for (let index = 0; index < templateArgumentTypes.length; index += 1) {
+            let name = templateFunctionSymbol.templateTypeParamNames[index]
+            let type = templateArgumentTypes[index]
+            templateTypeMapping.set(name, type)
+        }
+
+        this.templateTypeMapping = templateTypeMapping
+        this.RegisterFunctionSymbol(templateFunctionSymbol.syntax as FunctionDeclarationSyntax)
+        this.BindFunctionDeclaration(templateFunctionSymbol.syntax as FunctionDeclarationSyntax)
+
+        // TODO: 
+        // - we will need a concept of temporary type alias here to stay sane when binding the template function
+        // - need a type-to-template-save-name function to create and search for existing functionname_type1_type2 name
+        // 
+        this.templateTypeMapping = null
+
+        throw new Error("Method not implemented.")
     }
 
     private BindArrayIndexingExpression(syntax: ArrayIndexExpressionSyntax): BoundArrayIndexExpression
